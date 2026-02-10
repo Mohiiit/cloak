@@ -188,7 +188,7 @@ export default function WalletPage() {
     if (!tongoAccount) return;
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
-      const tongoAmount = tongoAccount.erc20ToTongo(erc20Amount);
+      const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
       const txHash = await fund(tongoAmount);
       if (txHash) {
         toast.success("Funds shielded!");
@@ -204,7 +204,7 @@ export default function WalletPage() {
     if (!tongoAccount) return;
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
-      const tongoAmount = tongoAccount.erc20ToTongo(erc20Amount);
+      const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
       const txHash = await withdraw(tongoAmount);
       if (txHash) {
         toast.success("Funds unshielded!");

@@ -57,7 +57,7 @@ export default function SendPage() {
 
     try {
       const erc20Amount = parseTokenAmount(amount, tokenConfig.decimals);
-      const tongoAmount = tongoAccount.erc20ToTongo(erc20Amount);
+      const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
 
       const hash = await transfer(recipientAddress, tongoAmount);
       if (hash) {
