@@ -58,7 +58,23 @@ export class TestConnector extends InjectedConnector {
     return true;
   }
 
+  /**
+   * Returns active address/key, preferring localStorage overrides
+   * so different browser sessions can use different accounts.
+   */
+  private _getCredentials() {
+    if (typeof window !== "undefined") {
+      const overrideAddr = localStorage.getItem("cloak_test_address");
+      const overrideKey = localStorage.getItem("cloak_test_key");
+      if (overrideAddr && overrideKey) {
+        return { address: overrideAddr, privateKey: overrideKey };
+      }
+    }
+    return { address: this._address, privateKey: this._privateKey };
+  }
+
   async account() {
+    const { address, privateKey } = this._getCredentials();
     const networkName = this._chain.network as string;
     const rpcUrl = getRpcUrl(networkName);
 
@@ -67,8 +83,8 @@ export class TestConnector extends InjectedConnector {
         nodeUrl: rpcUrl,
         chainId: starknetChainId(this._chain.id),
       }),
-      address: this._address,
-      signer: this._privateKey,
+      address,
+      signer: privateKey,
     });
   }
 
@@ -77,11 +93,11 @@ export class TestConnector extends InjectedConnector {
   }
 
   async connect() {
-    const account = await this.account();
+    const { address } = this._getCredentials();
     const chainId = this._chain.id;
-    this.emit("connect", { account: account.address, chainId });
+    this.emit("connect", { account: address, chainId });
     return {
-      account: account.address,
+      account: address,
       chainId,
     };
   }

@@ -38,13 +38,17 @@ Public Wallet (ERC20)
 
 ## Screenshots
 
-| Home | Send Payment | Wallet |
+| Home | Send Payment | Payment Sent |
 |:----:|:----:|:------:|
-| ![Home](docs/screenshots/home-connected.png) | ![Send](docs/screenshots/send-step3-note.png) | ![Wallet](docs/screenshots/wallet-connected.png) |
+| ![Home](docs/screenshots/home-connected.png) | ![Send](docs/screenshots/send-step3-note.png) | ![Sent](docs/screenshots/send-success.png) |
 
-| Shield Modal | Contacts | Settings |
-|:--------:|:--------:|:--------:|
-| ![Shield](docs/screenshots/wallet-shield-modal.png) | ![Contacts](docs/screenshots/contact-added.png) | ![Settings](docs/screenshots/settings-connected.png) |
+| Wallet | Pending Funds | Shield Modal |
+|:------:|:--------:|:--------:|
+| ![Wallet](docs/screenshots/wallet-connected.png) | ![Pending](docs/screenshots/wallet-pending.png) | ![Shield](docs/screenshots/wallet-shield-modal.png) |
+
+| Contacts | Settings |
+|:--------:|:--------:|
+| ![Contacts](docs/screenshots/contacts-connected.png) | ![Settings](docs/screenshots/settings-connected.png) |
 
 ## Key Features
 
