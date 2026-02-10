@@ -11,6 +11,7 @@ const withPWA = nextPWA({
 
 const nextConfig = {
   reactStrictMode: true,
+  transpilePackages: ["@fatsolutions/tongo-sdk", "@fatsolutions/she"],
   logging: {
     incomingRequests: false,
   },
@@ -37,6 +38,10 @@ const nextConfig = {
   },
   webpack: (config, { dev, isServer }) => {
     config.resolve.fallback = { fs: false, net: false, tls: false };
+    config.resolve.extensionAlias = {
+      ".js": [".ts", ".tsx", ".js", ".jsx"],
+      ".mjs": [".mts", ".mjs"],
+    };
     config.externals.push("pino-pretty", "lokijs", "encoding");
     config.plugins.push(
       new webpack.NormalModuleReplacementPlugin(/^node:(.*)$/, (resource) => {

@@ -1,63 +1,150 @@
-import Link from "next/link";
-import Image from "next/image";
-import { ConnectedAddress } from "~~/components/ConnectedAddress";
+"use client";
 
-const Home = () => {
+import { Shield, Send, ArrowDownToLine } from "lucide-react";
+import Link from "next/link";
+import { useAccount } from "@starknet-react/core";
+import { useTongo } from "~~/components/providers/TongoProvider";
+import { useTongoBalance } from "~~/hooks/useTongoBalance";
+import { useTongoHistory, type TongoEvent } from "~~/hooks/useTongoHistory";
+
+function HeroSection() {
   return (
-    <div className="flex items-center flex-col grow pt-10">
-      <div className="px-5">
-        <h1 className="text-center">
-          <span className="block text-2xl mb-2">Welcome to</span>
-          <span className="block text-4xl font-bold">Scaffold-Stark 2</span>
-        </h1>
-        <ConnectedAddress />
-        <p className="text-center text-lg">
-          Edit your smart contract{" "}
-          <code className="bg-underline italic text-base font-bold max-w-full break-words break-all inline-block">
-            your_contract.cairo
-          </code>{" "}
-          in{" "}
-          <code className="bg-underline italic text-base font-bold max-w-full break-words break-all inline-block">
-            packages/snfoundry/contracts/src
-          </code>
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6">
+      <div className="relative">
+        <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-3xl" />
+        <Shield className="w-20 h-20 text-blue-500 relative" />
+      </div>
+      <div>
+        <h1 className="text-4xl font-bold text-slate-50 mb-2">Cloak</h1>
+        <p className="text-slate-400 text-lg">
+          Social payments, cryptographically private.
         </p>
       </div>
+      <p className="text-slate-500 text-sm max-w-xs">
+        Connect your Starknet wallet to send shielded payments with notes and
+        emojis — amounts always hidden.
+      </p>
+    </div>
+  );
+}
 
-      <div className="bg-container grow w-full mt-16 px-8 py-12">
-        <div className="flex justify-center items-center gap-12 flex-col sm:flex-row">
-          <div className="flex flex-col bg-base-100 relative text-[12px] px-10 py-10 text-center items-center max-w-xs rounded-3xl border border-gradient">
-            <div className="trapeze"></div>
-            <Image
-              src="/debug-icon.svg"
-              alt="icon"
-              width={26}
-              height={30}
-            ></Image>
-            <p>
-              Tinker with your smart contract using the{" "}
-              <Link href="/debug" passHref className="link">
-                Debug Contracts
-              </Link>{" "}
-              tab.
-            </p>
-          </div>
-          <div className="flex flex-col bg-base-100 relative text-[12px] px-10 py-10 text-center items-center max-w-xs rounded-3xl border border-gradient">
-            <div className="trapeze"></div>
-            <Image
-              src="/explorer-icon.svg"
-              alt="icon"
-              width={20}
-              height={32}
-            ></Image>
-            <p>
-              Play around with Multiwrite transactions using
-              useScaffoldMultiWrite() hook
-            </p>
-          </div>
+function FeedItem({ event }: { event: TongoEvent }) {
+  const typeLabels: Record<string, string> = {
+    fund: "Shielded funds",
+    transferIn: "Received payment",
+    transferOut: "Sent payment",
+    withdraw: "Unshielded funds",
+    rollover: "Claimed pending",
+    ragequit: "Emergency withdrawal",
+  };
+
+  const typeIcons: Record<string, string> = {
+    fund: "🛡️",
+    transferIn: "📥",
+    transferOut: "📤",
+    withdraw: "🏦",
+    rollover: "🔄",
+    ragequit: "🚨",
+  };
+
+  const timeAgo = event.timestamp ? getRelativeTime(event.timestamp) : "";
+
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700/30">
+      <div className="text-xl mt-0.5">{typeIcons[event.type] || "🛡️"}</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-slate-200">
+            {typeLabels[event.type] || event.type}
+          </span>
+          <span className="text-xs text-slate-500">{timeAgo}</span>
         </div>
+        {event.note && (
+          <p className="text-sm text-slate-400 mt-0.5 truncate">
+            {event.note}
+          </p>
+        )}
+        {event.counterpartyName && (
+          <p className="text-xs text-slate-500 mt-0.5">
+            {event.counterpartyName}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center">
+        <Shield className="w-3.5 h-3.5 text-violet-400" />
       </div>
     </div>
   );
-};
+}
 
-export default Home;
+function getRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp * 1000;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp * 1000).toLocaleDateString();
+}
+
+function ConnectedHome() {
+  const { selectedToken } = useTongo();
+  const { shieldedDisplay, pending } = useTongoBalance();
+  const { events, isLoading } = useTongoHistory();
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Quick actions */}
+      <div className="flex gap-3">
+        <Link
+          href="/send"
+          className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 px-4 font-medium transition-colors"
+        >
+          <Send className="w-4 h-4" />
+          Send
+        </Link>
+        <Link
+          href="/wallet"
+          className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl py-3 px-4 font-medium border border-slate-700/50 transition-colors"
+        >
+          <ArrowDownToLine className="w-4 h-4" />
+          Wallet
+        </Link>
+      </div>
+
+      {/* Recent Activity */}
+      <div>
+        <h2 className="text-sm font-medium text-slate-400 mb-3">
+          Recent Activity
+        </h2>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
+          </div>
+        ) : events.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {events.slice(0, 10).map((event, i) => (
+              <FeedItem key={event.txHash || i} event={event} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 text-slate-500">
+            <Shield className="w-10 h-10 mx-auto mb-3 text-slate-600" />
+            <p className="text-sm">No transactions yet</p>
+            <p className="text-xs mt-1">Shield some funds to get started</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function Home() {
+  const { status } = useAccount();
+  const isConnected = status === "connected";
+
+  return isConnected ? <ConnectedHome /> : <HeroSection />;
+}
