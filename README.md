@@ -38,13 +38,13 @@ Public Wallet (ERC20)
 
 ## Screenshots
 
-| Home | Send | Wallet |
+| Home | Send Payment | Wallet |
 |:----:|:----:|:------:|
-| ![Home](docs/screenshots/home.png) | ![Send](docs/screenshots/send.png) | ![Wallet](docs/screenshots/wallet.png) |
+| ![Home](docs/screenshots/home-connected.png) | ![Send](docs/screenshots/send-step3-note.png) | ![Wallet](docs/screenshots/wallet-connected.png) |
 
-| Activity | Contacts | Settings |
+| Shield Modal | Contacts | Settings |
 |:--------:|:--------:|:--------:|
-| ![Activity](docs/screenshots/activity.png) | ![Contacts](docs/screenshots/contacts.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Shield](docs/screenshots/wallet-shield-modal.png) | ![Contacts](docs/screenshots/contact-added.png) | ![Settings](docs/screenshots/settings-connected.png) |
 
 ## Key Features
 

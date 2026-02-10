@@ -9,6 +9,9 @@ import { TongoProvider } from "~~/components/providers/TongoProvider";
 import { appChains, connectors } from "~~/services/web3/connectors";
 import provider from "~~/services/web3/provider";
 import { useNativeCurrencyPrice } from "~~/hooks/scaffold-stark/useNativeCurrencyPrice";
+import { TestAutoConnect } from "~~/components/TestAutoConnect";
+
+const isTestMode = process.env.NEXT_PUBLIC_TEST_MODE === "true";
 
 const ScaffoldStarkApp = ({ children }: { children: React.ReactNode }) => {
   useNativeCurrencyPrice();
@@ -59,6 +62,7 @@ export const ScaffoldStarkAppWithProviders = ({
       explorer={starkscan}
     >
       <TongoProvider>
+        {isTestMode && <TestAutoConnect />}
         <ScaffoldStarkApp>{children}</ScaffoldStarkApp>
       </TongoProvider>
     </StarknetConfig>

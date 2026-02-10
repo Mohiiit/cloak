@@ -4,6 +4,7 @@ import { BurnerConnector } from "@scaffold-stark/stark-burner";
 import scaffoldConfig from "~~/scaffold.config";
 import { LAST_CONNECTED_TIME_LOCALSTORAGE_KEY } from "~~/utils/Constants";
 import { KeplrConnector } from "./keplr";
+import { TestConnector, testWalletId } from "./test-connector";
 
 const targetNetworks = getTargetNetworks();
 
@@ -23,6 +24,21 @@ function withDisconnectWrapper(connector: InjectedConnector) {
 
 function getConnectors() {
   const { targetNetworks } = scaffoldConfig;
+
+  const isTestMode = process.env.NEXT_PUBLIC_TEST_MODE === "true";
+
+  // In test mode, only provide the TestConnector (no wallet extension needed)
+  if (isTestMode) {
+    const testAddress = process.env.NEXT_PUBLIC_TEST_STARK_ADDRESS || "";
+    const testPrivateKey = process.env.NEXT_PUBLIC_TEST_STARK_PRIVATE_KEY || "";
+
+    if (testAddress && testPrivateKey) {
+      const testConnector = new TestConnector(testAddress, testPrivateKey);
+      return [testConnector as unknown as InjectedConnector].map(
+        withDisconnectWrapper,
+      );
+    }
+  }
 
   const connectors: InjectedConnector[] = [ready(), braavos()];
   const isDevnet = targetNetworks.some(
