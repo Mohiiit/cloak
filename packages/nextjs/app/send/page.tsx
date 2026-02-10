@@ -105,17 +105,38 @@ export default function SendPage() {
 
       {/* Step indicator */}
       {step !== "success" && (
-        <div className="flex gap-1">
-          {(["recipient", "amount", "note"] as const).map((s, i) => (
-            <div
-              key={s}
-              className={`flex-1 h-1 rounded-full ${
-                (["recipient", "amount", "note"] as const).indexOf(step) >= i
-                  ? "bg-blue-500"
-                  : "bg-slate-700"
-              }`}
-            />
-          ))}
+        <div className="flex gap-2">
+          {(
+            [
+              { key: "recipient", label: "To" },
+              { key: "amount", label: "Amount" },
+              { key: "note", label: "Confirm" },
+            ] as const
+          ).map(({ key, label }, i) => {
+            const currentIdx = (["recipient", "amount", "note"] as const).indexOf(step);
+            const isCompleted = currentIdx > i;
+            const isActive = currentIdx === i;
+            return (
+              <div key={key} className="flex-1 flex flex-col items-center gap-1">
+                <span
+                  className={`text-[10px] font-medium ${
+                    isActive
+                      ? "text-blue-400"
+                      : isCompleted
+                        ? "text-blue-400/60"
+                        : "text-slate-600"
+                  }`}
+                >
+                  {label}
+                </span>
+                <div
+                  className={`w-full h-1 rounded-full transition-colors ${
+                    isActive || isCompleted ? "bg-blue-500" : "bg-slate-700/50"
+                  }`}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -279,12 +300,12 @@ export default function SendPage() {
               className="w-full bg-slate-800 rounded-xl border border-slate-700/50 px-4 py-3 text-slate-50 outline-none focus:border-blue-500/50 transition-colors"
               autoFocus
             />
-            <div className="flex gap-2 mt-2 flex-wrap">
+            <div className="flex gap-1.5 mt-3 overflow-x-auto pb-1 scrollbar-hide">
               {quickEmojis.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => setNote((prev) => prev + emoji)}
-                  className="text-xl hover:scale-110 transition-transform"
+                  className="text-lg w-9 h-9 flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/30 hover:border-blue-500/30 transition-all hover:scale-105 shrink-0"
                 >
                   {emoji}
                 </button>

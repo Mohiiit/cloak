@@ -96,7 +96,36 @@ function ConnectedHome() {
   const { events, isLoading } = useTongoHistory();
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
+      {/* Balance hero card */}
+      <Link
+        href="/wallet"
+        className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600/20 via-slate-800 to-violet-600/20 border border-blue-500/20 hover:border-blue-500/40 transition-all group"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-8 translate-x-8" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-violet-500/10 rounded-full blur-2xl translate-y-6 -translate-x-6" />
+        <div className="relative">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Shield className="w-4 h-4 text-blue-400" />
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-medium">
+              Shielded Balance
+            </span>
+          </div>
+          <div className="text-3xl font-bold text-slate-50 mb-1">
+            {shieldedDisplay}{" "}
+            <span className="text-lg text-slate-400">{selectedToken}</span>
+          </div>
+          {pending > 0n && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-xs text-amber-400/80">
+                Pending funds available to claim
+              </span>
+            </div>
+          )}
+        </div>
+      </Link>
+
       {/* Quick actions */}
       <div className="flex gap-3">
         <Link
@@ -131,10 +160,16 @@ function ConnectedHome() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-12 text-slate-500">
-            <Shield className="w-10 h-10 mx-auto mb-3 text-slate-600" />
-            <p className="text-sm">No transactions yet</p>
-            <p className="text-xs mt-1">Shield some funds to get started</p>
+          <div className="text-center py-10">
+            <div className="relative inline-block mb-4">
+              <div className="absolute inset-0 bg-blue-500/15 rounded-full blur-xl" />
+              <Shield className="w-12 h-12 text-slate-600 relative" />
+            </div>
+            <p className="text-sm text-slate-400 mb-1">No transactions yet</p>
+            <p className="text-xs text-slate-500">
+              Head to <span className="text-blue-400">Wallet</span> to shield
+              funds and start sending
+            </p>
           </div>
         )}
       </div>

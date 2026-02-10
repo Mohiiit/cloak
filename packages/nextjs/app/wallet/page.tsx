@@ -230,35 +230,38 @@ export default function WalletPage() {
       <TokenSelector selected={selectedToken} onSelect={setSelectedToken} />
 
       {/* Balance card */}
-      <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-sm text-slate-400 flex items-center gap-1.5">
-            <Shield className="w-4 h-4 text-blue-400" />
-            Shielded Balance
-          </span>
-          <button
-            onClick={() => setShowBalance(!showBalance)}
-            className="text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            {showBalance ? (
-              <EyeOff className="w-4 h-4" />
+      <div className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-blue-600/15 via-slate-800 to-violet-600/15 border border-blue-500/20">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500/8 rounded-full blur-3xl -translate-y-10 translate-x-10" />
+        <div className="absolute bottom-0 left-0 w-32 h-32 bg-violet-500/8 rounded-full blur-2xl translate-y-8 -translate-x-8" />
+        <div className="relative">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-medium flex items-center gap-1.5">
+              <Shield className="w-4 h-4 text-blue-400" />
+              Shielded Balance
+            </span>
+            <button
+              onClick={() => setShowBalance(!showBalance)}
+              className="text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              {showBalance ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          <div className="text-3xl font-bold text-slate-50 mb-4">
+            {isLoading ? (
+              <div className="animate-pulse bg-slate-700 rounded h-9 w-32" />
+            ) : showBalance ? (
+              <>
+                {shieldedDisplay}{" "}
+                <span className="text-lg text-slate-400">{selectedToken}</span>
+              </>
             ) : (
-              <Eye className="w-4 h-4" />
+              "••••••"
             )}
-          </button>
-        </div>
-        <div className="text-3xl font-bold text-slate-50 mb-4">
-          {isLoading ? (
-            <div className="animate-pulse bg-slate-700 rounded h-9 w-32" />
-          ) : showBalance ? (
-            <>
-              {shieldedDisplay}{" "}
-              <span className="text-lg text-slate-400">{selectedToken}</span>
-            </>
-          ) : (
-            "••••••"
-          )}
-        </div>
+          </div>
 
         {/* Pending */}
         {pending > 0n && (
@@ -298,6 +301,7 @@ export default function WalletPage() {
             <ArrowUpFromLine className="w-4 h-4" />
             Unshield
           </button>
+        </div>
         </div>
       </div>
 

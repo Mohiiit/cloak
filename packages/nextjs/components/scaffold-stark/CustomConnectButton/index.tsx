@@ -2,12 +2,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useConnect, useNetwork } from "@starknet-react/core";
 import { Address } from "@starknet-react/chains";
-import { Balance } from "../Balance";
 import { AddressInfoDropdown } from "./AddressInfoDropdown";
 import { WrongNetworkDropdown } from "./WrongNetworkDropdown";
 import ConnectModal from "./ConnectModal";
 import { AddressQRCodeModal } from "./AddressQRCodeModal";
-import { useAutoConnect, useNetworkColor } from "~~/hooks/scaffold-stark";
+import { useAutoConnect } from "~~/hooks/scaffold-stark";
 import { useTargetNetwork } from "~~/hooks/scaffold-stark/useTargetNetwork";
 import { useAccount } from "~~/hooks/useAccount";
 import { getBlockExplorerAddressLink } from "~~/utils/scaffold-stark";
@@ -15,7 +14,6 @@ import { useReadLocalStorage } from "usehooks-ts";
 
 export const CustomConnectButton = () => {
   useAutoConnect();
-  const networkColor = useNetworkColor();
   const { connector } = useConnect();
   const { targetNetwork } = useTargetNetwork();
   const { chain } = useNetwork();
@@ -31,7 +29,6 @@ export const CustomConnectButton = () => {
       : "";
   }, [accountAddress, targetNetwork]);
 
-  // effect to get chain id and address from account
   useEffect(() => {
     const getChainId = async () => {
       try {
@@ -45,7 +42,6 @@ export const CustomConnectButton = () => {
         console.error("Failed to get chainId:", err);
       }
     };
-
     getChainId();
   }, [account, status, chain?.id]);
 
@@ -76,7 +72,7 @@ export const CustomConnectButton = () => {
       <button
         type="button"
         disabled
-        className="w-36 h-10 rounded-xl bg-gray-200 dark:bg-gray-700 animate-pulse"
+        className="w-20 h-8 rounded-lg bg-slate-700 animate-pulse"
       >
         &nbsp;
       </button>
@@ -89,15 +85,7 @@ export const CustomConnectButton = () => {
 
   return (
     <>
-      <div className="flex flex-col items-center max-sm:mt-2">
-        <Balance
-          address={accountAddress as Address}
-          className="min-h-0 h-auto"
-        />
-        <span className="text-xs ml-1" style={{ color: networkColor }}>
-          {chain.name}
-        </span>
-      </div>
+      {/* Minimal address chip only — no Balance, no chain name */}
       <AddressInfoDropdown
         address={accountAddress as Address}
         displayName=""

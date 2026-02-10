@@ -11,6 +11,7 @@ const withPWA = nextPWA({
 
 const nextConfig = {
   reactStrictMode: true,
+  devIndicators: false,
   transpilePackages: ["@fatsolutions/tongo-sdk", "@fatsolutions/she"],
   logging: {
     incomingRequests: false,
