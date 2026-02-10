@@ -24,8 +24,8 @@ const ENV_TEST_PATH = resolve(__dirname, "../.env.test");
 const ENV_PATH = resolve(__dirname, "../.env");
 
 // OpenZeppelin Account class hash on Sepolia
-// This is the standard OZ account v0.14.0 class hash
-const OZ_ACCOUNT_CLASS_HASH = "0x061dac032f228abef9c6f204d015c5740db8aae7e5f1ed042e654e8b16c9503c";
+// OZ Account v0.8.1 — confirmed declared on Sepolia
+const OZ_ACCOUNT_CLASS_HASH = "0x04d07e40e93398ed3c76981e72dd1fd22557a78ce36c0515f679e27f0bb5bc5f";
 
 // RPC URL — read from .env or use public
 function getRpcUrl() {
