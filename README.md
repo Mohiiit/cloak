@@ -50,6 +50,60 @@ Public Wallet (ERC20)
 |:--------:|:--------:|
 | ![Contacts](docs/screenshots/contacts-connected.png) | ![Settings](docs/screenshots/settings-connected.png) |
 
+## How to Use
+
+### 1. Connect Your Wallet
+
+Install [ArgentX](https://www.argent.xyz/) or [Braavos](https://braavos.app/) and switch to **Starknet Sepolia**. Click **Connect Wallet** on the home page. On first connect, Cloak generates your private Tongo keypair automatically — this is your Cloak identity.
+
+![Home](docs/screenshots/home-connected.png)
+
+### 2. Shield Funds
+
+Go to the **Wallet** tab. Tap **Shield** to deposit ERC20 tokens (STRK, ETH, or USDC) from your public wallet into your shielded balance. Enter the amount and confirm the transaction.
+
+| Wallet | Shield Modal |
+|:------:|:------------:|
+| ![Wallet](docs/screenshots/wallet-connected.png) | ![Shield](docs/screenshots/wallet-shield-modal.png) |
+
+Once confirmed, your shielded balance updates — the amount is now encrypted on-chain.
+
+### 3. Send a Shielded Payment
+
+Go to the **Send** tab. The 3-step wizard walks you through:
+
+1. **To** — Enter the recipient's Cloak address (base58) or pick from contacts
+2. **Amount** — Choose how much to send from your shielded balance
+3. **Confirm** — Add a note and emoji, then review and send
+
+| Confirm Payment | Payment Sent |
+|:---------------:|:------------:|
+| ![Confirm](docs/screenshots/send-step3-note.png) | ![Sent](docs/screenshots/send-success.png) |
+
+The transaction note and emoji appear in the social feed, but the **amount is never revealed** — it's encrypted with ElGamal so only sender and receiver can see it.
+
+### 4. Claim Pending Funds
+
+When someone sends you a shielded payment, it appears as **Pending** in your Wallet. Tap **Claim** to roll the pending amount into your spendable shielded balance.
+
+![Pending](docs/screenshots/wallet-pending.png)
+
+### 5. Manage Contacts
+
+Save frequently used Cloak addresses in the **Contacts** tab for quick payments. Share your own Cloak address with friends so they can send to you.
+
+![Contacts](docs/screenshots/contacts-connected.png)
+
+### 6. Backup Your Key
+
+Go to **Settings** to copy your Cloak address or back up your Tongo private key. Keep this key safe — it's the only way to decrypt your shielded balance.
+
+![Settings](docs/screenshots/settings-connected.png)
+
+### 7. Unshield
+
+When you want to move funds back to your public wallet, go to **Wallet** and tap **Unshield**. This generates a ZK proof and withdraws the specified amount to your connected Starknet address.
+
 ## Key Features
 
 - **Privacy by default** — All balances and transfer amounts are encrypted
