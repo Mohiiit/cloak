@@ -110,6 +110,7 @@ export function TongoBridgeProvider({ children }: { children: React.ReactNode })
       pendingCalls.current.delete(id);
 
       if (error) {
+        if (data.stack) console.error("[TongoBridge] Stack:", data.stack);
         pending.reject(new Error(error));
       } else {
         pending.resolve(result);

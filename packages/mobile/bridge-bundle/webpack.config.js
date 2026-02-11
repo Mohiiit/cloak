@@ -1,6 +1,7 @@
 const path = require("path");
 const webpack = require("webpack");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
+const HtmlInlineScriptPlugin = require("html-inline-script-webpack-plugin");
 
 module.exports = {
   mode: "production",
@@ -36,7 +37,10 @@ module.exports = {
         use: {
           loader: "babel-loader",
           options: {
-            presets: ["@babel/preset-env", "@babel/preset-typescript"],
+            presets: [
+              ["@babel/preset-env", { targets: { chrome: "80" }, modules: false }],
+              "@babel/preset-typescript",
+            ],
           },
         },
       },
@@ -58,5 +62,6 @@ module.exports = {
 </html>`,
       inject: "body",
     }),
+    new HtmlInlineScriptPlugin(),
   ],
 };

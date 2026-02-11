@@ -210,7 +210,7 @@ window.addEventListener("message", async (event) => {
     window.ReactNativeWebView.postMessage(JSON.stringify({ id, result }));
   } catch (error) {
     window.ReactNativeWebView.postMessage(
-      JSON.stringify({ id, error: error.message || String(error) })
+      JSON.stringify({ id, error: error.message || String(error), stack: error.stack })
     );
   }
 });
