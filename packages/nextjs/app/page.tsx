@@ -92,7 +92,7 @@ function getRelativeTime(timestamp: number): string {
 
 function ConnectedHome() {
   const { selectedToken } = useTongo();
-  const { shieldedDisplay, pending } = useTongoBalance();
+  const { shieldedDisplay, pending, nonce } = useTongoBalance();
   const { events, isLoading } = useTongoHistory();
 
   return (
@@ -126,21 +126,39 @@ function ConnectedHome() {
         </div>
       </Link>
 
-      {/* Quick actions */}
-      <div className="flex gap-3">
+      {/* Quick actions — 3 colored-border row buttons */}
+      <div className="flex flex-col gap-2">
         <Link
           href="/send"
-          className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 px-4 font-medium transition-colors"
+          className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700/30 border-l-[3px] border-l-blue-500 hover:border-blue-500/50 transition-all"
         >
-          <Send className="w-4 h-4" />
-          Send
+          <Send className="w-5 h-5 text-blue-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-slate-200">Send</p>
+            <p className="text-[11px] text-slate-500">Private shielded payment</p>
+          </div>
         </Link>
+
         <Link
-          href="/wallet"
-          className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl py-3 px-4 font-medium border border-slate-700/50 transition-colors"
+          href="/wallet?mode=shield"
+          className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700/30 border-l-[3px] border-l-emerald-500 hover:border-emerald-500/50 transition-all"
         >
-          <ArrowDownToLine className="w-4 h-4" />
-          Wallet
+          <Shield className="w-5 h-5 text-emerald-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-slate-200">Shield</p>
+            <p className="text-[11px] text-slate-500">Deposit into private pool</p>
+          </div>
+        </Link>
+
+        <Link
+          href="/wallet?mode=unshield"
+          className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700/30 border-l-[3px] border-l-violet-500 hover:border-violet-500/50 transition-all"
+        >
+          <ArrowDownToLine className="w-5 h-5 text-violet-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-slate-200">Unshield</p>
+            <p className="text-[11px] text-slate-500">Withdraw to public wallet</p>
+          </div>
         </Link>
       </div>
 
@@ -172,6 +190,14 @@ function ConnectedHome() {
             </p>
           </div>
         )}
+      </div>
+
+      {/* Status footer */}
+      <div className="flex items-center justify-center gap-2 py-2">
+        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+        <span className="text-xs text-slate-500">Sepolia</span>
+        <span className="text-xs text-slate-500 opacity-50">|</span>
+        <span className="text-xs text-slate-500">Nonce: {nonce.toString()}</span>
       </div>
     </div>
   );

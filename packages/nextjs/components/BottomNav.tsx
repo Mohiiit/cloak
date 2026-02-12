@@ -6,17 +6,15 @@ import { usePathname } from "next/navigation";
 import {
   Home,
   Send,
-  Clock,
-  Wallet,
-  Users,
+  Shield,
+  Settings,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", icon: Home, label: "Home" },
   { href: "/send", icon: Send, label: "Send" },
-  { href: "/activity", icon: Clock, label: "Activity" },
-  { href: "/wallet", icon: Wallet, label: "Wallet" },
-  { href: "/contacts", icon: Users, label: "Contacts" },
+  { href: "/wallet", icon: Shield, label: "Wallet" },
+  { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export const BottomNav = () => {

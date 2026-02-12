@@ -30,8 +30,8 @@ export function DeployScreen({ wallet, onDeploy, onRefresh, error }: Props) {
   return (
     <div className="flex flex-col h-[580px] bg-cloak-bg p-6 animate-fade-in">
       <div className="flex items-center gap-2 mb-6">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cloak-primary to-purple-400 flex items-center justify-center">
-          <span className="text-white text-xs font-bold">C</span>
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cloak-primary to-blue-400 flex items-center justify-center">
+          <span className="text-sm">🛡️</span>
         </div>
         <span className="text-cloak-text font-semibold text-sm">Deploy Account</span>
       </div>

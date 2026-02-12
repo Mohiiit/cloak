@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { TOKENS, formatTokenAmount } from "@cloak/sdk";
 import type { TokenKey } from "@cloak/sdk";
 import type { ShieldedBalances } from "../hooks/useExtensionWallet";
@@ -12,6 +12,7 @@ interface Props {
 }
 
 export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, onRollover }: Props) {
+  const [balanceHidden, setBalanceHidden] = useState(false);
   const token = TOKENS[selectedToken];
 
   const shieldedErc20 = balances.balance * token.rate;
@@ -22,49 +23,69 @@ export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, 
   const publicDisplay = formatTokenAmount(erc20Balance, token.decimals);
 
   return (
-    <div className="bg-cloak-card border border-cloak-border rounded-xl p-4">
-      {/* Shielded balance — primary */}
-      <div className="mb-3">
-        <div className="flex items-center gap-1.5 mb-1">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cloak-primary">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <span className="text-[11px] text-cloak-text-dim uppercase tracking-wider">Shielded</span>
+    <div className="relative overflow-hidden bg-cloak-card border border-cloak-border rounded-xl p-4">
+      {/* Glow effects matching mobile */}
+      <div className="absolute -top-10 -right-10 w-[120px] h-[120px] rounded-full bg-cloak-primary/[0.08]" />
+      <div className="absolute -bottom-8 -left-8 w-[100px] h-[100px] rounded-full bg-cloak-secondary/[0.08]" />
+
+      <div className="relative">
+        {/* Shielded balance — primary */}
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[11px] text-cloak-text-dim uppercase tracking-wider">Shielded Balance</span>
+          <button
+            onClick={() => setBalanceHidden(!balanceHidden)}
+            className="text-cloak-text-dim hover:text-cloak-text transition-colors"
+          >
+            {balanceHidden ? "👁" : "👁‍🗨"}
+          </button>
         </div>
+
+        {/* Hero balance */}
         <p className="text-2xl font-bold text-cloak-text">
-          {shieldedDisplay} <span className="text-sm text-cloak-text-dim font-normal">{selectedToken}</span>
+          {balanceHidden ? "****" : `${balances.balance.toString()} units`}
         </p>
-        <p className="text-[11px] text-cloak-muted">{balances.balance.toString()} Tongo units</p>
-      </div>
+        <p className="text-[11px] text-cloak-text-dim mt-0.5">
+          {balanceHidden ? "****" : `(${shieldedDisplay} ${selectedToken})`}
+        </p>
 
-      {/* Pending + Public row */}
-      <div className="flex gap-3 mb-3">
-        <div className="flex-1 bg-cloak-bg/50 rounded-lg p-2.5">
-          <p className="text-[10px] text-cloak-muted uppercase tracking-wider mb-0.5">Pending</p>
-          <p className="text-sm font-medium text-yellow-400">{pendingDisplay} {selectedToken}</p>
-        </div>
-        <div className="flex-1 bg-cloak-bg/50 rounded-lg p-2.5">
-          <p className="text-[10px] text-cloak-muted uppercase tracking-wider mb-0.5">Public</p>
-          <p className="text-sm font-medium text-cloak-text">{publicDisplay} {selectedToken}</p>
-        </div>
-      </div>
+        {/* Pending */}
+        {balances.pending > 0n && (
+          <div className="flex items-center justify-between mt-2 bg-cloak-warning/10 border border-cloak-warning/25 rounded-lg p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-cloak-warning animate-pulse" />
+              <span className="text-[11px] text-cloak-warning">
+                {balanceHidden ? "+**** pending" : `+${balances.pending.toString()} units (${pendingDisplay} ${selectedToken}) pending`}
+              </span>
+            </div>
+            <button
+              onClick={onRollover}
+              className="text-[11px] font-semibold text-cloak-warning hover:text-yellow-300 bg-cloak-warning/20 border border-cloak-warning/40 px-2.5 py-1 rounded-full transition-colors"
+            >
+              Claim
+            </button>
+          </div>
+        )}
 
-      {/* Actions row */}
-      <div className="flex gap-2">
+        {/* Divider */}
+        <div className="border-t border-cloak-border-light my-3" />
+
+        {/* Unshielded (On-chain) */}
+        <span className="text-[10px] text-cloak-muted uppercase tracking-wider">Unshielded (On-chain)</span>
+        <p className="text-sm font-medium text-cloak-text-dim mt-0.5">
+          {balanceHidden ? "****" : publicDisplay} <span className="text-cloak-muted">{selectedToken}</span>
+        </p>
+
+        {/* Refresh button — small icon */}
         <button
           onClick={onRefresh}
-          className="flex-1 py-1.5 text-[11px] text-cloak-text-dim hover:text-cloak-text border border-cloak-border rounded-lg transition-colors"
+          className="absolute top-0 right-6 text-cloak-text-dim hover:text-cloak-text transition-colors"
+          title="Refresh"
         >
-          Refresh
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
         </button>
-        {balances.pending > 0n && (
-          <button
-            onClick={onRollover}
-            className="flex-1 py-1.5 text-[11px] text-cloak-accent hover:text-green-300 border border-cloak-accent/30 rounded-lg transition-colors"
-          >
-            Claim Pending
-          </button>
-        )}
       </div>
     </div>
   );

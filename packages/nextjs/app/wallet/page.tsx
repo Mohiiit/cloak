@@ -23,33 +23,6 @@ import {
 } from "~~/lib/tokens";
 import toast from "react-hot-toast";
 
-function TokenSelector({
-  selected,
-  onSelect,
-}: {
-  selected: TokenKey;
-  onSelect: (t: TokenKey) => void;
-}) {
-  const tokens: TokenKey[] = ["STRK", "ETH", "USDC"];
-  return (
-    <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
-      {tokens.map((t) => (
-        <button
-          key={t}
-          onClick={() => onSelect(t)}
-          className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-medium transition-colors ${
-            selected === t
-              ? "bg-blue-600 text-white"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          {t}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function AmountModal({
   title,
   maxLabel,
@@ -151,7 +124,6 @@ export default function WalletPage() {
   const { status } = useAccount();
   const {
     selectedToken,
-    setSelectedToken,
     tongoAccount,
     isInitialized,
   } = useTongo();
@@ -226,9 +198,6 @@ export default function WalletPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Token selector */}
-      <TokenSelector selected={selectedToken} onSelect={setSelectedToken} />
-
       {/* Balance card */}
       <div className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-blue-600/15 via-slate-800 to-violet-600/15 border border-blue-500/20">
         <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500/8 rounded-full blur-3xl -translate-y-10 translate-x-10" />
@@ -263,46 +232,64 @@ export default function WalletPage() {
             )}
           </div>
 
-        {/* Pending */}
-        {pending > 0n && (
-          <div className="flex items-center justify-between bg-slate-900/50 rounded-xl p-3 mb-4">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span className="text-sm text-slate-300">
-                Pending: {pendingDisplay} {selectedToken}
-              </span>
+          {/* Pending */}
+          {pending > 0n && (
+            <div className="flex items-center justify-between bg-slate-900/50 rounded-xl p-3 mb-4">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-sm text-slate-300">
+                  Pending: {pendingDisplay} {selectedToken}
+                </span>
+              </div>
+              <button
+                onClick={handleRollover}
+                disabled={rolloverPending}
+                className="flex items-center gap-1 text-xs font-medium text-blue-400 hover:text-blue-300 disabled:opacity-50"
+              >
+                <RotateCw
+                  className={`w-3.5 h-3.5 ${rolloverPending ? "animate-spin" : ""}`}
+                />
+                Claim
+              </button>
             </div>
-            <button
-              onClick={handleRollover}
-              disabled={rolloverPending}
-              className="flex items-center gap-1 text-xs font-medium text-blue-400 hover:text-blue-300 disabled:opacity-50"
-            >
-              <RotateCw
-                className={`w-3.5 h-3.5 ${rolloverPending ? "animate-spin" : ""}`}
-              />
-              Claim
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Action buttons */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowFundModal(true)}
-            className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 font-medium transition-colors"
-          >
-            <ArrowDownToLine className="w-4 h-4" />
-            Shield
-          </button>
-          <button
-            onClick={() => setShowWithdrawModal(true)}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl py-3 font-medium transition-colors"
-          >
-            <ArrowUpFromLine className="w-4 h-4" />
-            Unshield
-          </button>
+          {/* Divider */}
+          <div className="border-t border-slate-700/50 my-4" />
+
+          {/* Unshielded (On-chain) */}
+          <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">
+            Unshielded (On-chain)
+          </span>
+          <p className="text-lg text-slate-300 mt-1">
+            {showBalance ? (
+              <>— <span className="text-sm text-slate-500">{selectedToken}</span></>
+            ) : (
+              "••••••"
+            )}
+          </p>
         </div>
-        </div>
+      </div>
+
+      {/* Action cards — Shield and Unshield */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => setShowFundModal(true)}
+          className="flex flex-col items-center gap-2 p-5 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/40 transition-all"
+        >
+          <ArrowDownToLine className="w-6 h-6 text-blue-400" />
+          <span className="text-sm font-medium text-slate-200">Shield</span>
+          <span className="text-[11px] text-slate-500">Deposit to private pool</span>
+        </button>
+
+        <button
+          onClick={() => setShowWithdrawModal(true)}
+          className="flex flex-col items-center gap-2 p-5 rounded-xl bg-violet-500/10 border border-violet-500/20 hover:border-violet-500/40 transition-all"
+        >
+          <ArrowUpFromLine className="w-6 h-6 text-violet-400" />
+          <span className="text-sm font-medium text-slate-200">Unshield</span>
+          <span className="text-[11px] text-slate-500">Withdraw to public</span>
+        </button>
       </div>
 
       {/* Modals */}

@@ -3,7 +3,6 @@ import { useExtensionWallet } from "./hooks/useExtensionWallet";
 import { Onboarding } from "./components/Onboarding";
 import { DeployScreen } from "./components/DeployScreen";
 import { BalanceCard } from "./components/BalanceCard";
-import { TokenSelector } from "./components/TokenSelector";
 import { ShieldForm } from "./components/ShieldForm";
 import { SendForm } from "./components/SendForm";
 import { WithdrawForm } from "./components/WithdrawForm";
@@ -71,9 +70,7 @@ export default function App() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cloak-primary to-purple-400 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">C</span>
-          </div>
+          <span className="text-xl">🛡️</span>
           <span className="text-cloak-text font-semibold text-sm">Cloak</span>
         </div>
         <button
@@ -87,11 +84,6 @@ export default function App() {
         </button>
       </div>
 
-      {/* Token selector */}
-      <div className="px-4 pb-3">
-        <TokenSelector selected={w.selectedToken} onSelect={w.setSelectedToken} />
-      </div>
-
       {/* Balance card */}
       <div className="px-4 pb-4">
         <BalanceCard
@@ -103,12 +95,48 @@ export default function App() {
         />
       </div>
 
-      {/* Action buttons */}
-      <div className="grid grid-cols-4 gap-2 px-4 pb-4">
-        <ActionButton label="Shield" icon="shield" onClick={() => setScreen("shield")} />
-        <ActionButton label="Send" icon="send" onClick={() => setScreen("send")} />
-        <ActionButton label="Unshield" icon="unlock" onClick={() => setScreen("withdraw")} />
-        <ActionButton label="Receive" icon="qr" onClick={() => setScreen("receive")} />
+      {/* Action buttons — row style with colored left borders */}
+      <div className="flex flex-col gap-2 px-4 pb-4">
+        <button
+          onClick={() => setScreen("send")}
+          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-primary hover:border-cloak-primary/50 transition-all"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cloak-primary shrink-0">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+          <div className="text-left">
+            <p className="text-sm font-medium text-cloak-text">Send</p>
+            <p className="text-[11px] text-cloak-text-dim">Private shielded payment</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setScreen("shield")}
+          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-accent hover:border-cloak-accent/50 transition-all"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cloak-accent shrink-0">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <div className="text-left">
+            <p className="text-sm font-medium text-cloak-text">Shield</p>
+            <p className="text-[11px] text-cloak-text-dim">Deposit into private pool</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setScreen("withdraw")}
+          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-secondary hover:border-cloak-secondary/50 transition-all"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cloak-secondary shrink-0">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+          </svg>
+          <div className="text-left">
+            <p className="text-sm font-medium text-cloak-text">Unshield</p>
+            <p className="text-[11px] text-cloak-text-dim">Withdraw to public wallet</p>
+          </div>
+        </button>
       </div>
 
       {/* Error toast */}
@@ -121,53 +149,15 @@ export default function App() {
         </div>
       )}
 
-      {/* Footer */}
-      <div className="mt-auto px-4 py-3 border-t border-cloak-border">
-        <p className="text-[10px] text-cloak-muted text-center">Sepolia Testnet</p>
+      {/* Footer — matches mobile compact status */}
+      <div className="mt-auto px-4 py-3 border-t border-cloak-border-light">
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-cloak-success" />
+          <span className="text-[10px] text-cloak-muted">Sepolia</span>
+          <span className="text-[10px] text-cloak-muted opacity-50">|</span>
+          <span className="text-[10px] text-cloak-muted">Nonce: {w.balances.nonce.toString()}</span>
+        </div>
       </div>
     </div>
-  );
-}
-
-function ActionButton({ label, icon, onClick }: { label: string; icon: string; onClick: () => void }) {
-  const icons: Record<string, React.ReactNode> = {
-    shield: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      </svg>
-    ),
-    send: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <line x1="22" y1="2" x2="11" y2="13" />
-        <polygon points="22 2 15 22 11 13 2 9 22 2" />
-      </svg>
-    ),
-    unlock: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-      </svg>
-    ),
-    qr: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="7" height="7" />
-        <rect x="14" y="3" width="7" height="7" />
-        <rect x="3" y="14" width="7" height="7" />
-        <rect x="14" y="14" width="3" height="3" />
-        <rect x="18" y="14" width="3" height="3" />
-        <rect x="14" y="18" width="3" height="3" />
-        <rect x="18" y="18" width="3" height="3" />
-      </svg>
-    ),
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-cloak-card border border-cloak-border hover:border-cloak-primary/50 transition-all group"
-    >
-      <span className="text-cloak-text-dim group-hover:text-cloak-primary transition-colors">{icons[icon]}</span>
-      <span className="text-[11px] text-cloak-text-dim group-hover:text-cloak-text transition-colors">{label}</span>
-    </button>
   );
 }

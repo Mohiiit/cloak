@@ -10,6 +10,7 @@ import {
   EyeOff,
   Trash2,
   AlertTriangle,
+  Wallet,
 } from "lucide-react";
 import { useAccount } from "@starknet-react/core";
 import { useTongo } from "~~/components/providers/TongoProvider";
@@ -17,7 +18,7 @@ import { getSettings, saveSettings, clearAllData } from "~~/lib/storage";
 import toast from "react-hot-toast";
 
 export default function SettingsPage() {
-  const { status } = useAccount();
+  const { status, address: starkAddress } = useAccount();
   const { tongoAddress, tongoPrivateKey } = useTongo();
   const [showKey, setShowKey] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -57,6 +58,46 @@ export default function SettingsPage() {
           >
             <Copy className="w-4 h-4" />
           </button>
+        </div>
+      </div>
+
+      {/* Starknet Address */}
+      {starkAddress && (
+        <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
+          <div className="flex items-center gap-2 mb-2">
+            <Wallet className="w-4 h-4 text-violet-400" />
+            <span className="text-sm font-medium text-slate-200">
+              Starknet Address
+            </span>
+          </div>
+          <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+            <p className="text-xs text-slate-300 font-mono truncate mr-2">
+              {starkAddress}
+            </p>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(starkAddress);
+                toast.success("Copied!");
+              }}
+              className="text-slate-400 hover:text-blue-400 shrink-0"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Network */}
+      <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
+        <span className="text-sm font-medium text-slate-200 mb-3 block">
+          Network
+        </span>
+        <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="text-sm text-slate-300">Sepolia Testnet</span>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 bg-blue-600/20 text-blue-400 rounded-full font-medium">Active</span>
         </div>
       </div>
 

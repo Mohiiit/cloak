@@ -6,7 +6,7 @@ Cloak is a Venmo-like private payment wallet built on Starknet. Send shielded pa
 
 ## What it does
 
-- **Shield funds** — Deposit ERC20 tokens (STRK, ETH, USDC) into a private pool
+- **Shield funds** — Deposit STRK into a private pool
 - **Send shielded payments** — Transfer to any Cloak address; amounts are encrypted on-chain
 - **Social feed** — Transactions show notes and emojis, never amounts
 - **Manage contacts** — Save Cloak addresses for quick payments
@@ -120,7 +120,7 @@ Native mobile wallet (Android + iOS) built with React Native + WebView bridge to
 - Dual balance display — shielded (Tongo) + unshielded (on-chain ERC20)
 - Themed dark modals for all confirmations and alerts
 - Claim banner for pending funds with loading state
-- Token switching (STRK/ETH/USDC) with live on-chain balance
+- STRK token with live on-chain balance (multi-token support in code, hidden from UI)
 - Full shield/transfer/claim/unshield flow verified on Sepolia (cross-device)
 
 ### Run Mobile App
@@ -166,7 +166,7 @@ yarn workspace @cloak/sdk test    # Run unit tests (28 passing)
 
 ## Chrome Extension
 
-Standalone privacy wallet as a Chrome extension — manages its own Starknet keypair and signs transactions directly (no ArgentX/Braavos dependency).
+Standalone privacy wallet as a Chrome extension — manages its own Starknet keypair and signs transactions directly (no ArgentX/Braavos dependency). UI is unified with the mobile app: navy backgrounds, blue primary, colored-border action buttons, and a matching balance card layout.
 
 **Install:** Load `packages/extension/dist/` as an unpacked extension in `chrome://extensions`.
 
@@ -174,13 +174,9 @@ Standalone privacy wallet as a Chrome extension — manages its own Starknet key
 yarn workspace @cloak/extension build   # Build extension
 ```
 
-| Onboarding | Deploy | Dashboard |
-|:----------:|:------:|:---------:|
-| ![Onboarding](docs/screenshots/extension/onboarding.png) | ![Deploy](docs/screenshots/extension/deploy.png) | ![Dashboard](docs/screenshots/extension/dashboard.png) |
-
-| Shield | Send | Receive | Settings |
-|:------:|:----:|:-------:|:--------:|
-| ![Shield](docs/screenshots/extension/shield.png) | ![Send](docs/screenshots/extension/send.png) | ![Receive](docs/screenshots/extension/receive.png) | ![Settings](docs/screenshots/extension/settings.png) |
+| Onboarding |
+|:----------:|
+| ![Onboarding](docs/screenshots/extension/onboarding.png) |
 
 ## Tech Stack
 

@@ -28,8 +28,8 @@ export function Onboarding({ onCreateWallet, onImportWallet, error }: Props) {
     <div className="flex flex-col h-[580px] bg-cloak-bg p-6 animate-fade-in">
       {/* Logo */}
       <div className="flex flex-col items-center mt-8 mb-8">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cloak-primary to-purple-400 flex items-center justify-center mb-4 animate-pulse-glow">
-          <span className="text-white text-2xl font-bold">C</span>
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cloak-primary to-blue-400 flex items-center justify-center mb-4 animate-pulse-glow">
+          <span className="text-3xl">🛡️</span>
         </div>
         <h1 className="text-xl font-bold text-cloak-text">Cloak Wallet</h1>
         <p className="text-cloak-text-dim text-sm mt-1">Privacy on Starknet</p>
