@@ -104,6 +104,40 @@ Go to **Settings** to copy your Cloak address or back up your Tongo private key.
 
 When you want to move funds back to your public wallet, go to **Wallet** and tap **Unshield**. This generates a ZK proof and withdraws the specified amount to your connected Starknet address.
 
+## Mobile App
+
+Native mobile wallet (Android + iOS) built with React Native + WebView bridge to Tongo SDK.
+
+| Home | Wallet | Themed Modal |
+|:----:|:------:|:------------:|
+| ![Home](docs/screenshots/mobile/home-wallet.png) | ![Wallet](docs/screenshots/mobile/wallet.png) | ![Modal](docs/screenshots/mobile/shield-modal.png) |
+
+| Send Payment | Settings |
+|:------------:|:--------:|
+| ![Send](docs/screenshots/mobile/send.png) | ![Settings](docs/screenshots/mobile/settings.png) |
+
+**Features:**
+- Dual balance display — shielded (Tongo) + unshielded (on-chain ERC20)
+- Themed dark modals for all confirmations and alerts
+- Claim banner for pending funds with loading state
+- Token switching (STRK/ETH/USDC) with live on-chain balance
+- Full shield/transfer/claim/unshield flow verified on Sepolia (cross-device)
+
+### Run Mobile App
+
+```bash
+cd packages/mobile
+npm install
+cd bridge-bundle && npm run build && cd ..
+
+# Android
+npx react-native run-android
+
+# iOS
+cd ios && pod install && cd ..
+npx react-native run-ios
+```
+
 ## Key Features
 
 - **Privacy by default** — All balances and transfer amounts are encrypted
@@ -112,6 +146,7 @@ When you want to move funds back to your public wallet, go to **Wallet** and tap
 - **Contact management** — Save and organize payment contacts
 - **Mobile-first** — Optimized for mobile with bottom navigation
 - **Key backup** — Export your Tongo private key from settings
+- **Native mobile** — Android app with WebView bridge to Tongo SDK
 
 ## Tech Stack
 
@@ -125,6 +160,7 @@ When you want to move funds back to your public wallet, go to **Wallet** and tap
 | Animation | Framer Motion |
 | Identity | starknetid.js |
 | Wallets | ArgentX, Braavos |
+| Mobile | React Native 0.83, WebView bridge (Android + iOS) |
 
 ## Getting Started
 

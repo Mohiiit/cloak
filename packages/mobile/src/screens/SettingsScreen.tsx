@@ -1,19 +1,22 @@
 /**
- * SettingsScreen — Key backup, wallet info, and preferences.
+ * SettingsScreen — Key backup, wallet info, QR codes, and preferences.
  */
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
+  Modal,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
+import QRCode from "react-native-qrcode-svg";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { useThemedModal } from "../components/ThemedModal";
 
 function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
@@ -37,9 +40,62 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function AddressQR({ value }: { value: string }) {
+  return (
+    <View style={styles.qrContainer}>
+      <QRCode
+        value={value}
+        size={120}
+        backgroundColor={colors.bg}
+        color={colors.text}
+      />
+    </View>
+  );
+}
+
+function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; label: string; value: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    Clipboard.setString(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.qrModalOverlay}>
+        <View style={styles.qrModalCard}>
+          <Text style={styles.qrModalLabel}>{label}</Text>
+          <View style={styles.qrModalQR}>
+            <QRCode value={value} size={250} backgroundColor={colors.bg} color={colors.text} />
+          </View>
+          <Text style={styles.qrModalAddress} selectable>{value}</Text>
+          <View style={styles.qrModalActions}>
+            <TouchableOpacity style={styles.qrModalCopyBtn} onPress={handleCopy}>
+              <Text style={styles.qrModalCopyText}>{copied ? "Copied!" : "Copy Address"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.qrModalCloseBtn} onPress={onClose}>
+              <Text style={styles.qrModalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function SettingsScreen() {
   const wallet = useWallet();
+  const modal = useThemedModal();
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const [qrModal, setQrModal] = useState<{ label: string; value: string } | null>(null);
+
+  // Reset scroll on focus
+  useFocusEffect(
+    React.useCallback(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }, []),
+  );
 
   if (!wallet.keys) {
     return (
@@ -50,20 +106,37 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {modal.ModalComponent}
+      {qrModal && (
+        <FullScreenQR
+          visible={!!qrModal}
+          label={qrModal.label}
+          value={qrModal.value}
+          onClose={() => setQrModal(null)}
+        />
+      )}
       {/* Cloak Address */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Your Cloak Address</Text>
         <Text style={styles.sectionDesc}>
           Share this with others so they can send you shielded payments.
         </Text>
-        <CopyRow label="Tongo Address" value={wallet.keys.tongoAddress} />
+        <TouchableOpacity onPress={() => setQrModal({ label: "Cloak Address", value: wallet.keys.tongoAddress })}>
+          <CopyRow label="Tongo Address" value={wallet.keys.tongoAddress} />
+          <AddressQR value={wallet.keys.tongoAddress} />
+          <Text style={styles.tapHint}>Tap to enlarge QR</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Account Info */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
-        <CopyRow label="Starknet Address" value={wallet.keys.starkAddress} />
+        <TouchableOpacity onPress={() => setQrModal({ label: "Starknet Address", value: wallet.keys.starkAddress })}>
+          <CopyRow label="Starknet Address" value={wallet.keys.starkAddress} />
+          <AddressQR value={wallet.keys.starkAddress} />
+          <Text style={styles.tapHint}>Tap to enlarge QR</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Key Backup */}
@@ -77,13 +150,11 @@ export default function SettingsScreen() {
           <TouchableOpacity
             style={styles.revealBtn}
             onPress={() => {
-              Alert.alert(
+              modal.showConfirm(
                 "Show Private Keys?",
                 "Make sure no one is looking at your screen.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Show", onPress: () => setShowPrivateKey(true) },
-                ],
+                () => setShowPrivateKey(true),
+                { confirmText: "Show" },
               );
             }}
           >
@@ -124,20 +195,14 @@ export default function SettingsScreen() {
         <TouchableOpacity
           style={styles.dangerBtn}
           onPress={() => {
-            Alert.alert(
+            modal.showConfirm(
               "Clear Wallet?",
               "This will remove all keys and data from this device. Make sure you've backed up your keys!",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Clear All Data",
-                  style: "destructive",
-                  onPress: async () => {
-                    await clearWallet();
-                    Alert.alert("Done", "Wallet data cleared. Restart the app.");
-                  },
-                },
-              ],
+              async () => {
+                await clearWallet();
+                modal.showSuccess("Done", "Wallet data cleared. Restart the app.");
+              },
+              { destructive: true, confirmText: "Clear All Data" },
             );
           }}
         >
@@ -194,6 +259,14 @@ const styles = StyleSheet.create({
   copyValue: { flex: 1, fontSize: fontSize.sm, color: colors.text, fontFamily: "monospace" },
   copyBtn: { fontSize: fontSize.xs, color: colors.primary, fontWeight: "600", marginLeft: spacing.sm },
 
+  qrContainer: {
+    alignItems: "center",
+    padding: spacing.md,
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+  },
+
   warningText: { fontSize: fontSize.sm, color: colors.warning, marginBottom: spacing.md },
 
   revealBtn: {
@@ -231,6 +304,79 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   dangerBtnText: { color: colors.error, fontWeight: "600" },
+
+  tapHint: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    textAlign: "center",
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
+  },
+
+  // QR Modal
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  qrModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  qrModalLabel: {
+    fontSize: fontSize.lg,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: spacing.lg,
+  },
+  qrModalQR: {
+    padding: spacing.md,
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
+  },
+  qrModalAddress: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    fontFamily: "monospace",
+    textAlign: "center",
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.sm,
+  },
+  qrModalActions: {
+    width: "100%",
+    gap: spacing.sm,
+  },
+  qrModalCopyBtn: {
+    paddingVertical: 14,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+  },
+  qrModalCopyText: {
+    color: "#fff",
+    fontSize: fontSize.md,
+    fontWeight: "600",
+  },
+  qrModalCloseBtn: {
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    alignItems: "center",
+  },
+  qrModalCloseText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+  },
 
   aboutSection: { alignItems: "center", paddingVertical: spacing.xl },
   aboutText: { fontSize: fontSize.sm, color: colors.textMuted, marginBottom: 4 },

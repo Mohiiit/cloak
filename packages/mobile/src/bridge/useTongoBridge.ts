@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getTongoBridge, TongoBridgeRef } from "./TongoBridge";
 
-const SEPOLIA_RPC = "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_9/_hKu4IgnPgrF8O82GLuYU";
+const SEPOLIA_RPC = "https://rpc.starknet-testnet.lava.build";
 
 type TongoState = {
   balance: string;
@@ -112,6 +112,14 @@ export function useTongoBridge() {
     [bridge],
   );
 
+  const queryERC20Balance = useCallback(
+    async (token: string, address: string): Promise<string> => {
+      if (!bridge) throw new Error("Bridge not ready");
+      return bridge.send("queryERC20Balance", { token, address });
+    },
+    [bridge],
+  );
+
   const getTxHistory = useCallback(
     async (fromBlock = 0) => {
       if (!bridge) throw new Error("Bridge not ready");
@@ -134,6 +142,7 @@ export function useTongoBridge() {
     switchToken,
     generateKeypair,
     derivePublicKey,
+    queryERC20Balance,
     getTxHistory,
   };
 }

@@ -59,7 +59,25 @@ export function tongoToDisplay(tongoUnits: string | bigint, token: TokenKey): st
   return `${whole}.${fractionStr}`.replace(/0+$/, "").replace(/\.$/, "");
 }
 
+/** Convert raw ERC20 wei string to human-readable display */
+export function erc20ToDisplay(rawBalance: string | bigint, token: TokenKey): string {
+  const balance = BigInt(rawBalance);
+  const decimals = TOKENS[token].decimals;
+  const divisor = 10n ** BigInt(decimals);
+  const whole = balance / divisor;
+  const fraction = balance % divisor;
+  if (whole === 0n && fraction === 0n) return "0";
+  const fractionStr = fraction.toString().padStart(decimals, "0").slice(0, 4);
+  if (fraction === 0n) return whole.toString();
+  return `${whole}.${fractionStr}`.replace(/0+$/, "").replace(/\.$/, "");
+}
+
 /** Format with token symbol */
 export function formatBalance(tongoUnits: string | bigint, token: TokenKey): string {
   return `${tongoToDisplay(tongoUnits, token)} ${token}`;
+}
+
+/** Convert Tongo units to ERC20 display string with symbol, e.g. "1" STRK → "0.05 STRK" */
+export function tongoUnitToErc20Display(units: string, token: TokenKey): string {
+  return `${tongoToDisplay(units, token)} ${token}`;
 }

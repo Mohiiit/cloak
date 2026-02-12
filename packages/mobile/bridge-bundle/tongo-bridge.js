@@ -14,6 +14,13 @@ const TONGO_CONTRACTS = {
   USDC: "0x02caae365e67921979a4e5c16dd70eaa5776cfc6a9592bcb903d91933aaf2552",
 };
 
+// ERC20 contract addresses on Sepolia
+const ERC20_CONTRACTS = {
+  STRK: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+  ETH: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+  USDC: "0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080",
+};
+
 // Pad address to 66 chars (0x + 64 hex)
 function padAddress(addr) {
   if (!addr) return addr;
@@ -24,6 +31,11 @@ function padAddress(addr) {
 let provider = null;
 let tongoAccount = null;
 let starkAccount = null;
+
+// Fetch fresh nonce from network to avoid stale/cached nonce errors
+async function freshNonce() {
+  return await provider.getNonceForAddress(starkAccount.address);
+}
 
 // Initialize provider
 function initProvider(rpcUrl) {
@@ -130,7 +142,8 @@ const handlers = {
     const calls = [];
     if (fundOp.approve) calls.push(fundOp.approve);
     calls.push(fundOp.toCalldata());
-    const tx = await starkAccount.execute(calls);
+    const nonce = await freshNonce();
+    const tx = await starkAccount.execute(calls, { nonce });
     return { txHash: tx.transaction_hash };
   },
 
@@ -144,7 +157,8 @@ const handlers = {
       to: recipientPubKey,
       sender: padAddress(sender),
     });
-    const tx = await starkAccount.execute([transferOp.toCalldata()]);
+    const nonce = await freshNonce();
+    const tx = await starkAccount.execute([transferOp.toCalldata()], { nonce });
     return { txHash: tx.transaction_hash };
   },
 
@@ -157,7 +171,8 @@ const handlers = {
       to: padAddress(to),
       sender: padAddress(sender),
     });
-    const tx = await starkAccount.execute([withdrawOp.toCalldata()]);
+    const nonce = await freshNonce();
+    const tx = await starkAccount.execute([withdrawOp.toCalldata()], { nonce });
     return { txHash: tx.transaction_hash };
   },
 
@@ -168,7 +183,8 @@ const handlers = {
     const rolloverOp = await tongoAccount.rollover({
       sender: padAddress(sender),
     });
-    const tx = await starkAccount.execute([rolloverOp.toCalldata()]);
+    const nonce = await freshNonce();
+    const tx = await starkAccount.execute([rolloverOp.toCalldata()], { nonce });
     return { txHash: tx.transaction_hash };
   },
 
@@ -181,6 +197,23 @@ const handlers = {
       amount: event.amount?.toString(),
       nonce: event.nonce?.toString(),
     }));
+  },
+
+  // Query ERC20 balance
+  queryERC20Balance: async ({ token, address }) => {
+    if (!provider) throw new Error("Provider not initialized");
+    const contractAddress = ERC20_CONTRACTS[token];
+    if (!contractAddress) throw new Error(`Unknown token: ${token}`);
+    const result = await provider.callContract({
+      contractAddress: padAddress(contractAddress),
+      entrypoint: "balanceOf",
+      calldata: [padAddress(address)],
+    });
+    // balanceOf returns u256 as [low, high]
+    const low = BigInt(result[0] || "0");
+    const high = BigInt(result[1] || "0");
+    const balance = low + (high << 128n);
+    return balance.toString();
   },
 
   // Generate new keypair (for account creation)
