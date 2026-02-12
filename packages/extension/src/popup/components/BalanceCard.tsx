@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Eye, EyeOff, RefreshCw, Clock } from "lucide-react";
 import { TOKENS, formatTokenAmount } from "@cloak/sdk";
 import type { TokenKey } from "@cloak/sdk";
 import type { ShieldedBalances } from "../hooks/useExtensionWallet";
@@ -36,7 +37,7 @@ export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, 
             onClick={() => setBalanceHidden(!balanceHidden)}
             className="text-cloak-text-dim hover:text-cloak-text transition-colors"
           >
-            {balanceHidden ? "👁" : "👁‍🗨"}
+            {balanceHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </button>
         </div>
 
@@ -52,7 +53,7 @@ export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, 
         {balances.pending > 0n && (
           <div className="flex items-center justify-between mt-2 bg-cloak-warning/10 border border-cloak-warning/25 rounded-lg p-2">
             <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-cloak-warning animate-pulse" />
+              <Clock className="w-3.5 h-3.5 text-cloak-warning" />
               <span className="text-[11px] text-cloak-warning">
                 {balanceHidden ? "+**** pending" : `+${balances.pending.toString()} units (${pendingDisplay} ${selectedToken}) pending`}
               </span>
@@ -81,10 +82,7 @@ export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, 
           className="absolute top-0 right-6 text-cloak-text-dim hover:text-cloak-text transition-colors"
           title="Refresh"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
+          <RefreshCw className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

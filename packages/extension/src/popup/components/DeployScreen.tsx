@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Shield } from "lucide-react";
 import { truncateAddress } from "@cloak/sdk";
 import type { WalletInfo } from "@cloak/sdk";
 
@@ -31,7 +32,7 @@ export function DeployScreen({ wallet, onDeploy, onRefresh, error }: Props) {
     <div className="flex flex-col h-[580px] bg-cloak-bg p-6 animate-fade-in">
       <div className="flex items-center gap-2 mb-6">
         <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cloak-primary to-blue-400 flex items-center justify-center">
-          <span className="text-sm">🛡️</span>
+          <Shield className="w-4 h-4 text-white" />
         </div>
         <span className="text-cloak-text font-semibold text-sm">Deploy Account</span>
       </div>

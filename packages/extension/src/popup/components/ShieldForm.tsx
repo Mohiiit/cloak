@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { TOKENS, parseTokenAmount } from "@cloak/sdk";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 
@@ -72,9 +73,7 @@ export function Header({ title, onBack }: { title: string; onBack: () => void })
   return (
     <div className="flex items-center gap-3 mb-6">
       <button onClick={onBack} className="text-cloak-text-dim hover:text-cloak-text transition-colors">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
+        <ArrowLeft className="w-[18px] h-[18px]" />
       </button>
       <h2 className="text-cloak-text font-semibold">{title}</h2>
     </div>

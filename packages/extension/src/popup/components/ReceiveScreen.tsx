@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Shield } from "lucide-react";
 import { truncateTongoAddress, truncateAddress } from "@cloak/sdk";
 import type { WalletInfo } from "@cloak/sdk";
 import { Header } from "./ShieldForm";
@@ -31,9 +32,7 @@ export function ReceiveScreen({ wallet, onBack }: Props) {
       {/* Tongo address — primary */}
       <div className="bg-cloak-card border border-cloak-border rounded-xl p-4 mb-4">
         <div className="flex items-center gap-1.5 mb-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cloak-primary">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
+          <Shield className="w-3.5 h-3.5 text-cloak-primary" />
           <span className="text-[11px] text-cloak-text-dim uppercase tracking-wider">Tongo Address (Private)</span>
         </div>
         <p className="text-sm font-mono text-cloak-text break-all mb-3">{wallet.tongoAddress}</p>

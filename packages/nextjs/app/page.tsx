@@ -1,6 +1,17 @@
 "use client";
 
-import { Shield, Send, ArrowDownToLine } from "lucide-react";
+import React from "react";
+import {
+  Shield,
+  ShieldPlus,
+  Send,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Download,
+  Upload,
+  RotateCw,
+  AlertTriangle,
+} from "lucide-react";
 import Link from "next/link";
 import { useAccount } from "@starknet-react/core";
 import { useTongo } from "~~/components/providers/TongoProvider";
@@ -38,20 +49,20 @@ function FeedItem({ event }: { event: TongoEvent }) {
     ragequit: "Emergency withdrawal",
   };
 
-  const typeIcons: Record<string, string> = {
-    fund: "🛡️",
-    transferIn: "📥",
-    transferOut: "📤",
-    withdraw: "🏦",
-    rollover: "🔄",
-    ragequit: "🚨",
+  const typeIconMap: Record<string, React.ReactNode> = {
+    fund: <ShieldPlus className="w-5 h-5 text-emerald-400" />,
+    transferIn: <Download className="w-5 h-5 text-blue-400" />,
+    transferOut: <Upload className="w-5 h-5 text-violet-400" />,
+    withdraw: <ArrowUpFromLine className="w-5 h-5 text-amber-400" />,
+    rollover: <RotateCw className="w-5 h-5 text-blue-300" />,
+    ragequit: <AlertTriangle className="w-5 h-5 text-red-400" />,
   };
 
   const timeAgo = event.timestamp ? getRelativeTime(event.timestamp) : "";
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700/30">
-      <div className="text-xl mt-0.5">{typeIcons[event.type] || "🛡️"}</div>
+      <div className="mt-0.5">{typeIconMap[event.type] || <Shield className="w-5 h-5 text-blue-400" />}</div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-slate-200">

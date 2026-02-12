@@ -8,6 +8,9 @@ import {
   CheckCircle,
   Send,
   User,
+  Globe,
+  Users,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -321,21 +324,21 @@ export default function SendPage() {
             <div className="flex gap-2">
               {(
                 [
-                  { key: "public", label: "Public", icon: "🛡️" },
-                  { key: "friends", label: "Friends", icon: "👥" },
-                  { key: "private", label: "Private", icon: "🔒" },
+                  { key: "public", label: "Public", Icon: Globe },
+                  { key: "friends", label: "Friends", Icon: Users },
+                  { key: "private", label: "Private", Icon: Lock },
                 ] as const
-              ).map(({ key, label, icon }) => (
+              ).map(({ key, label, Icon }) => (
                 <button
                   key={key}
                   onClick={() => setPrivacyLevel(key)}
-                  className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-colors border ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-sm font-medium transition-colors border ${
                     privacyLevel === key
                       ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
                       : "bg-slate-800 border-slate-700/50 text-slate-400"
                   }`}
                 >
-                  {icon} {label}
+                  <Icon className="w-3.5 h-3.5" /> {label}
                 </button>
               ))}
             </div>

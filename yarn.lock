@@ -1214,6 +1214,7 @@ __metadata:
     "@types/react-dom": ^18.3.0
     "@vitejs/plugin-react": ^4.3.0
     autoprefixer: ^10.4.19
+    lucide-react: ^0.563.0
     postcss: ^8.4.38
     react: ^18.3.0
     react-dom: ^18.3.0
@@ -2560,6 +2561,14 @@ __metadata:
 "@next/swc-darwin-arm64@npm:15.2.5":
   version: 15.2.5
   resolution: "@next/swc-darwin-arm64@npm:15.2.5"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@next/swc-darwin-arm64@npm:^16.1.6":
+  version: 16.1.6
+  resolution: "@next/swc-darwin-arm64@npm:16.1.6"
+  checksum: fbb4971aab5fe617019519f86c0a9a77c158f8be368291014d393fd2859fb39e6b7dfaadad30dcd3eae8b1e86a9b612b9acd8a1445b86f13b4df194e64966a16
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
@@ -4558,6 +4567,7 @@ __metadata:
     "@keplr-wallet/provider-extension": ^0.12.175
     "@keplr-wallet/types": ^0.12.175
     "@keplr-wallet/unit": ^0.12.175
+    "@next/swc-darwin-arm64": ^16.1.6
     "@radix-ui/react-icons": 1.3.0
     "@radix-ui/themes": 2.0.3
     "@scaffold-stark/stark-burner": ^0.1.13
