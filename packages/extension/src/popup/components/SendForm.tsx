@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { TOKENS, parseTokenAmount } from "@cloak/sdk";
+import { TOKENS, parseTokenAmount, validateTongoAddress } from "@cloak/sdk";
 import { Header, TxSuccess, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote, type TxMetadata } from "../lib/storage";
@@ -14,6 +14,7 @@ export function SendForm({ wallet: w, onBack }: Props) {
   const { contacts } = useContacts();
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
+  const [addressError, setAddressError] = useState("");
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
 
@@ -21,6 +22,11 @@ export function SendForm({ wallet: w, onBack }: Props) {
 
   const handleSubmit = async () => {
     if (!amount || !recipient) return;
+    if (!validateTongoAddress(recipient.trim())) {
+      setAddressError("Invalid Cloak address. Please check and try again.");
+      return;
+    }
+    setAddressError("");
     setLoading(true);
     try {
       const erc20Amount = parseTokenAmount(amount, token.decimals);
@@ -79,10 +85,13 @@ export function SendForm({ wallet: w, onBack }: Props) {
         <input
           type="text"
           value={recipient}
-          onChange={(e) => setRecipient(e.target.value)}
-          placeholder="Base58 address..."
-          className="w-full px-4 py-3 rounded-xl bg-cloak-card border border-cloak-border text-cloak-text text-sm font-mono placeholder:text-cloak-muted focus:outline-none focus:border-cloak-primary/50"
+          onChange={(e) => { setRecipient(e.target.value); setAddressError(""); }}
+          placeholder="Enter recipient's Cloak address"
+          className={`w-full px-4 py-3 rounded-xl bg-cloak-card border text-cloak-text text-sm font-mono placeholder:text-cloak-muted focus:outline-none focus:border-cloak-primary/50 ${addressError ? "border-red-500/50" : "border-cloak-border"}`}
         />
+        {addressError && (
+          <p className="text-red-400 text-xs mt-1">{addressError}</p>
+        )}
       </div>
 
       <div className="mb-4">

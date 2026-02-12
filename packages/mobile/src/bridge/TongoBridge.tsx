@@ -93,9 +93,13 @@ export function TongoBridgeProvider({ children }: { children: React.ReactNode })
         return;
       }
 
-      // Error from WebView
+      // Error from WebView (non-critical — e.g. cross-origin "Script error")
       if (data.type === "error") {
-        console.error("[TongoBridge] WebView error:", data.message);
+        if (data.message === "Script error." || data.message === "Script error") {
+          // Cross-origin noise on iOS — ignore
+          return;
+        }
+        console.warn("[TongoBridge] WebView error:", data.message);
         return;
       }
 
@@ -112,14 +116,14 @@ export function TongoBridgeProvider({ children }: { children: React.ReactNode })
       if (error) {
         // Only log unexpected errors; getTxHistory failures are known and silenced
         if (data.stack && !data.stack.includes("getTxHistory")) {
-          console.error("[TongoBridge] Stack:", data.stack);
+          console.warn("[TongoBridge] Stack:", data.stack);
         }
         pending.reject(new Error(error));
       } else {
         pending.resolve(result);
       }
     } catch (e) {
-      console.error("[TongoBridge] Parse error:", e);
+      console.warn("[TongoBridge] Parse error:", e);
     }
   }, [send]);
 
@@ -135,13 +139,13 @@ export function TongoBridgeProvider({ children }: { children: React.ReactNode })
       <View style={styles.hidden}>
         <WebView
           ref={webViewRef}
-          source={{ html: BRIDGE_HTML, baseUrl: "https://cloak.app" }}
+          source={{ html: BRIDGE_HTML, baseUrl: "https://localhost" }}
           onMessage={onMessage}
           javaScriptEnabled={true}
           originWhitelist={["*"]}
           mixedContentMode="always"
           allowFileAccess={true}
-          onError={(e) => console.error("[TongoBridge] Load error:", e.nativeEvent)}
+          onError={(e) => console.warn("[TongoBridge] Load error:", e.nativeEvent)}
         />
       </View>
       {children}

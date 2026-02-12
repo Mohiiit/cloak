@@ -43,6 +43,7 @@ export default function SendPage() {
     "public" | "friends" | "private"
   >("public");
   const [txHash, setTxHash] = useState("");
+  const [addressError, setAddressError] = useState("");
 
   if (status !== "connected") {
     return (
@@ -80,7 +81,19 @@ export default function SendPage() {
         setStep("success");
       }
     } catch (err: any) {
-      toast.error(err?.message || "Transfer failed");
+      const msg = err?.message || "Transfer failed";
+      const lower = msg.toLowerCase();
+      if (lower.includes("invalid point") || lower.includes("expected length of 33")) {
+        toast.error("Invalid recipient address. Please check and try again.");
+      } else if (lower.includes("nonce too old") || lower.includes("invalid transaction nonce")) {
+        toast.error("Transaction conflict. Please try again.");
+      } else if (lower.includes("execution reverted")) {
+        toast.error("Transaction was rejected by the network.");
+      } else if (lower.includes("timeout")) {
+        toast.error("Request timed out. Check your connection.");
+      } else {
+        toast.error(msg);
+      }
     }
   };
 
@@ -152,11 +165,14 @@ export default function SendPage() {
             </label>
             <input
               type="text"
-              placeholder="Paste Tongo address (base58)..."
+              placeholder="Enter recipient's Cloak address"
               value={recipientAddress}
-              onChange={(e) => setRecipientAddress(e.target.value)}
-              className="w-full bg-slate-800 rounded-xl border border-slate-700/50 px-4 py-3 text-slate-50 outline-none focus:border-blue-500/50 transition-colors"
+              onChange={(e) => { setRecipientAddress(e.target.value); setAddressError(""); }}
+              className={`w-full bg-slate-800 rounded-xl border px-4 py-3 text-slate-50 outline-none focus:border-blue-500/50 transition-colors ${addressError ? "border-red-500/50" : "border-slate-700/50"}`}
             />
+            {addressError && (
+              <p className="text-red-400 text-xs mt-1">{addressError}</p>
+            )}
           </div>
 
           <div>
@@ -212,11 +228,21 @@ export default function SendPage() {
           )}
 
           <button
-            onClick={() => {
+            onClick={async () => {
               if (!recipientAddress) {
                 toast.error("Enter a recipient address");
                 return;
               }
+              try {
+                const { validateTongoAddress } = await import("@cloak/sdk");
+                if (!validateTongoAddress(recipientAddress.trim())) {
+                  setAddressError("Invalid Cloak address. Please check and try again.");
+                  return;
+                }
+              } catch {
+                // SDK import failed — skip validation
+              }
+              setAddressError("");
               setStep("amount");
             }}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 font-medium transition-colors"
@@ -418,6 +444,7 @@ export default function SendPage() {
                 setAmount("");
                 setNote("");
                 setTxHash("");
+                setAddressError("");
               }}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
             >

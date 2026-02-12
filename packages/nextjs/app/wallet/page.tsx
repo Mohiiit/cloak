@@ -23,6 +23,19 @@ import {
 } from "~~/lib/tokens";
 import toast from "react-hot-toast";
 
+function friendlyError(msg: string): string {
+  const lower = msg.toLowerCase();
+  if (lower.includes("invalid point") || lower.includes("expected length of 33"))
+    return "Invalid recipient address. Please check and try again.";
+  if (lower.includes("nonce too old") || lower.includes("invalid transaction nonce"))
+    return "Transaction conflict. Please try again.";
+  if (lower.includes("execution reverted"))
+    return "Transaction was rejected by the network.";
+  if (lower.includes("timeout"))
+    return "Request timed out. Check your connection.";
+  return msg;
+}
+
 function AmountModal({
   title,
   maxLabel,
@@ -169,7 +182,7 @@ export default function WalletPage() {
         setTimeout(refresh, 3000);
       }
     } catch (err: any) {
-      toast.error(err?.message || "Failed to shield funds");
+      toast.error(friendlyError(err?.message || "Failed to shield funds"));
     }
   };
 
@@ -185,7 +198,7 @@ export default function WalletPage() {
         setTimeout(refresh, 3000);
       }
     } catch (err: any) {
-      toast.error(err?.message || "Failed to unshield funds");
+      toast.error(friendlyError(err?.message || "Failed to unshield funds"));
     }
   };
 

@@ -103,10 +103,23 @@ export function TxSuccess({ hash }: { hash: string }) {
   );
 }
 
+function friendlyError(msg: string): string {
+  const lower = msg.toLowerCase();
+  if (lower.includes("invalid point") || lower.includes("expected length of 33"))
+    return "Invalid recipient address. Please check and try again.";
+  if (lower.includes("nonce too old") || lower.includes("invalid transaction nonce"))
+    return "Transaction conflict. Please try again.";
+  if (lower.includes("execution reverted"))
+    return "Transaction was rejected by the network.";
+  if (lower.includes("timeout"))
+    return "Request timed out. Check your connection.";
+  return msg;
+}
+
 export function ErrorBox({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
     <div className="p-3 bg-red-900/30 border border-red-800/50 rounded-lg mb-4">
-      <p className="text-red-400 text-xs">{message}</p>
+      <p className="text-red-400 text-xs">{friendlyError(message)}</p>
       <button onClick={onDismiss} className="text-red-500 text-xs underline mt-1">Dismiss</button>
     </div>
   );

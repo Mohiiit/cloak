@@ -28,6 +28,15 @@ function padAddress(addr) {
   return "0x" + clean.padStart(64, "0");
 }
 
+// Check crypto.subtle availability (requires secure context)
+if (typeof crypto === "undefined" || !crypto.subtle) {
+  const msg = "[Bridge] WARNING: crypto.subtle unavailable (non-secure context). Cryptographic operations will fail.";
+  console.warn(msg);
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: "bridge-error", error: msg }));
+  }
+}
+
 let provider = null;
 let tongoAccount = null;
 let starkAccount = null;

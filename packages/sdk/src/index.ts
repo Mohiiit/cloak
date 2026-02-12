@@ -9,7 +9,7 @@ export { computeAddress, createWalletInfo, OZ_ACCOUNT_CLASS_HASH } from "./walle
 export { generateKey, isValidKey, CURVE_ORDER } from "./keys";
 
 // Address utilities
-export { padAddress, truncateAddress, truncateTongoAddress } from "./address";
+export { padAddress, truncateAddress, truncateTongoAddress, validateTongoAddress } from "./address";
 
 // Token utilities
 export { TOKENS, DEFAULT_TOKEN, getTokenBySymbol, formatTokenAmount, parseTokenAmount } from "./tokens";

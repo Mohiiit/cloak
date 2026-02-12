@@ -58,7 +58,7 @@ module.exports = {
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body><script>window.onerror=function(m,s,l,c,e){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'error',message:m,stack:e&&e.stack}))}</script></body>
+<body><script>window.onerror=function(m,s,l,c,e){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'error',message:m,source:s,line:l,col:c,stack:e&&e.stack}))}</script></body>
 </html>`,
       inject: "body",
     }),

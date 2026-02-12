@@ -33,6 +33,9 @@ type ModalConfig = {
 /** Map raw error messages to user-friendly text */
 function friendlyErrorMessage(raw: string): string {
   const lower = raw.toLowerCase();
+  if (lower.includes("invalid point") || lower.includes("expected length of 33")) {
+    return "Invalid recipient address. Please check and try again.";
+  }
   if (lower.includes("invalid transaction nonce") || lower.includes("nonce too old")) {
     return "Transaction conflict. Please try again.";
   }

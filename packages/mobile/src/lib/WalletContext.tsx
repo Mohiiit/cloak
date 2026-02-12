@@ -5,6 +5,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { useTongoBridge } from "../bridge/useTongoBridge";
 import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet } from "./keys";
 import { TokenKey, TOKENS } from "./tokens";
+import { useToast } from "../components/Toast";
 
 const ALL_TOKENS: TokenKey[] = ["STRK", "ETH", "USDC"];
 
@@ -46,6 +47,7 @@ type WalletState = {
   transfer: (amount: string, recipientBase58: string) => Promise<{ txHash: string }>;
   withdraw: (amount: string) => Promise<{ txHash: string }>;
   rollover: () => Promise<{ txHash: string }>;
+  validateAddress: (base58: string) => Promise<boolean>;
 };
 
 const WalletContext = createContext<WalletState | null>(null);
@@ -65,6 +67,7 @@ const EMPTY_TONGO: Record<TokenKey, { balance: string; pending: string }> = {
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const bridge = useTongoBridge();
+  const { showToast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isWalletCreated, setIsWalletCreated] = useState(false);
@@ -109,10 +112,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         });
         setIsInitialized(true);
       } catch (e) {
-        console.error("[WalletContext] Init error:", e);
+        console.warn("[WalletContext] Init error:", e);
+        showToast("Wallet initialization failed", "error");
       }
     })();
-  }, [bridge.isReady, keys, isInitialized, selectedToken, bridge]);
+  }, [bridge.isReady, keys, isInitialized, selectedToken, bridge, showToast]);
 
   // Refresh balance when initialized
   useEffect(() => {
@@ -142,11 +146,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             setErc20Balance("0");
           }
         } catch (e) {
-          console.error("[WalletContext] Switch token error:", e);
+          console.warn("[WalletContext] Switch token error:", e);
+          showToast("Could not switch token", "warning");
         }
       }
     },
-    [bridge, keys],
+    [bridge, keys, showToast],
   );
 
   const refreshBalance = useCallback(async () => {
@@ -167,7 +172,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (e) {
-      console.error("[WalletContext] Refresh error:", e);
+      console.warn("[WalletContext] Refresh error:", e);
     } finally {
       setIsRefreshing(false);
     }
@@ -196,9 +201,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         [selectedToken]: { balance: state.balance, pending: state.pending },
       }));
     } catch (e) {
-      console.error("[WalletContext] refreshAllBalances error:", e);
+      console.warn("[WalletContext] refreshAllBalances error:", e);
+      showToast("Could not refresh all balances", "warning");
     }
-  }, [bridge, isInitialized, keys, selectedToken]);
+  }, [bridge, isInitialized, keys, selectedToken, showToast]);
 
   const refreshTxHistory = useCallback(async () => {
     if (!bridge.isReady || !isInitialized) return;
@@ -315,6 +321,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return bridge.rollover(keys.starkAddress);
   }, [bridge, keys]);
 
+  const validateAddress = useCallback(
+    async (base58: string): Promise<boolean> => {
+      if (!bridge.isReady) return false;
+      try {
+        await bridge.send("base58ToPubKey", { base58 });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [bridge],
+  );
+
   return (
     <WalletContext.Provider
       value={{
@@ -342,6 +361,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         transfer,
         withdraw,
         rollover,
+        validateAddress,
       }}
     >
       {children}

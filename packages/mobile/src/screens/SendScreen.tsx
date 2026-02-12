@@ -40,12 +40,31 @@ export default function SendScreen({ navigation }: any) {
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState("");
   const [txCopied, setTxCopied] = useState(false);
+  const [addressError, setAddressError] = useState("");
+  const [isValidating, setIsValidating] = useState(false);
 
   useEffect(() => {
     wallet.refreshTxHistory();
   }, []);
 
   const conversionHint = `1 unit = ${tongoUnitToErc20Display("1", wallet.selectedToken)}`;
+
+  const handleNextRecipient = async () => {
+    setAddressError("");
+    setIsValidating(true);
+    try {
+      const valid = await wallet.validateAddress(recipient.trim());
+      if (!valid) {
+        setAddressError("Invalid Cloak address. Please check and try again.");
+        return;
+      }
+      setStep(2);
+    } catch {
+      setAddressError("Could not validate address. Try again.");
+    } finally {
+      setIsValidating(false);
+    }
+  };
 
   const validateAndNext = () => {
     const parsed = parseInt(amount, 10);
@@ -93,6 +112,7 @@ export default function SendScreen({ navigation }: any) {
     setRecipient("");
     setAmount("");
     setAmountError("");
+    setAddressError("");
     setNote("");
     setTxHash("");
     setTxCopied(false);
@@ -174,19 +194,26 @@ export default function SendScreen({ navigation }: any) {
             )}
             <TextInput
               style={styles.textInput}
-              placeholder="bcLpSS9eo4r5nsrJHnng..."
+              placeholder="Enter recipient's Cloak address"
               placeholderTextColor={colors.textMuted}
               value={recipient}
-              onChangeText={setRecipient}
+              onChangeText={(t) => { setRecipient(t); setAddressError(""); }}
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {addressError ? (
+              <Text style={styles.errorText}>{addressError}</Text>
+            ) : null}
             <TouchableOpacity
-              style={[styles.nextBtn, !recipient && styles.nextBtnDisabled]}
-              onPress={() => setStep(2)}
-              disabled={!recipient}
+              style={[styles.nextBtn, (!recipient || isValidating) && styles.nextBtnDisabled]}
+              onPress={handleNextRecipient}
+              disabled={!recipient || isValidating}
             >
-              <Text style={styles.nextBtnText}>Next</Text>
+              {isValidating ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.nextBtnText}>Next</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}

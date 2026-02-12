@@ -1,3 +1,17 @@
+import { pubKeyBase58ToAffine } from "@fatsolutions/tongo-sdk";
+
+/**
+ * Validate a Tongo base58 address by attempting to decode it.
+ */
+export function validateTongoAddress(base58: string): boolean {
+  try {
+    pubKeyBase58ToAffine(base58);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Pad a Starknet address to the full 66-char format (0x + 64 hex digits).
  * Required for Tongo SDK ZK proofs.
