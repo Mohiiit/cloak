@@ -122,29 +122,6 @@ export default function WalletScreen({ route }: any) {
           </View>
         </View>
 
-        {/* Token Tabs */}
-        <View style={styles.tokenRow}>
-          {(["STRK", "ETH", "USDC"] as const).map((token) => (
-            <TouchableOpacity
-              key={token}
-              style={[
-                styles.tokenTab,
-                wallet.selectedToken === token && styles.tokenTabActive,
-              ]}
-              onPress={() => wallet.setSelectedToken(token)}
-            >
-              <Text
-                style={[
-                  styles.tokenTabText,
-                  wallet.selectedToken === token && styles.tokenTabTextActive,
-                ]}
-              >
-                {token}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
         {/* Action Buttons */}
         {!mode && (
           <View style={styles.actionRow}>
@@ -274,20 +251,6 @@ const styles = StyleSheet.create({
   },
   erc20Amount: { fontSize: fontSize.lg, color: colors.textSecondary, marginTop: 2 },
   erc20Symbol: { fontSize: fontSize.sm, color: colors.textMuted },
-
-  tokenRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg },
-  tokenTab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  tokenTabActive: { backgroundColor: colors.primaryDim, borderColor: colors.primary },
-  tokenTabText: { fontSize: fontSize.sm, color: colors.textMuted, fontWeight: "600" },
-  tokenTabTextActive: { color: colors.primary },
 
   actionRow: { flexDirection: "row", gap: spacing.md },
   actionBtn: {

@@ -157,6 +157,8 @@ Requires Node.js >= 22 and a Starknet wallet (ArgentX or Braavos) on Sepolia.
 
 Privacy Track. Core insight: Venmo already hides amounts from the social feed — Cloak makes this **cryptographic and on-chain**, not a UI choice.
 
+> **Note:** The current build focuses on **STRK** as the sole supported token. Multi-token support (ETH, USDC) is architecturally supported by the Tongo SDK but disabled in the UI to keep the hackathon demo focused and reliable.
+
 ## License
 
 Source Available — free for personal, educational, and non-commercial use. Commercial use requires a separate license. See [LICENSE](LICENSE) for details.
