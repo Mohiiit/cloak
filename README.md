@@ -138,6 +138,50 @@ cd ios && pod install && cd ..
 npx react-native run-ios
 ```
 
+## SDK (`@cloak/sdk`)
+
+Reusable TypeScript library that wraps the Tongo SDK for privacy-preserving wallet operations on Starknet.
+
+```typescript
+import { CloakClient, MemoryStorage } from "@cloak/sdk";
+
+const client = new CloakClient({ network: "sepolia", storage: new MemoryStorage() });
+const wallet = await client.createWallet();
+await client.init();
+
+// Shield 2 STRK (in Tongo units)
+const { txHash } = await client.account("STRK").fund(2n);
+
+// Private transfer
+await client.account("STRK").transfer("recipientTongoAddress", 1n);
+
+// Unshield
+await client.account("STRK").withdraw(1n);
+```
+
+```bash
+yarn workspace @cloak/sdk build   # Build CJS + ESM + types
+yarn workspace @cloak/sdk test    # Run unit tests (28 passing)
+```
+
+## Chrome Extension
+
+Standalone privacy wallet as a Chrome extension — manages its own Starknet keypair and signs transactions directly (no ArgentX/Braavos dependency).
+
+**Install:** Load `packages/extension/dist/` as an unpacked extension in `chrome://extensions`.
+
+```bash
+yarn workspace @cloak/extension build   # Build extension
+```
+
+| Onboarding | Deploy | Dashboard |
+|:----------:|:------:|:---------:|
+| ![Onboarding](docs/screenshots/extension/onboarding.png) | ![Deploy](docs/screenshots/extension/deploy.png) | ![Dashboard](docs/screenshots/extension/dashboard.png) |
+
+| Shield | Send | Receive | Settings |
+|:------:|:----:|:-------:|:--------:|
+| ![Shield](docs/screenshots/extension/shield.png) | ![Send](docs/screenshots/extension/send.png) | ![Receive](docs/screenshots/extension/receive.png) | ![Settings](docs/screenshots/extension/settings.png) |
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -151,6 +195,8 @@ npx react-native run-ios
 | Identity | starknetid.js |
 | Wallets | ArgentX, Braavos |
 | Mobile | React Native 0.83, WebView bridge (Android + iOS) |
+| SDK | `@cloak/sdk` — TypeScript, tsup (CJS + ESM), vitest |
+| Extension | Chrome Manifest V3, React 18, Vite, Tailwind CSS |
 
 ## Getting Started
 

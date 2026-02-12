@@ -460,3 +460,30 @@ Phase 3 (polish, test, deploy, video)
 | Rate conversion bugs | Medium | Always use SDK's erc20ToTongo/tongoToErc20; never manual math |
 
 ## Estimated Total: ~104 hours across 19 days (5.5h/day average)
+
+---
+
+## Phase 4 — SDK + Chrome Extension (Added Feb 12, 2026)
+
+### Task 4.1: @cloak/sdk Package ✅
+**Path:** `packages/sdk/`
+- Extracted common logic from web app hooks into reusable TypeScript library
+- `CloakClient`: wallet management (create/import/deploy), Tongo account factory
+- `CloakAccount`: per-token shielded operations (fund/transfer/withdraw/rollover)
+- `StorageAdapter` interface + `MemoryStorage` + `LocalStorageAdapter`
+- Dual CJS/ESM output via tsup, 28 unit tests passing
+- Token registry, address utilities, key generation adapted from nextjs lib/
+
+### Task 4.2: Chrome Extension ✅
+**Path:** `packages/extension/`
+- Manifest V3 Chrome extension with Vite + React 18 + Tailwind CSS
+- Full standalone wallet — manages its own Starknet keypair (no ArgentX dependency)
+- Background service worker wraps `@cloak/sdk` with `ExtensionStorageAdapter` (chrome.storage.local)
+- Screens: Onboarding, Deploy, Main Dashboard, Shield, Send, Unshield, Receive, Settings
+- Message-passing architecture: popup → background → SDK → Starknet RPC
+- Token selector (STRK/ETH/USDC), dual balance display (shielded + public)
+
+### Task 4.3: Monorepo Integration ✅
+- Root package.json updated with workspaces for `packages/sdk` and `packages/extension`
+- Root scripts: `sdk:build`, `sdk:test`, `extension:build`, `extension:dev`
+- README updated with SDK usage examples and extension installation instructions

@@ -7,7 +7,9 @@
   "workspaces": {
     "packages": [
       "packages/snfoundry",
-      "packages/nextjs"
+      "packages/nextjs",
+      "packages/sdk",
+      "packages/extension"
     ]
   },
   "scripts": {
@@ -25,6 +27,10 @@
     "start": "yarn workspace @ss-2/nextjs dev",
     "test": "yarn workspace @ss-2/snfoundry test",
     "test:nextjs": "yarn workspace @ss-2/nextjs test",
+    "sdk:build": "yarn workspace @cloak/sdk build",
+    "sdk:test": "yarn workspace @cloak/sdk test",
+    "extension:build": "yarn workspace @cloak/extension build",
+    "extension:dev": "yarn workspace @cloak/extension dev",
     "vercel": "yarn workspace @ss-2/nextjs vercel",
     "vercel:yolo": "yarn workspace @ss-2/nextjs vercel:yolo",
     "verify": "yarn workspace @ss-2/snfoundry verify"
