@@ -12,16 +12,51 @@ Available as a **web app**, **Chrome extension**, and **mobile app** (Android + 
 
 <table>
   <tr>
-    <td align="center"><strong>Mobile</strong></td>
+    <td align="center"><strong>Android</strong></td>
+    <td align="center"><strong>iOS</strong></td>
     <td align="center"><strong>Chrome Extension</strong></td>
     <td align="center"><strong>Web App</strong></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/mobile/home-wallet.png" width="240" /></td>
-    <td><img src="docs/screenshots/extension/dashboard.png" width="240" /></td>
-    <td><img src="docs/screenshots/web/home.png" width="240" /></td>
+    <td><img src="docs/screenshots/mobile/android-home.png" width="200" /></td>
+    <td><img src="docs/screenshots/mobile/ios-home.png" width="200" /></td>
+    <td><img src="docs/screenshots/extension/dashboard.png" width="200" /></td>
+    <td><img src="docs/screenshots/web/home.png" width="200" /></td>
   </tr>
 </table>
+
+<details>
+<summary>More screenshots</summary>
+
+**Wallet**
+<table>
+  <tr>
+    <td align="center">Android</td>
+    <td align="center">iOS</td>
+    <td align="center">Web</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/mobile/android-wallet.png" width="220" /></td>
+    <td><img src="docs/screenshots/mobile/ios-wallet.png" width="220" /></td>
+    <td><img src="docs/screenshots/web/wallet.png" width="220" /></td>
+  </tr>
+</table>
+
+**Settings**
+<table>
+  <tr>
+    <td align="center">Android</td>
+    <td align="center">iOS</td>
+    <td align="center">Web</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/mobile/android-settings.png" width="220" /></td>
+    <td><img src="docs/screenshots/mobile/ios-settings.png" width="220" /></td>
+    <td><img src="docs/screenshots/web/settings.png" width="220" /></td>
+  </tr>
+</table>
+
+</details>
 
 ---
 
