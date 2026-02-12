@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Shield, Settings as SettingsIcon, Send, ShieldPlus, ShieldOff } from "lucide-react";
+import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff } from "lucide-react";
 import { useExtensionWallet } from "./hooks/useExtensionWallet";
+import { CloakIcon } from "./components/CloakIcon";
 import { Onboarding } from "./components/Onboarding";
 import { DeployScreen } from "./components/DeployScreen";
 import { BalanceCard } from "./components/BalanceCard";
@@ -71,7 +72,7 @@ export default function App() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-cloak-primary" />
+          <CloakIcon size={20} />
           <span className="text-cloak-text font-semibold text-sm">Cloak</span>
         </div>
         <button

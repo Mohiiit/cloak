@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Shield } from "lucide-react";
+import { CloakIcon } from "~~/components/CloakIcon";
 import { CustomConnectButton } from "~~/components/scaffold-stark/CustomConnectButton";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { useTongoBalance } from "~~/hooks/useTongoBalance";
@@ -22,7 +23,7 @@ export const Header = () => {
       <div className="max-w-lg mx-auto flex items-center justify-between px-4 h-14">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <Shield className="w-6 h-6 text-blue-500" />
+          <CloakIcon size={24} />
           <span className="font-bold text-lg text-slate-50">Cloak</span>
         </Link>
 

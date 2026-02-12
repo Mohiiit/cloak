@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Shield } from "lucide-react";
+import { CloakIcon } from "./CloakIcon";
 
 interface Props {
   onCreateWallet: () => Promise<any>;
@@ -30,7 +30,7 @@ export function Onboarding({ onCreateWallet, onImportWallet, error }: Props) {
       {/* Logo */}
       <div className="flex flex-col items-center mt-8 mb-8">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cloak-primary to-blue-400 flex items-center justify-center mb-4 animate-pulse-glow">
-          <Shield className="w-8 h-8 text-white" />
+          <CloakIcon size={32} color="#ffffff" />
         </div>
         <h1 className="text-xl font-bold text-cloak-text">Cloak Wallet</h1>
         <p className="text-cloak-text-dim text-sm mt-1">Privacy on Starknet</p>

@@ -15,10 +15,12 @@ import {
   Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Eye, EyeOff, Send, ShieldPlus, ArrowDownToLine } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
+import { CloakIcon } from "../components/CloakIcon";
 
 export default function HomeScreen({ navigation }: any) {
   const wallet = useWallet();
@@ -59,7 +61,7 @@ export default function HomeScreen({ navigation }: any) {
       >
         <ScrollView style={styles.container} contentContainerStyle={styles.center} keyboardShouldPersistTaps="handled">
           {modal.ModalComponent}
-          <Text style={styles.heroIcon}>🛡️</Text>
+          <CloakIcon size={64} />
           <Text style={styles.heroTitle}>Cloak</Text>
           <Text style={styles.heroSubtitle}>
             Shielded payments on Starknet
@@ -210,7 +212,11 @@ export default function HomeScreen({ navigation }: any) {
           <View style={styles.balanceLabelRow}>
             <Text style={styles.balanceLabel}>Shielded Balance</Text>
             <TouchableOpacity onPress={toggleBalanceVisibility} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.eyeIcon}>{balanceHidden ? "👁" : "👁‍🗨"}</Text>
+              {balanceHidden ? (
+                <Eye size={20} color={colors.textMuted} />
+              ) : (
+                <EyeOff size={20} color={colors.textMuted} />
+              )}
             </TouchableOpacity>
           </View>
           <Text style={styles.balanceAmount}>
@@ -238,21 +244,21 @@ export default function HomeScreen({ navigation }: any) {
           style={[styles.actionButton, styles.actionSend]}
           onPress={() => navigation.navigate("Send")}
         >
-          <Text style={styles.actionIcon}>↑</Text>
+          <Send size={32} color={colors.primary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Send</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.actionShield]}
           onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
         >
-          <Text style={styles.actionIcon}>🛡️</Text>
+          <ShieldPlus size={32} color={colors.success} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Shield</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.actionUnshield]}
           onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
         >
-          <Text style={styles.actionIcon}>↓</Text>
+          <ArrowDownToLine size={32} color={colors.secondary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Unshield</Text>
         </TouchableOpacity>
       </View>
@@ -279,7 +285,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   loadingText: { color: colors.textSecondary, marginTop: spacing.md, fontSize: fontSize.md },
-  heroIcon: { fontSize: 64, marginBottom: spacing.md },
+  heroIcon: { marginBottom: spacing.md },
   heroTitle: { fontSize: fontSize.hero, fontWeight: "bold", color: colors.text, marginBottom: spacing.sm },
   heroSubtitle: { fontSize: fontSize.lg, color: colors.textSecondary, textAlign: "center", marginBottom: spacing.xl },
   createButton: {
@@ -360,7 +366,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1.5,
   },
-  eyeIcon: { fontSize: 20 },
+  eyeIcon: {},
   balanceAmount: { fontSize: fontSize.hero, fontWeight: "bold", color: colors.text },
   balanceSecondary: { fontSize: fontSize.md, color: colors.textSecondary, marginTop: 2 },
   pendingText: { fontSize: fontSize.sm, color: colors.warning, marginTop: spacing.sm },
@@ -436,6 +442,7 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.secondary,
   },
   actionIcon: { fontSize: 32, marginBottom: spacing.xs },
+  actionIconSpacing: { marginBottom: spacing.xs },
   actionLabel: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: "600" },
 
   // Compact Status

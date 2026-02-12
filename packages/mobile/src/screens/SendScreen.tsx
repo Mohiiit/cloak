@@ -15,6 +15,7 @@ import {
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
+import { ShieldPlus, ArrowUpFromLine, ArrowDownToLine, Check } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -154,15 +155,23 @@ export default function SendScreen({ navigation }: any) {
           <View style={styles.historyCard}>
             <Text style={styles.historyTitle}>Recent Transactions</Text>
             {wallet.txHistory.slice(0, 5).map((tx: any, i: number) => {
-              const typeIcon = tx.type === "fund" ? "🛡️" : tx.type === "transfer" ? "↑" : tx.type === "withdraw" ? "↓" : "?";
               const hash = tx.txHash || tx.transaction_hash || "";
+              const iconColor = tx.type === "fund" ? colors.success : tx.type === "transfer" ? colors.primary : tx.type === "withdraw" ? colors.secondary : colors.textMuted;
               return (
                 <TouchableOpacity
                   key={i}
                   style={styles.historyRow}
                   onPress={() => hash && Linking.openURL(`https://sepolia.voyager.online/tx/${hash}`)}
                 >
-                  <Text style={styles.historyIcon}>{typeIcon}</Text>
+                  {tx.type === "fund" ? (
+                    <ShieldPlus size={18} color={iconColor} />
+                  ) : tx.type === "transfer" ? (
+                    <ArrowUpFromLine size={18} color={iconColor} />
+                  ) : tx.type === "withdraw" ? (
+                    <ArrowDownToLine size={18} color={iconColor} />
+                  ) : (
+                    <Text style={styles.historyIcon}>?</Text>
+                  )}
                   <View style={styles.historyInfo}>
                     <Text style={styles.historyType}>{tx.type || "unknown"}</Text>
                     <Text style={styles.historyAmount}>{tx.amount || "?"} units</Text>
@@ -276,7 +285,7 @@ export default function SendScreen({ navigation }: any) {
         {/* Step 4: Success */}
         {step === 4 && (
           <View style={styles.successCard}>
-            <Text style={styles.successIcon}>✓</Text>
+            <Check size={48} color={colors.success} style={styles.successIconSpacing} />
             <Text style={styles.successTitle}>Payment Sent!</Text>
             <Text style={styles.successAmount}>
               {amount} units
@@ -456,6 +465,9 @@ const styles = StyleSheet.create({
   successIcon: {
     fontSize: 48,
     color: colors.success,
+    marginBottom: spacing.md,
+  },
+  successIconSpacing: {
     marginBottom: spacing.md,
   },
   successTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.success, marginBottom: spacing.sm },

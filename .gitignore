@@ -16,3 +16,6 @@ package-lock.json
 
 **/.env*
 !**/.env.example
+
+# Build outputs
+**/dist

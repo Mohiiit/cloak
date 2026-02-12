@@ -6,32 +6,36 @@ import { View, Text, StyleSheet, Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Home, Send, Settings } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
 import SendScreen from "../screens/SendScreen";
 import WalletScreen from "../screens/WalletScreen";
 import SettingsScreen from "../screens/SettingsScreen";
+import { CloakIcon } from "../components/CloakIcon";
 import { colors, fontSize, spacing } from "../lib/theme";
 
 const Tab = createBottomTabNavigator();
 
+const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
+  Home: ({ size, color }) => <Home size={size} color={color} />,
+  Send: ({ size, color }) => <Send size={size} color={color} />,
+  Wallet: ({ size, color }) => <CloakIcon size={size} color={color} />,
+  Settings: ({ size, color }) => <Settings size={size} color={color} />,
+};
+
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Home: "🏠",
-    Send: "↑",
-    Wallet: "🛡️",
-    Settings: "⚙️",
-  };
-  return (
-    <Text style={[styles.icon, focused && styles.iconActive]}>
-      {icons[label] || "•"}
-    </Text>
-  );
+  const color = focused ? colors.primary : colors.textMuted;
+  const IconComponent = TAB_ICONS[label];
+  if (IconComponent) {
+    return <IconComponent size={22} color={color} />;
+  }
+  return <Text style={[styles.icon, focused && styles.iconActive]}>{"•"}</Text>;
 }
 
 function HeaderTitle() {
   return (
     <View style={styles.headerTitleRow}>
-      <Text style={styles.headerShield}>🛡️</Text>
+      <CloakIcon size={24} />
       <Text style={styles.headerBrand}>Cloak</Text>
     </View>
   );
@@ -111,9 +115,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  headerShield: {
-    fontSize: 20,
-  },
+  headerShield: {},
   headerBrand: {
     fontSize: fontSize.lg,
     fontWeight: "bold",

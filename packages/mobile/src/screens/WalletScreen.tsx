@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { ShieldPlus, ArrowDownToLine } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -151,7 +152,7 @@ export default function WalletScreen({ route }: any) {
               style={[styles.actionBtn, styles.shieldBtn]}
               onPress={() => setMode("shield")}
             >
-              <Text style={styles.actionBtnIcon}>🛡️</Text>
+              <ShieldPlus size={28} color={colors.primary} style={styles.actionBtnIconSpacing} />
               <Text style={styles.actionBtnText}>Shield</Text>
               <Text style={styles.actionBtnDesc}>Deposit into private pool</Text>
             </TouchableOpacity>
@@ -159,7 +160,7 @@ export default function WalletScreen({ route }: any) {
               style={[styles.actionBtn, styles.unshieldBtn]}
               onPress={() => setMode("unshield")}
             >
-              <Text style={styles.actionBtnIcon}>↓</Text>
+              <ArrowDownToLine size={28} color={colors.secondary} style={styles.actionBtnIconSpacing} />
               <Text style={styles.actionBtnText}>Unshield</Text>
               <Text style={styles.actionBtnDesc}>Withdraw to public wallet</Text>
             </TouchableOpacity>
@@ -299,6 +300,7 @@ const styles = StyleSheet.create({
   shieldBtn: { backgroundColor: colors.primaryDim, borderColor: colors.border },
   unshieldBtn: { backgroundColor: colors.secondaryDim, borderColor: "rgba(139, 92, 246, 0.2)" },
   actionBtnIcon: { fontSize: 28, marginBottom: spacing.sm },
+  actionBtnIconSpacing: { marginBottom: spacing.sm },
   actionBtnText: { fontSize: fontSize.lg, fontWeight: "600", color: colors.text, marginBottom: 4 },
   actionBtnDesc: { fontSize: fontSize.xs, color: colors.textSecondary, textAlign: "center" },
 
