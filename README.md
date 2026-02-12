@@ -138,16 +138,6 @@ cd ios && pod install && cd ..
 npx react-native run-ios
 ```
 
-## Key Features
-
-- **Privacy by default** — All balances and transfer amounts are encrypted
-- **Social payments** — Add notes, emojis, and privacy levels to transactions
-- **Multi-token** — Supports STRK, ETH, and USDC on Sepolia
-- **Contact management** — Save and organize payment contacts
-- **Mobile-first** — Optimized for mobile with bottom navigation
-- **Key backup** — Export your Tongo private key from settings
-- **Native mobile** — Android app with WebView bridge to Tongo SDK
-
 ## Tech Stack
 
 | Layer | Technology |
@@ -190,40 +180,6 @@ Open [http://localhost:3000](http://localhost:3000)
 
 The `.env` is auto-created from `.env.example` with a Sepolia RPC URL.
 
-## Project Structure
-
-```
-cloak/
-├── docs/                     # Research & build plan
-├── packages/
-│   ├── nextjs/               # Frontend app
-│   │   ├── app/              # Next.js app router pages
-│   │   │   ├── page.tsx      # Home (hero + feed)
-│   │   │   ├── send/         # Send payment wizard
-│   │   │   ├── wallet/       # Shield/unshield funds
-│   │   │   ├── activity/     # Transaction history
-│   │   │   ├── contacts/     # Contact management
-│   │   │   └── settings/     # Key backup, preferences
-│   │   ├── components/
-│   │   │   ├── providers/    # TongoProvider context
-│   │   │   ├── Header.tsx    # Cloak header with balance
-│   │   │   └── BottomNav.tsx # Mobile navigation
-│   │   ├── hooks/            # Tongo operation hooks
-│   │   │   ├── useTongoBalance.ts
-│   │   │   ├── useTongoFund.ts
-│   │   │   ├── useTongoTransfer.ts
-│   │   │   ├── useTongoWithdraw.ts
-│   │   │   ├── useTongoRollover.ts
-│   │   │   └── useTongoHistory.ts
-│   │   └── lib/              # Utilities
-│   │       ├── tokens.ts     # Token config + formatting
-│   │       ├── tongo-key.ts  # Key management
-│   │       ├── address.ts    # Address padding/truncation
-│   │       └── storage.ts    # LocalStorage abstraction
-│   └── snfoundry/            # Cairo contracts
-└── README.md
-```
-
 ## Sepolia Token Contracts
 
 | Token | Tongo Contract |
@@ -234,9 +190,7 @@ cloak/
 
 ## Built for Re{define} Hackathon
 
-**Privacy Track** — $9,675 STRK + $1,000 Fat Solutions Bounty
-
-Core insight: Venmo already hides amounts from the social feed — Cloak makes this cryptographic and on-chain using Tongo's ElGamal encryption, rather than a UI choice.
+Cloak was built for the Re{define} Hackathon Privacy Track. Core insight: Venmo already hides amounts from the social feed — Cloak makes this cryptographic and on-chain using Tongo's ElGamal encryption, rather than a UI choice.
 
 ## License
 
