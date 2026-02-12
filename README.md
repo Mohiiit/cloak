@@ -159,4 +159,6 @@ Privacy Track. Core insight: Venmo already hides amounts from the social feed â€
 
 ## License
 
-MIT
+Source Available â€” free for personal, educational, and non-commercial use. Commercial use requires a separate license. See [LICENSE](LICENSE) for details.
+
+Copyright (c) 2026 Mohit Dhattarwal
