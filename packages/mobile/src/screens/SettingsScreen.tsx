@@ -9,12 +9,15 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
+  TextInput,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
+import { Plus, Trash2, Users } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
+import { useContacts } from "../hooks/useContacts";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 
@@ -86,7 +89,11 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
 export default function SettingsScreen() {
   const wallet = useWallet();
   const modal = useThemedModal();
+  const { contacts, addContact, removeContact, refresh: refreshContacts } = useContacts();
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactAddr, setNewContactAddr] = useState("");
   const scrollRef = useRef<ScrollView>(null);
   const [qrModal, setQrModal] = useState<{ label: string; value: string } | null>(null);
 
@@ -137,6 +144,79 @@ export default function SettingsScreen() {
           <AddressQR value={wallet.keys.starkAddress} />
           <Text style={styles.tapHint}>Tap to enlarge QR</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Contacts */}
+      <View style={styles.section}>
+        <View style={styles.contactsSectionHeader}>
+          <Text style={styles.sectionTitle}>Contacts</Text>
+          <TouchableOpacity onPress={() => setShowAddContact(!showAddContact)}>
+            <Plus size={20} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.sectionDesc}>Saved addresses for quick sending</Text>
+
+        {showAddContact && (
+          <View style={styles.addContactForm}>
+            <TextInput
+              style={styles.addContactInput}
+              placeholder="Nickname"
+              placeholderTextColor={colors.textMuted}
+              value={newContactName}
+              onChangeText={setNewContactName}
+            />
+            <TextInput
+              style={styles.addContactInput}
+              placeholder="Tongo address (base58)"
+              placeholderTextColor={colors.textMuted}
+              value={newContactAddr}
+              onChangeText={setNewContactAddr}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[styles.addContactBtn, !newContactAddr.trim() && { opacity: 0.4 }]}
+              disabled={!newContactAddr.trim()}
+              onPress={async () => {
+                await addContact({
+                  tongoAddress: newContactAddr.trim(),
+                  nickname: newContactName.trim() || undefined,
+                  isFavorite: false,
+                  lastInteraction: Date.now(),
+                });
+                setNewContactName("");
+                setNewContactAddr("");
+                setShowAddContact(false);
+              }}
+            >
+              <Text style={styles.addContactBtnText}>Add Contact</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {contacts.length === 0 && !showAddContact && (
+          <View style={styles.emptyContacts}>
+            <Users size={24} color={colors.textMuted} />
+            <Text style={styles.emptyContactsText}>No contacts saved</Text>
+          </View>
+        )}
+
+        {contacts.map((c) => (
+          <View key={c.id} style={styles.contactRow}>
+            <View style={styles.contactAvatar}>
+              <Text style={styles.contactAvatarText}>
+                {(c.nickname || c.tongoAddress)?.[0]?.toUpperCase() || "?"}
+              </Text>
+            </View>
+            <View style={styles.contactInfo}>
+              {c.nickname && <Text style={styles.contactName}>{c.nickname}</Text>}
+              <Text style={styles.contactAddr} numberOfLines={1}>{c.tongoAddress}</Text>
+            </View>
+            <TouchableOpacity onPress={() => removeContact(c.id)}>
+              <Trash2 size={16} color={colors.error} />
+            </TouchableOpacity>
+          </View>
+        ))}
       </View>
 
       {/* Key Backup */}
@@ -376,6 +456,80 @@ const styles = StyleSheet.create({
   qrModalCloseText: {
     color: colors.textSecondary,
     fontSize: fontSize.md,
+  },
+
+  // Contacts
+  contactsSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  addContactForm: {
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  addContactInput: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: fontSize.sm,
+    color: colors.text,
+  },
+  addContactBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+    alignItems: "center",
+  },
+  addContactBtnText: {
+    color: "#fff",
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+  },
+  emptyContacts: {
+    alignItems: "center",
+    paddingVertical: spacing.lg,
+    gap: spacing.sm,
+  },
+  emptyContactsText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+  },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  contactAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(59, 130, 246, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contactAvatarText: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  contactInfo: { flex: 1 },
+  contactName: {
+    fontSize: fontSize.sm,
+    fontWeight: "500",
+    color: colors.text,
+  },
+  contactAddr: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontFamily: "monospace",
   },
 
   aboutSection: { alignItems: "center", paddingVertical: spacing.xl },

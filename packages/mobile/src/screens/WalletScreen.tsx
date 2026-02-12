@@ -13,7 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { ShieldPlus, ArrowDownToLine } from "lucide-react-native";
+import { ShieldPlus, ArrowUpFromLine } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -160,7 +160,7 @@ export default function WalletScreen({ route }: any) {
               style={[styles.actionBtn, styles.unshieldBtn]}
               onPress={() => setMode("unshield")}
             >
-              <ArrowDownToLine size={28} color={colors.secondary} style={styles.actionBtnIconSpacing} />
+              <ArrowUpFromLine size={28} color={colors.secondary} style={styles.actionBtnIconSpacing} />
               <Text style={styles.actionBtnText}>Unshield</Text>
               <Text style={styles.actionBtnDesc}>Withdraw to public wallet</Text>
             </TouchableOpacity>

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { TOKENS, parseTokenAmount } from "@cloak/sdk";
 import { Header, TxSuccess, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
+import { saveTxNote } from "../lib/storage";
 
 interface Props {
   wallet: ReturnType<typeof useExtensionWallet>;
@@ -26,7 +27,17 @@ export function WithdrawForm({ wallet: w, onBack }: Props) {
         return;
       }
       const hash = await w.withdraw(tongoAmount);
-      if (hash) setTxHash(hash);
+      if (hash) {
+        setTxHash(hash);
+        await saveTxNote(hash, {
+          txHash: hash,
+          privacyLevel: "private",
+          timestamp: Date.now(),
+          type: "withdraw",
+          token: w.selectedToken,
+          amount: amount,
+        });
+      }
     } finally {
       setLoading(false);
     }

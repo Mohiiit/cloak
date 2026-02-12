@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { TOKENS, parseTokenAmount } from "@cloak/sdk";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
+import { saveTxNote } from "../lib/storage";
 
 interface Props {
   wallet: ReturnType<typeof useExtensionWallet>;
@@ -26,7 +27,17 @@ export function ShieldForm({ wallet: w, onBack }: Props) {
         return;
       }
       const hash = await w.fund(tongoAmount);
-      if (hash) setTxHash(hash);
+      if (hash) {
+        setTxHash(hash);
+        await saveTxNote(hash, {
+          txHash: hash,
+          privacyLevel: "private",
+          timestamp: Date.now(),
+          type: "fund",
+          token: w.selectedToken,
+          amount: amount,
+        });
+      }
     } finally {
       setLoading(false);
     }

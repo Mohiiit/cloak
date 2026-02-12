@@ -15,9 +15,11 @@ import {
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { ShieldPlus, ArrowUpFromLine, ArrowDownToLine, Check } from "lucide-react-native";
+import { ShieldPlus, ArrowUpFromLine, Check } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
+import { useContacts } from "../hooks/useContacts";
+import { saveTxNote } from "../lib/storage";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { triggerMedium } from "../lib/haptics";
@@ -29,6 +31,7 @@ type Step = 1 | 2 | 3 | 4;
 export default function SendScreen({ navigation }: any) {
   const wallet = useWallet();
   const modal = useThemedModal();
+  const { contacts } = useContacts();
   const [step, setStep] = useState<Step>(1);
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
@@ -66,6 +69,16 @@ export default function SendScreen({ navigation }: any) {
     try {
       const result = await wallet.transfer(amount, recipient);
       setTxHash(result.txHash);
+      await saveTxNote(result.txHash, {
+        txHash: result.txHash,
+        recipient: recipient.trim(),
+        note: note || undefined,
+        privacyLevel: "private",
+        timestamp: Date.now(),
+        type: "send",
+        token: wallet.selectedToken,
+        amount: amount,
+      });
       setStep(4);
       await wallet.refreshBalance();
     } catch (e: any) {
@@ -131,6 +144,24 @@ export default function SendScreen({ navigation }: any) {
           <View style={styles.stepCard}>
             <Text style={styles.stepTitle}>Send to</Text>
             <Text style={styles.stepSubtitle}>Enter recipient's Cloak address (base58)</Text>
+            {contacts.length > 0 && (
+              <View style={styles.contactsSection}>
+                <Text style={styles.contactsLabel}>From Contacts</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.contactsScroll}>
+                  {contacts.slice(0, 6).map((c) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.contactChip}
+                      onPress={() => setRecipient(c.tongoAddress)}
+                    >
+                      <Text style={styles.contactChipText}>
+                        {c.nickname || c.tongoAddress.slice(0, 8) + "..."}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
             <TextInput
               style={styles.textInput}
               placeholder="bcLpSS9eo4r5nsrJHnng..."
@@ -168,7 +199,7 @@ export default function SendScreen({ navigation }: any) {
                   ) : tx.type === "transfer" ? (
                     <ArrowUpFromLine size={18} color={iconColor} />
                   ) : tx.type === "withdraw" ? (
-                    <ArrowDownToLine size={18} color={iconColor} />
+                    <ArrowUpFromLine size={18} color={iconColor} />
                   ) : (
                     <Text style={styles.historyIcon}>?</Text>
                   )}
@@ -545,6 +576,34 @@ const styles = StyleSheet.create({
   historyType: { fontSize: fontSize.sm, color: colors.text, fontWeight: "500", textTransform: "capitalize" },
   historyAmount: { fontSize: fontSize.xs, color: colors.textSecondary },
   historyHash: { fontSize: fontSize.xs, color: colors.textMuted, fontFamily: "monospace" },
+
+  // Contacts
+  contactsSection: {
+    marginBottom: spacing.md,
+  },
+  contactsLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
+  },
+  contactsScroll: {
+    flexDirection: "row",
+  },
+  contactChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginRight: spacing.sm,
+  },
+  contactChipText: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+  },
 
   doneBtn: {
     backgroundColor: colors.primary,

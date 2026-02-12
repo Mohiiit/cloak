@@ -16,7 +16,8 @@ export type MessageRequest =
   | { type: "FUND"; token: TokenKey; amount: string }
   | { type: "TRANSFER"; token: TokenKey; to: string; amount: string }
   | { type: "WITHDRAW"; token: TokenKey; amount: string }
-  | { type: "ROLLOVER"; token: TokenKey };
+  | { type: "ROLLOVER"; token: TokenKey }
+  | { type: "GET_TX_HISTORY"; fromNonce: number };
 
 // ─── Response types (background → popup) ────────────────────────────
 

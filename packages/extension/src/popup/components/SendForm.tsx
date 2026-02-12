@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { TOKENS, parseTokenAmount } from "@cloak/sdk";
 import { Header, TxSuccess, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
+import { saveTxNote, type TxMetadata } from "../lib/storage";
+import { useContacts } from "../hooks/useContacts";
 
 interface Props {
   wallet: ReturnType<typeof useExtensionWallet>;
@@ -9,6 +11,7 @@ interface Props {
 }
 
 export function SendForm({ wallet: w, onBack }: Props) {
+  const { contacts } = useContacts();
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,7 +30,20 @@ export function SendForm({ wallet: w, onBack }: Props) {
         return;
       }
       const hash = await w.transfer(recipient.trim(), tongoAmount);
-      if (hash) setTxHash(hash);
+      if (hash) {
+        setTxHash(hash);
+        await saveTxNote(hash, {
+          txHash: hash,
+          recipient: recipient.trim(),
+          recipientName: undefined,
+          note: undefined,
+          privacyLevel: "private",
+          timestamp: Date.now(),
+          type: "send",
+          token: w.selectedToken,
+          amount: amount,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -40,6 +56,23 @@ export function SendForm({ wallet: w, onBack }: Props) {
       <p className="text-cloak-text-dim text-xs mb-4">
         Send shielded {w.selectedToken} to another Tongo address. The transfer is private.
       </p>
+
+      {contacts.length > 0 && (
+        <div className="mb-3">
+          <label className="text-xs text-cloak-text-dim mb-1.5 block">From Contacts</label>
+          <div className="flex flex-wrap gap-1.5">
+            {contacts.slice(0, 4).map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setRecipient(c.tongoAddress)}
+                className="px-2.5 py-1.5 rounded-lg bg-cloak-card border border-cloak-border-light text-xs text-cloak-text hover:border-cloak-primary/50 transition-colors"
+              >
+                {c.nickname || c.tongoAddress.slice(0, 8) + "..."}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-3">
         <label className="text-xs text-cloak-text-dim mb-1.5 block">Recipient Tongo Address</label>

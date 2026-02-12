@@ -59,6 +59,15 @@ export class CloakAccount {
     return this.token.rate;
   }
 
+  async getTxHistory(fromBlock: number = 0): Promise<any[]> {
+    const history = await (this.tongoAccount as any).getTxHistory(fromBlock);
+    return (history || []).map((event: any) => ({
+      ...event,
+      amount: event.amount?.toString(),
+      nonce: event.nonce?.toString(),
+    }));
+  }
+
   // ─── Execute methods (prepare + sign + submit) ────────────────────
 
   async fund(amount: bigint): Promise<{ txHash: string }> {

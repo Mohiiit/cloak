@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff } from "lucide-react";
+import { Settings as SettingsIcon, Send, ShieldPlus, ArrowUpFromLine, Clock, Users } from "lucide-react";
 import { useExtensionWallet } from "./hooks/useExtensionWallet";
 import { CloakIcon } from "./components/CloakIcon";
 import { Onboarding } from "./components/Onboarding";
@@ -10,8 +10,10 @@ import { SendForm } from "./components/SendForm";
 import { WithdrawForm } from "./components/WithdrawForm";
 import { ReceiveScreen } from "./components/ReceiveScreen";
 import { Settings } from "./components/Settings";
+import { ActivityScreen } from "./components/ActivityScreen";
+import { ContactsScreen } from "./components/ContactsScreen";
 
-type Screen = "main" | "shield" | "send" | "withdraw" | "receive" | "settings";
+type Screen = "main" | "shield" | "send" | "withdraw" | "receive" | "settings" | "activity" | "contacts";
 
 export default function App() {
   const w = useExtensionWallet();
@@ -64,6 +66,12 @@ export default function App() {
   }
   if (screen === "settings") {
     return <Settings wallet={w} onBack={() => setScreen("main")} />;
+  }
+  if (screen === "activity") {
+    return <ActivityScreen onBack={() => setScreen("main")} />;
+  }
+  if (screen === "contacts") {
+    return <ContactsScreen onBack={() => setScreen("main")} />;
   }
 
   // Main dashboard
@@ -122,10 +130,32 @@ export default function App() {
           onClick={() => setScreen("withdraw")}
           className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-secondary hover:border-cloak-secondary/50 transition-all"
         >
-          <ShieldOff className="w-[18px] h-[18px] text-cloak-secondary shrink-0" />
+          <ArrowUpFromLine className="w-[18px] h-[18px] text-cloak-secondary shrink-0" />
           <div className="text-left">
             <p className="text-sm font-medium text-cloak-text">Unshield</p>
             <p className="text-[11px] text-cloak-text-dim">Withdraw to public wallet</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setScreen("activity")}
+          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-yellow-500 hover:border-yellow-500/50 transition-all"
+        >
+          <Clock className="w-[18px] h-[18px] text-yellow-500 shrink-0" />
+          <div className="text-left">
+            <p className="text-sm font-medium text-cloak-text">Activity</p>
+            <p className="text-[11px] text-cloak-text-dim">Transaction history</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setScreen("contacts")}
+          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-teal-500 hover:border-teal-500/50 transition-all"
+        >
+          <Users className="w-[18px] h-[18px] text-teal-500 shrink-0" />
+          <div className="text-left">
+            <p className="text-sm font-medium text-cloak-text">Contacts</p>
+            <p className="text-[11px] text-cloak-text-dim">Manage saved addresses</p>
           </div>
         </button>
       </div>

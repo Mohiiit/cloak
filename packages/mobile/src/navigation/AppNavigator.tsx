@@ -6,10 +6,11 @@ import { View, Text, StyleSheet, Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Send, Settings } from "lucide-react-native";
+import { Home, Send, Settings, Clock } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
 import SendScreen from "../screens/SendScreen";
 import WalletScreen from "../screens/WalletScreen";
+import ActivityScreen from "../screens/ActivityScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import { CloakIcon } from "../components/CloakIcon";
 import { colors, fontSize, spacing } from "../lib/theme";
@@ -20,6 +21,7 @@ const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
   Home: ({ size, color }) => <Home size={size} color={color} />,
   Send: ({ size, color }) => <Send size={size} color={color} />,
   Wallet: ({ size, color }) => <CloakIcon size={size} color={color} />,
+  Activity: ({ size, color }) => <Clock size={size} color={color} />,
   Settings: ({ size, color }) => <Settings size={size} color={color} />,
 };
 
@@ -81,6 +83,11 @@ export default function AppNavigator() {
           name="Wallet"
           component={WalletScreen}
           options={{ headerTitle: "Wallet" }}
+        />
+        <Tab.Screen
+          name="Activity"
+          component={ActivityScreen}
+          options={{ headerTitle: "Activity" }}
         />
         <Tab.Screen
           name="Settings"

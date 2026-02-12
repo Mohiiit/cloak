@@ -13,9 +13,10 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Eye, EyeOff, Send, ShieldPlus, ArrowDownToLine } from "lucide-react-native";
+import { Eye, EyeOff, Send, ShieldPlus, ArrowUpFromLine, RefreshCw } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -37,6 +38,12 @@ export default function HomeScreen({ navigation }: any) {
       if (v === "true") setBalanceHidden(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (wallet.isInitialized) {
+      wallet.refreshTxHistory();
+    }
+  }, [wallet.isInitialized]);
 
   const toggleBalanceVisibility = () => {
     const next = !balanceHidden;
@@ -161,6 +168,7 @@ export default function HomeScreen({ navigation }: any) {
   const handleRefresh = async () => {
     await wallet.refreshBalance();
     await wallet.refreshAllBalances();
+    await wallet.refreshTxHistory();
   };
 
   return (
@@ -258,10 +266,48 @@ export default function HomeScreen({ navigation }: any) {
           style={[styles.actionButton, styles.actionUnshield]}
           onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
         >
-          <ArrowDownToLine size={32} color={colors.secondary} style={styles.actionIconSpacing} />
+          <ArrowUpFromLine size={32} color={colors.secondary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Unshield</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Recent Activity */}
+      {wallet.txHistory.length > 0 && (
+        <View style={styles.recentSection}>
+          <View style={styles.recentHeader}>
+            <Text style={styles.recentTitle}>Recent Activity</Text>
+            <TouchableOpacity onPress={() => navigation.navigate("Activity")}>
+              <Text style={styles.recentSeeAll}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          {wallet.txHistory.slice(0, 3).map((tx: any, i: number) => {
+            const hash = tx.txHash || tx.transaction_hash || "";
+            const iconColor = tx.type === "fund" ? colors.success : tx.type === "transfer" ? colors.primary : tx.type === "withdraw" ? colors.secondary : colors.textMuted;
+            return (
+              <TouchableOpacity
+                key={i}
+                style={styles.recentRow}
+                onPress={() => hash && Linking.openURL(`https://sepolia.voyager.online/tx/${hash}`)}
+              >
+                {tx.type === "fund" ? (
+                  <ShieldPlus size={18} color={iconColor} />
+                ) : tx.type === "transfer" ? (
+                  <ArrowUpFromLine size={18} color={iconColor} />
+                ) : tx.type === "withdraw" ? (
+                  <ArrowUpFromLine size={18} color={iconColor} />
+                ) : (
+                  <RefreshCw size={18} color={colors.textMuted} />
+                )}
+                <View style={styles.recentInfo}>
+                  <Text style={styles.recentType}>{tx.type || "unknown"}</Text>
+                  <Text style={styles.recentAmount}>{tx.amount || "?"} units</Text>
+                </View>
+                {hash ? <Text style={styles.recentHash}>{hash.slice(0, 8)}...</Text> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
 
       {/* Compact Status */}
       <View style={styles.compactStatus}>
@@ -444,6 +490,58 @@ const styles = StyleSheet.create({
   actionIcon: { fontSize: 32, marginBottom: spacing.xs },
   actionIconSpacing: { marginBottom: spacing.xs },
   actionLabel: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: "600" },
+
+  // Recent Activity
+  recentSection: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: spacing.lg,
+  },
+  recentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  recentTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  recentSeeAll: {
+    fontSize: fontSize.sm,
+    color: colors.primary,
+    fontWeight: "500",
+  },
+  recentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+    gap: spacing.sm,
+  },
+  recentInfo: { flex: 1 },
+  recentType: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+    fontWeight: "500",
+    textTransform: "capitalize",
+  },
+  recentAmount: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  recentHash: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontFamily: "monospace",
+  },
 
   // Compact Status
   compactStatus: {

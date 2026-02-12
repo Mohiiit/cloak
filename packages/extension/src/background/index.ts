@@ -116,6 +116,16 @@ async function handleMessage(request: MessageRequest): Promise<any> {
       return acct.rollover();
     }
 
+    case "GET_TX_HISTORY": {
+      const acct = c.account("STRK");
+      const history = await acct.getTxHistory(request.fromNonce);
+      // Serialize BigInt values to strings for message passing
+      return (history || []).map((event: any) => ({
+        ...event,
+        amount: event.amount?.toString(),
+      }));
+    }
+
     default:
       throw new Error(`Unknown message type: ${(request as any).type}`);
   }

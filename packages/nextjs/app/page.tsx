@@ -165,7 +165,7 @@ function ConnectedHome() {
           href="/wallet?mode=unshield"
           className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700/30 border-l-[3px] border-l-violet-500 hover:border-violet-500/50 transition-all"
         >
-          <ArrowDownToLine className="w-5 h-5 text-violet-400 shrink-0" />
+          <ArrowUpFromLine className="w-5 h-5 text-violet-400 shrink-0" />
           <div>
             <p className="text-sm font-medium text-slate-200">Unshield</p>
             <p className="text-[11px] text-slate-500">Withdraw to public wallet</p>

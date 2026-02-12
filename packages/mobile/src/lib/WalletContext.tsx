@@ -206,7 +206,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const history = await bridge.getTxHistory(0);
       setTxHistory(history || []);
     } catch (e) {
-      console.error("[WalletContext] getTxHistory error:", e);
+      console.warn("[WalletContext] getTxHistory error:", e);
     }
   }, [bridge, isInitialized]);
 

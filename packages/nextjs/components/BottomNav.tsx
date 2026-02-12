@@ -6,14 +6,18 @@ import { usePathname } from "next/navigation";
 import {
   Home,
   Send,
-  Shield,
   Settings,
 } from "lucide-react";
+import { CloakIcon } from "~~/components/CloakIcon";
+
+const WalletIcon = ({ className }: { className?: string }) => (
+  <span className={className}><CloakIcon size={20} /></span>
+);
 
 const navItems = [
   { href: "/", icon: Home, label: "Home" },
   { href: "/send", icon: Send, label: "Send" },
-  { href: "/wallet", icon: Shield, label: "Wallet" },
+  { href: "/wallet", icon: WalletIcon, label: "Wallet" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
