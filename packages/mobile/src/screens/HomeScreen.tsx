@@ -16,7 +16,8 @@ import {
   Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw } from "lucide-react-native";
+import Clipboard from "@react-native-clipboard/clipboard";
+import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -32,6 +33,7 @@ export default function HomeScreen({ navigation }: any) {
   const [isImporting, setIsImporting] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [balanceHidden, setBalanceHidden] = useState(false);
+  const [claimSuccess, setClaimSuccess] = useState<{ txHash: string; amount: string } | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem("cloak_balance_hidden").then((v) => {
@@ -150,11 +152,10 @@ export default function HomeScreen({ navigation }: any) {
   const handleClaim = async () => {
     setIsClaiming(true);
     try {
+      const pendingAmount = wallet.pending;
       const result = await wallet.rollover();
-      modal.showSuccess("Claimed!", "Pending funds added to balance.", {
-        txHash: result.txHash,
-        onDismiss: () => wallet.refreshBalance(),
-      });
+      setClaimSuccess({ txHash: result.txHash, amount: pendingAmount });
+      wallet.refreshBalance();
     } catch (e: any) {
       modal.showError("Error", e.message || "Claim failed", e.message);
     } finally {
@@ -182,8 +183,56 @@ export default function HomeScreen({ navigation }: any) {
     >
       {modal.ModalComponent}
 
-      {/* Claim Banner */}
-      {hasPending && (
+      {claimSuccess && (
+        <View style={styles.claimSuccessCard}>
+          <Check size={48} color={colors.success} style={{ marginBottom: spacing.md }} />
+          <Text style={styles.claimSuccessTitle}>Claimed!</Text>
+          <Text style={styles.claimSuccessAmount}>
+            {claimSuccess.amount} units
+          </Text>
+          <Text style={styles.claimSuccessEquiv}>
+            ({tongoToDisplay(claimSuccess.amount, wallet.selectedToken)} {wallet.selectedToken})
+          </Text>
+          <Text style={styles.claimSuccessDesc}>
+            Pending funds added to your balance.
+          </Text>
+
+          <View style={styles.claimTxSection}>
+            <Text style={styles.claimTxLabel}>Transaction Hash</Text>
+            <Text style={styles.claimTxHash} numberOfLines={2} selectable>
+              {claimSuccess.txHash}
+            </Text>
+            <View style={styles.claimTxActions}>
+              <TouchableOpacity
+                style={styles.claimTxBtn}
+                onPress={() => {
+                  Clipboard.setString(claimSuccess.txHash);
+                }}
+              >
+                <Text style={styles.claimTxBtnText}>Copy Tx Hash</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.claimTxBtn}
+                onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${claimSuccess.txHash}`)}
+              >
+                <Text style={styles.claimTxBtnText}>View on Voyager</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.claimDoneBtn}
+            onPress={() => setClaimSuccess(null)}
+          >
+            <Text style={styles.claimDoneBtnText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!claimSuccess && (
+        <>
+          {/* Claim Banner */}
+          {hasPending && (
         <View style={styles.claimBanner}>
           <View style={styles.claimBannerLeft}>
             <View style={styles.pulsingDot} />
@@ -312,6 +361,8 @@ export default function HomeScreen({ navigation }: any) {
         <Text style={styles.compactStatusDivider}>|</Text>
         <Text style={styles.compactStatusText}>Nonce: {wallet.nonce}</Text>
       </View>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -561,4 +612,60 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     opacity: 0.5,
   },
+
+  // Claim Success Card
+  claimSuccessCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+  },
+  claimSuccessTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.success, marginBottom: spacing.sm },
+  claimSuccessAmount: { fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text },
+  claimSuccessEquiv: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.xs },
+  claimSuccessDesc: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.lg },
+  claimTxSection: {
+    width: "100%",
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  claimTxLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
+  claimTxHash: {
+    fontSize: fontSize.xs,
+    color: colors.text,
+    fontFamily: "monospace",
+    marginBottom: spacing.sm,
+  },
+  claimTxActions: { flexDirection: "row", gap: spacing.sm },
+  claimTxBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  claimTxBtnText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: "600",
+  },
+  claimDoneBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+    borderRadius: borderRadius.md,
+  },
+  claimDoneBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
 });

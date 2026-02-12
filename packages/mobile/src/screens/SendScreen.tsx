@@ -118,23 +118,33 @@ export default function SendScreen({ navigation }: any) {
               { num: 1, label: "To" },
               { num: 2, label: "Amount" },
               { num: 3, label: "Confirm" },
-            ].map(({ num, label }) => (
-              <View key={num} style={styles.progressItem}>
-                <View
-                  style={[
-                    styles.progressDot,
-                    step >= num && styles.progressDotActive,
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.progressLabel,
-                    step >= num && styles.progressLabelActive,
-                  ]}
-                >
-                  {label}
-                </Text>
-              </View>
+            ].map(({ num, label }, index) => (
+              <React.Fragment key={num}>
+                <View style={styles.progressItem}>
+                  <View
+                    style={[
+                      styles.progressDot,
+                      step >= num && styles.progressDotActive,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.progressLabel,
+                      step >= num && styles.progressLabelActive,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </View>
+                {index < 2 && (
+                  <View
+                    style={[
+                      styles.progressLine,
+                      step > num && styles.progressLineActive,
+                    ]}
+                  />
+                )}
+              </React.Fragment>
             ))}
           </View>
         )}
@@ -368,7 +378,7 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: 100 },
 
   // Progress
-  progressRow: { flexDirection: "row", justifyContent: "center", gap: spacing.xl, marginBottom: spacing.xl },
+  progressRow: { flexDirection: "row", justifyContent: "center", alignItems: "flex-start", marginBottom: spacing.xl },
   progressItem: { alignItems: "center", gap: 6 },
   progressDot: {
     width: 10,
@@ -377,6 +387,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceLight,
   },
   progressDotActive: { backgroundColor: colors.primary },
+  progressLine: {
+    height: 2,
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    marginTop: 4,
+    marginHorizontal: spacing.sm,
+  },
+  progressLineActive: { backgroundColor: colors.primary },
   progressLabel: { fontSize: fontSize.xs, color: colors.textMuted },
   progressLabelActive: { color: colors.primary },
 
