@@ -44,8 +44,9 @@ export function useTxHistory() {
 
       enriched.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setEvents(enriched);
-    } catch (err: any) {
-      setError(err?.message || "Failed to fetch history");
+    } catch {
+      // Silenced — on-chain getTxHistory often fails.
+      // Will be replaced with Supabase reads.
     } finally {
       setIsLoading(false);
     }

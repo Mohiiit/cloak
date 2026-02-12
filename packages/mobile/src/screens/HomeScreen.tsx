@@ -16,7 +16,7 @@ import {
   Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Eye, EyeOff, Send, ShieldPlus, ArrowUpFromLine, RefreshCw } from "lucide-react-native";
+import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -39,11 +39,8 @@ export default function HomeScreen({ navigation }: any) {
     });
   }, []);
 
-  useEffect(() => {
-    if (wallet.isInitialized) {
-      wallet.refreshTxHistory();
-    }
-  }, [wallet.isInitialized]);
+  // NOTE: refreshTxHistory disabled — on-chain getTxHistory always fails
+  // from WebView bridge. Will be replaced with Supabase reads.
 
   const toggleBalanceVisibility = () => {
     const next = !balanceHidden;
@@ -168,7 +165,6 @@ export default function HomeScreen({ navigation }: any) {
   const handleRefresh = async () => {
     await wallet.refreshBalance();
     await wallet.refreshAllBalances();
-    await wallet.refreshTxHistory();
   };
 
   return (
@@ -266,7 +262,7 @@ export default function HomeScreen({ navigation }: any) {
           style={[styles.actionButton, styles.actionUnshield]}
           onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
         >
-          <ArrowUpFromLine size={32} color={colors.secondary} style={styles.actionIconSpacing} />
+          <ShieldOff size={32} color={colors.secondary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Unshield</Text>
         </TouchableOpacity>
       </View>
@@ -294,7 +290,7 @@ export default function HomeScreen({ navigation }: any) {
                 ) : tx.type === "transfer" ? (
                   <ArrowUpFromLine size={18} color={iconColor} />
                 ) : tx.type === "withdraw" ? (
-                  <ArrowUpFromLine size={18} color={iconColor} />
+                  <ShieldOff size={18} color={iconColor} />
                 ) : (
                   <RefreshCw size={18} color={colors.textMuted} />
                 )}

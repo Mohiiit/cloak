@@ -6,7 +6,7 @@ import {
   ShieldPlus,
   Download,
   Upload,
-  ArrowUpFromLine,
+  ShieldOff,
   RotateCw,
   AlertTriangle,
   Clock,
@@ -42,7 +42,7 @@ function ActivityItem({ event }: { event: TongoEvent }) {
     fund: <ShieldPlus className="w-5 h-5 text-emerald-400" />,
     transferIn: <Download className="w-5 h-5 text-blue-400" />,
     transferOut: <Upload className="w-5 h-5 text-violet-400" />,
-    withdraw: <ArrowUpFromLine className="w-5 h-5 text-amber-400" />,
+    withdraw: <ShieldOff className="w-5 h-5 text-amber-400" />,
     rollover: <RotateCw className="w-5 h-5 text-blue-300" />,
     ragequit: <AlertTriangle className="w-5 h-5 text-red-400" />,
   };

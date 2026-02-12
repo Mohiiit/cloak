@@ -15,7 +15,7 @@ import {
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { ShieldPlus, ArrowUpFromLine, Check } from "lucide-react-native";
+import { ShieldPlus, ShieldOff, ArrowUpFromLine, Check } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
@@ -199,7 +199,7 @@ export default function SendScreen({ navigation }: any) {
                   ) : tx.type === "transfer" ? (
                     <ArrowUpFromLine size={18} color={iconColor} />
                   ) : tx.type === "withdraw" ? (
-                    <ArrowUpFromLine size={18} color={iconColor} />
+                    <ShieldOff size={18} color={iconColor} />
                   ) : (
                     <Text style={styles.historyIcon}>?</Text>
                   )}

@@ -205,8 +205,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const history = await bridge.getTxHistory(0);
       setTxHistory(history || []);
-    } catch (e) {
-      console.warn("[WalletContext] getTxHistory error:", e);
+    } catch {
+      // Silenced — on-chain getTxHistory fails in WebView bridge.
+      // Will be replaced with Supabase reads.
     }
   }, [bridge, isInitialized]);
 

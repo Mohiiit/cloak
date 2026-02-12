@@ -66,9 +66,9 @@ export function useTongoHistory(): UseTongoHistoryReturn {
       // Sort by most recent first
       enriched.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setEvents(enriched);
-    } catch (err: any) {
-      console.error("Failed to fetch history:", err);
-      setError(err?.message || "Failed to fetch transaction history");
+    } catch {
+      // Silenced — on-chain getTxHistory often fails.
+      // Will be replaced with Supabase reads.
     } finally {
       setIsLoading(false);
     }

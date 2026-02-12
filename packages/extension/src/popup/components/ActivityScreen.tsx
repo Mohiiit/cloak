@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowLeft, ShieldPlus, ArrowUpFromLine, RefreshCw, ExternalLink } from "lucide-react";
+import { ArrowLeft, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, ExternalLink } from "lucide-react";
 import { useTxHistory, type TxEvent } from "../hooks/useTxHistory";
 
 interface Props {
@@ -12,7 +12,7 @@ function TxIcon({ type }: { type: string }) {
     case "transfer":
     case "transferOut":
     case "send": return <ArrowUpFromLine className="w-[18px] h-[18px] text-cloak-primary" />;
-    case "withdraw": return <ArrowUpFromLine className="w-[18px] h-[18px] text-cloak-secondary" />;
+    case "withdraw": return <ShieldOff className="w-[18px] h-[18px] text-cloak-secondary" />;
     default: return <RefreshCw className="w-[18px] h-[18px] text-cloak-text-dim" />;
   }
 }

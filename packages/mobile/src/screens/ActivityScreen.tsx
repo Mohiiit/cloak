@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
-import { ShieldPlus, ArrowUpFromLine, ArrowDownToLine, RefreshCw, ExternalLink } from "lucide-react-native";
+import { ShieldPlus, ShieldOff, ArrowUpFromLine, ArrowDownToLine, RefreshCw, ExternalLink } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { getTxNotes } from "../lib/storage";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -21,7 +21,7 @@ function TxIcon({ type }: { type: string }) {
     case "send": return <ArrowUpFromLine size={20} color={colors.primary} />;
     case "transferIn":
     case "receive": return <ArrowDownToLine size={20} color={colors.success} />;
-    case "withdraw": return <ArrowUpFromLine size={20} color={colors.secondary} />;
+    case "withdraw": return <ShieldOff size={20} color={colors.secondary} />;
     case "rollover": return <RefreshCw size={20} color={colors.warning} />;
     default: return <RefreshCw size={20} color={colors.textMuted} />;
   }

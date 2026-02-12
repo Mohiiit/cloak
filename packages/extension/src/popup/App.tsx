@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Settings as SettingsIcon, Send, ShieldPlus, ArrowUpFromLine, Clock, Users } from "lucide-react";
+import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff, Clock, Users } from "lucide-react";
 import { useExtensionWallet } from "./hooks/useExtensionWallet";
 import { CloakIcon } from "./components/CloakIcon";
 import { Onboarding } from "./components/Onboarding";
@@ -130,7 +130,7 @@ export default function App() {
           onClick={() => setScreen("withdraw")}
           className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-secondary hover:border-cloak-secondary/50 transition-all"
         >
-          <ArrowUpFromLine className="w-[18px] h-[18px] text-cloak-secondary shrink-0" />
+          <ShieldOff className="w-[18px] h-[18px] text-cloak-secondary shrink-0" />
           <div className="text-left">
             <p className="text-sm font-medium text-cloak-text">Unshield</p>
             <p className="text-[11px] text-cloak-text-dim">Withdraw to public wallet</p>

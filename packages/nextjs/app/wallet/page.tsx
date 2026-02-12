@@ -6,7 +6,7 @@ import {
   Eye,
   EyeOff,
   ArrowDownToLine,
-  ArrowUpFromLine,
+  ShieldOff,
   RotateCw,
   Clock,
 } from "lucide-react";
@@ -286,7 +286,7 @@ export default function WalletPage() {
           onClick={() => setShowWithdrawModal(true)}
           className="flex flex-col items-center gap-2 p-5 rounded-xl bg-violet-500/10 border border-violet-500/20 hover:border-violet-500/40 transition-all"
         >
-          <ArrowUpFromLine className="w-6 h-6 text-violet-400" />
+          <ShieldOff className="w-6 h-6 text-violet-400" />
           <span className="text-sm font-medium text-slate-200">Unshield</span>
           <span className="text-[11px] text-slate-500">Withdraw to public</span>
         </button>
