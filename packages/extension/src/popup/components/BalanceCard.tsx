@@ -10,10 +10,12 @@ interface Props {
   selectedToken: TokenKey;
   onRefresh: () => Promise<void>;
   onRollover: () => Promise<string | null>;
+  onClaimSuccess: (txHash: string) => void;
 }
 
-export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, onRollover }: Props) {
+export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, onRollover, onClaimSuccess }: Props) {
   const [balanceHidden, setBalanceHidden] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const token = TOKENS[selectedToken];
 
   const shieldedErc20 = balances.balance * token.rate;
@@ -59,10 +61,21 @@ export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, 
               </span>
             </div>
             <button
-              onClick={onRollover}
-              className="text-[11px] font-semibold text-cloak-warning hover:text-yellow-300 bg-cloak-warning/20 border border-cloak-warning/40 px-2.5 py-1 rounded-full transition-colors"
+              onClick={async () => {
+                setClaiming(true);
+                try {
+                  const txHash = await onRollover();
+                  if (txHash) {
+                    onClaimSuccess(txHash);
+                  }
+                } finally {
+                  setClaiming(false);
+                }
+              }}
+              disabled={claiming}
+              className="text-[11px] font-semibold text-cloak-warning hover:text-yellow-300 bg-cloak-warning/20 border border-cloak-warning/40 px-2.5 py-1 rounded-full transition-colors disabled:opacity-50"
             >
-              Claim
+              {claiming ? "Claiming..." : "Claim"}
             </button>
           </div>
         )}

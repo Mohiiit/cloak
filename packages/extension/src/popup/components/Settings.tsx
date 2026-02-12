@@ -36,24 +36,28 @@ export function Settings({ wallet: w, onBack }: Props) {
 
       {/* Addresses */}
       <Section title="Addresses">
-        <InfoRow
-          label="Starknet"
-          value={truncateAddress(w.wallet.starkAddress, 8)}
-          onCopy={() => copy(w.wallet!.starkAddress, "stark")}
-          copied={copied === "stark"}
-        />
-        <InfoRow
-          label="Tongo"
-          value={truncateTongoAddress(w.wallet.tongoAddress, 8)}
-          onCopy={() => copy(w.wallet!.tongoAddress, "tongo")}
-          copied={copied === "tongo"}
-        />
+        <div className="bg-cloak-card border border-cloak-border border-l-2 border-l-blue-500/50 rounded-lg p-3 mb-2">
+          <InfoRow
+            label="Starknet"
+            value={truncateAddress(w.wallet.starkAddress, 8)}
+            onCopy={() => copy(w.wallet!.starkAddress, "stark")}
+            copied={copied === "stark"}
+          />
+        </div>
+        <div className="bg-cloak-card border border-cloak-border border-l-2 border-l-violet-500/50 rounded-lg p-3">
+          <InfoRow
+            label="Tongo"
+            value={truncateTongoAddress(w.wallet.tongoAddress, 8)}
+            onCopy={() => copy(w.wallet!.tongoAddress, "tongo")}
+            copied={copied === "tongo"}
+          />
+        </div>
       </Section>
 
       {/* Private key */}
       <Section title="Backup">
-        <div className="bg-yellow-900/20 border border-yellow-800/30 rounded-lg p-3 mb-3">
-          <p className="text-yellow-400 text-[11px]">
+        <div className="bg-yellow-900/20 border border-yellow-800/30 border-l-2 border-l-yellow-500/50 rounded-lg p-3 mb-3">
+          <p className="text-yellow-400 text-[11px] leading-relaxed">
             Never share your private key. Anyone with this key can access all your funds.
           </p>
         </div>
@@ -98,10 +102,10 @@ export function Settings({ wallet: w, onBack }: Props) {
       <Section title="Danger Zone">
         <button
           onClick={handleClear}
-          className={`w-full py-2.5 rounded-lg border text-xs font-medium transition-colors ${
+          className={`w-full py-2.5 rounded-lg border border-l-2 text-xs font-medium transition-colors ${
             confirming
-              ? "bg-red-600 border-red-600 text-white"
-              : "bg-cloak-card border-red-800/50 text-red-400 hover:bg-red-900/20"
+              ? "bg-red-600 border-red-600 border-l-red-500 text-white"
+              : "bg-cloak-card border-red-800/50 border-l-red-500/50 text-red-400 hover:bg-red-900/20"
           }`}
         >
           {confirming ? "Tap again to confirm — this is irreversible" : "Clear Wallet"}
@@ -132,10 +136,10 @@ function InfoRow({
   copied: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-cloak-border/50 last:border-0">
-      <span className="text-xs text-cloak-text-dim">{label}</span>
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-cloak-text-dim uppercase tracking-wider">{label}</span>
       <button onClick={onCopy} className="text-xs font-mono text-cloak-text hover:text-cloak-primary transition-colors">
-        {copied ? "Copied!" : value}
+        {copied ? "✓ Copied!" : value}
       </button>
     </div>
   );

@@ -163,7 +163,7 @@ export default function WalletScreen({ route }: any) {
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={amount}
-                onChangeText={setAmount}
+                onChangeText={(t) => { if (/^\d*$/.test(t)) setAmount(t); }}
                 autoFocus
               />
               <Text style={styles.inputSymbol}>units</Text>

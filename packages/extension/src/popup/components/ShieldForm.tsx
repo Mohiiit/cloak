@@ -57,7 +57,10 @@ export function ShieldForm({ wallet: w, onBack }: Props) {
           type="text"
           inputMode="decimal"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (/^\d*\.?\d*$/.test(v)) setAmount(v);
+          }}
           placeholder="0.00"
           className="w-full px-4 py-3 rounded-xl bg-cloak-card border border-cloak-border text-cloak-text text-lg font-mono placeholder:text-cloak-muted focus:outline-none focus:border-cloak-primary/50"
         />

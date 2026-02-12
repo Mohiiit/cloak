@@ -230,7 +230,9 @@ export default function SendScreen({ navigation }: any) {
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={amount}
-                onChangeText={(t) => { setAmount(t); setAmountError(""); }}
+                onChangeText={(t) => {
+                  if (/^\d*$/.test(t)) { setAmount(t); setAmountError(""); }
+                }}
                 autoFocus
               />
               <Text style={styles.amountSymbol}>units</Text>

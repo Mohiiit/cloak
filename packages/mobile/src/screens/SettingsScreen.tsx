@@ -14,7 +14,7 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
@@ -43,15 +43,23 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AddressQR({ value }: { value: string }) {
+function AddressQR({ value, glowColor }: { value: string; glowColor: "blue" | "violet" }) {
   return (
     <View style={styles.qrContainer}>
-      <QRCode
-        value={value}
-        size={120}
-        backgroundColor={colors.bg}
-        color={colors.text}
-      />
+      {/* Subtle glow effect */}
+      <View style={[
+        styles.qrGlow,
+        glowColor === "blue" ? styles.qrGlowBlue : styles.qrGlowViolet
+      ]} />
+      {/* White background for QR code readability */}
+      <View style={styles.qrWhiteBg}>
+        <QRCode
+          value={value}
+          size={120}
+          backgroundColor="#FFFFFF"
+          color="#000000"
+        />
+      </View>
     </View>
   );
 }
@@ -68,8 +76,9 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
       <View style={styles.qrModalOverlay}>
         <View style={styles.qrModalCard}>
           <Text style={styles.qrModalLabel}>{label}</Text>
-          <View style={styles.qrModalQR}>
-            <QRCode value={value} size={250} backgroundColor={colors.bg} color={colors.text} />
+          {/* Large QR code with white background for better scanning */}
+          <View style={styles.qrModalQRWrapper}>
+            <QRCode value={value} size={250} backgroundColor="#FFFFFF" color="#000000" />
           </View>
           <Text style={styles.qrModalAddress} selectable>{value}</Text>
           <View style={styles.qrModalActions}>
@@ -124,24 +133,33 @@ export default function SettingsScreen() {
         />
       )}
       {/* Cloak Address */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your Cloak Address</Text>
+      <View style={[styles.section, styles.addressSection]}>
+        <View style={styles.sectionHeader}>
+          <Shield size={18} color={colors.primary} />
+          <Text style={styles.sectionTitle}>Your Cloak Address</Text>
+        </View>
         <Text style={styles.sectionDesc}>
           Share this with others so they can send you shielded payments.
         </Text>
         <TouchableOpacity onPress={() => setQrModal({ label: "Cloak Address", value: wallet.keys.tongoAddress })}>
           <CopyRow label="Tongo Address" value={wallet.keys.tongoAddress} />
-          <AddressQR value={wallet.keys.tongoAddress} />
+          <AddressQR value={wallet.keys.tongoAddress} glowColor="blue" />
           <Text style={styles.tapHint}>Tap to enlarge QR</Text>
         </TouchableOpacity>
       </View>
 
       {/* Account Info */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account</Text>
+      <View style={[styles.section, styles.addressSectionViolet]}>
+        <View style={styles.sectionHeader}>
+          <Wallet2 size={18} color={colors.secondary} />
+          <Text style={styles.sectionTitle}>Starknet Address</Text>
+        </View>
+        <Text style={styles.sectionDesc}>
+          Your public Starknet wallet address.
+        </Text>
         <TouchableOpacity onPress={() => setQrModal({ label: "Starknet Address", value: wallet.keys.starkAddress })}>
           <CopyRow label="Starknet Address" value={wallet.keys.starkAddress} />
-          <AddressQR value={wallet.keys.starkAddress} />
+          <AddressQR value={wallet.keys.starkAddress} glowColor="violet" />
           <Text style={styles.tapHint}>Tap to enlarge QR</Text>
         </TouchableOpacity>
       </View>
@@ -149,7 +167,10 @@ export default function SettingsScreen() {
       {/* Contacts */}
       <View style={styles.section}>
         <View style={styles.contactsSectionHeader}>
-          <Text style={styles.sectionTitle}>Contacts</Text>
+          <View style={styles.sectionHeader}>
+            <Users size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Contacts</Text>
+          </View>
           <TouchableOpacity onPress={() => setShowAddContact(!showAddContact)}>
             <Plus size={20} color={colors.primary} />
           </TouchableOpacity>
@@ -220,8 +241,11 @@ export default function SettingsScreen() {
       </View>
 
       {/* Key Backup */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Key Backup</Text>
+      <View style={[styles.section, styles.dangerSection]}>
+        <View style={styles.sectionHeader}>
+          <Key size={18} color={colors.warning} />
+          <Text style={styles.sectionTitle}>Key Backup</Text>
+        </View>
         <Text style={styles.warningText}>
           Keep your private keys safe. Anyone with these keys can access your funds.
         </Text>
@@ -256,7 +280,10 @@ export default function SettingsScreen() {
 
       {/* Network */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Network</Text>
+        <View style={styles.sectionHeader}>
+          <Globe size={18} color={colors.success} />
+          <Text style={styles.sectionTitle}>Network</Text>
+        </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Chain</Text>
           <Text style={styles.infoValue}>Starknet Sepolia</Text>
@@ -270,8 +297,11 @@ export default function SettingsScreen() {
       </View>
 
       {/* Danger Zone */}
-      <View style={[styles.section, styles.dangerSection]}>
-        <Text style={[styles.sectionTitle, { color: colors.error }]}>Danger Zone</Text>
+      <View style={[styles.section, styles.clearDataSection]}>
+        <View style={styles.sectionHeader}>
+          <AlertTriangle size={18} color={colors.error} />
+          <Text style={[styles.sectionTitle, { color: colors.error }]}>Danger Zone</Text>
+        </View>
         <TouchableOpacity
           style={styles.dangerBtn}
           onPress={() => {
@@ -314,16 +344,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
   },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: 4,
+  },
   sectionTitle: {
     fontSize: fontSize.lg,
     fontWeight: "600",
     color: colors.text,
-    marginBottom: 4,
   },
   sectionDesc: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginBottom: spacing.md,
+  },
+  addressSection: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.border,
+  },
+  addressSectionViolet: {
+    borderLeftWidth: 3,
+    borderLeftColor: "rgba(139, 92, 246, 0.4)",
   },
 
   copyRow: { marginBottom: spacing.md },
@@ -340,14 +383,39 @@ const styles = StyleSheet.create({
   copyBtn: { fontSize: fontSize.xs, color: colors.primary, fontWeight: "600", marginLeft: spacing.sm },
 
   qrContainer: {
+    position: "relative",
     alignItems: "center",
-    padding: spacing.md,
+    padding: spacing.lg,
     backgroundColor: colors.bg,
     borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
+    overflow: "hidden",
+  },
+  qrGlow: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    opacity: 0.15,
+  },
+  qrGlowBlue: {
+    backgroundColor: colors.primary,
+  },
+  qrGlowViolet: {
+    backgroundColor: colors.secondary,
+  },
+  qrWhiteBg: {
+    backgroundColor: "#FFFFFF",
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
 
-  warningText: { fontSize: fontSize.sm, color: colors.warning, marginBottom: spacing.md },
+  warningText: { fontSize: fontSize.sm, color: colors.warning, marginBottom: spacing.md, lineHeight: 20 },
 
   revealBtn: {
     backgroundColor: "rgba(239, 68, 68, 0.1)",
@@ -375,7 +443,15 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: fontSize.md, color: colors.textSecondary },
   infoValue: { fontSize: fontSize.md, color: colors.text },
 
-  dangerSection: { borderColor: "rgba(239, 68, 68, 0.2)" },
+  dangerSection: {
+    borderColor: "rgba(245, 158, 11, 0.25)",
+    backgroundColor: "rgba(245, 158, 11, 0.05)",
+  },
+  clearDataSection: {
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    borderLeftWidth: 3,
+    borderLeftColor: colors.error,
+  },
   dangerBtn: {
     backgroundColor: "rgba(239, 68, 68, 0.1)",
     paddingVertical: 12,
@@ -417,11 +493,16 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.lg,
   },
-  qrModalQR: {
-    padding: spacing.md,
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
+  qrModalQRWrapper: {
+    backgroundColor: "#FFFFFF",
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
     marginBottom: spacing.lg,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   qrModalAddress: {
     fontSize: fontSize.xs,
@@ -463,6 +544,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 4,
   },
   addContactForm: {
     backgroundColor: colors.bg,

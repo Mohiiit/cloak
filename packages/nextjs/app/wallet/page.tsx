@@ -141,6 +141,7 @@ export default function WalletPage() {
   const [showBalance, setShowBalance] = useState(false);
   const [showFundModal, setShowFundModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
 
   const isConnected = status === "connected";
   const tokenConfig = TOKENS[selectedToken];
@@ -191,8 +192,12 @@ export default function WalletPage() {
   const handleRollover = async () => {
     const txHash = await rollover();
     if (txHash) {
+      setClaimTxHash(txHash);
       toast.success("Pending funds claimed!");
-      setTimeout(refresh, 3000);
+      setTimeout(() => {
+        refresh();
+        setClaimTxHash(null);
+      }, 5000);
     }
   };
 
@@ -251,6 +256,22 @@ export default function WalletPage() {
                 />
                 Claim
               </button>
+            </div>
+          )}
+
+          {/* Claim Success - Show tx hash */}
+          {claimTxHash && (
+            <div className="bg-green-900/20 border border-green-800/30 rounded-xl p-3 mb-4">
+              <p className="text-green-400 text-xs font-medium mb-1">Claim successful!</p>
+              <p className="text-green-400/70 text-[11px] font-mono break-all mb-2">{claimTxHash}</p>
+              <a
+                href={`https://sepolia.starkscan.co/tx/${claimTxHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-400 text-xs hover:underline"
+              >
+                View on Explorer →
+              </a>
             </div>
           )}
 

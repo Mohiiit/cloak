@@ -12,12 +12,14 @@ import { ReceiveScreen } from "./components/ReceiveScreen";
 import { Settings } from "./components/Settings";
 import { ActivityScreen } from "./components/ActivityScreen";
 import { ContactsScreen } from "./components/ContactsScreen";
+import { ClaimSuccessScreen } from "./components/ClaimSuccessScreen";
 
-type Screen = "main" | "shield" | "send" | "withdraw" | "receive" | "settings" | "activity" | "contacts";
+type Screen = "main" | "shield" | "send" | "withdraw" | "receive" | "settings" | "activity" | "contacts" | "claim-success";
 
 export default function App() {
   const w = useExtensionWallet();
   const [screen, setScreen] = useState<Screen>("main");
+  const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
 
   // Loading state
   if (w.loading) {
@@ -73,6 +75,9 @@ export default function App() {
   if (screen === "contacts") {
     return <ContactsScreen onBack={() => setScreen("main")} />;
   }
+  if (screen === "claim-success" && claimTxHash) {
+    return <ClaimSuccessScreen txHash={claimTxHash} onBack={() => setScreen("main")} />;
+  }
 
   // Main dashboard
   return (
@@ -99,6 +104,10 @@ export default function App() {
           selectedToken={w.selectedToken}
           onRefresh={w.refreshBalances}
           onRollover={w.rollover}
+          onClaimSuccess={(txHash) => {
+            setClaimTxHash(txHash);
+            setScreen("claim-success");
+          }}
         />
       </div>
 

@@ -41,60 +41,71 @@ export default function SettingsPage() {
       <h1 className="text-lg font-semibold text-slate-50">Settings</h1>
 
       {/* Cloak Address */}
-      <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
-        <div className="flex items-center gap-2 mb-2">
-          <Shield className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-medium text-slate-200">
-            Your Cloak Address
-          </span>
-        </div>
-        <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
-          <p className="text-xs text-slate-300 font-mono truncate mr-2">
-            {tongoAddress}
-          </p>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(tongoAddress);
-              toast.success("Copied!");
-            }}
-            className="text-slate-400 hover:text-blue-400 shrink-0"
-          >
-            <Copy className="w-4 h-4" />
-          </button>
+      <div className="relative overflow-hidden bg-slate-800/50 rounded-xl p-4 border border-slate-700/30 border-l-4 border-l-blue-500/50">
+        {/* Subtle glow accent */}
+        <div className="absolute -top-8 -right-8 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl" />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="w-4 h-4 text-blue-400" />
+            <span className="text-sm font-medium text-slate-200">
+              Your Cloak Address
+            </span>
+          </div>
+          <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+            <p className="text-xs text-slate-300 font-mono truncate mr-2">
+              {tongoAddress}
+            </p>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(tongoAddress);
+                toast.success("Copied!");
+              }}
+              className="text-slate-400 hover:text-blue-400 shrink-0 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Starknet Address */}
       {starkAddress && (
-        <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
-          <div className="flex items-center gap-2 mb-2">
-            <Wallet className="w-4 h-4 text-violet-400" />
-            <span className="text-sm font-medium text-slate-200">
-              Starknet Address
-            </span>
-          </div>
-          <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
-            <p className="text-xs text-slate-300 font-mono truncate mr-2">
-              {starkAddress}
-            </p>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(starkAddress);
-                toast.success("Copied!");
-              }}
-              className="text-slate-400 hover:text-blue-400 shrink-0"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
+        <div className="relative overflow-hidden bg-slate-800/50 rounded-xl p-4 border border-slate-700/30 border-l-4 border-l-violet-500/50">
+          {/* Subtle glow accent */}
+          <div className="absolute -top-8 -right-8 w-32 h-32 bg-violet-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-2">
+              <Wallet className="w-4 h-4 text-violet-400" />
+              <span className="text-sm font-medium text-slate-200">
+                Starknet Address
+              </span>
+            </div>
+            <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+              <p className="text-xs text-slate-300 font-mono truncate mr-2">
+                {starkAddress}
+              </p>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(starkAddress);
+                  toast.success("Copied!");
+                }}
+                className="text-slate-400 hover:text-blue-400 shrink-0 transition-colors"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Network */}
       <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
-        <span className="text-sm font-medium text-slate-200 mb-3 block">
-          Network
-        </span>
+        <div className="flex items-center gap-2 mb-3">
+          <Globe className="w-4 h-4 text-emerald-400" />
+          <span className="text-sm font-medium text-slate-200">
+            Network
+          </span>
+        </div>
         <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -105,42 +116,46 @@ export default function SettingsPage() {
       </div>
 
       {/* Private Key */}
-      <div className="bg-slate-800/50 rounded-xl p-4 border border-amber-700/30">
-        <div className="flex items-center gap-2 mb-2">
-          <Key className="w-4 h-4 text-amber-400" />
-          <span className="text-sm font-medium text-slate-200">
-            Backup Private Key
-          </span>
-        </div>
-        <p className="text-xs text-amber-400/70 mb-2">
-          Keep this safe. Anyone with this key can access your shielded funds.
-        </p>
-        <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
-          <p className="text-xs text-slate-300 font-mono truncate mr-2">
-            {showKey ? tongoPrivateKey : "•".repeat(40)}
+      <div className="relative overflow-hidden bg-slate-800/50 rounded-xl p-4 border border-amber-700/30 border-l-4 border-l-amber-500/50">
+        {/* Subtle glow accent */}
+        <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl" />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-2">
+            <Key className="w-4 h-4 text-amber-400" />
+            <span className="text-sm font-medium text-slate-200">
+              Backup Private Key
+            </span>
+          </div>
+          <p className="text-xs text-amber-400/70 mb-2">
+            Keep this safe. Anyone with this key can access your shielded funds.
           </p>
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={() => setShowKey(!showKey)}
-              className="text-slate-400 hover:text-slate-200"
-            >
-              {showKey ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </button>
-            {showKey && (
+          <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+            <p className="text-xs text-slate-300 font-mono truncate mr-2">
+              {showKey ? tongoPrivateKey : "•".repeat(40)}
+            </p>
+            <div className="flex gap-2 shrink-0">
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(tongoPrivateKey);
-                  toast.success("Copied!");
-                }}
-                className="text-slate-400 hover:text-blue-400"
+                onClick={() => setShowKey(!showKey)}
+                className="text-slate-400 hover:text-slate-200 transition-colors"
               >
-                <Copy className="w-4 h-4" />
+                {showKey ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
-            )}
+              {showKey && (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(tongoPrivateKey);
+                    toast.success("Copied!");
+                  }}
+                  className="text-slate-400 hover:text-blue-400 transition-colors"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -177,7 +192,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Danger zone */}
-      <div className="bg-slate-800/50 rounded-xl p-4 border border-red-900/30">
+      <div className="bg-slate-800/50 rounded-xl p-4 border border-red-900/30 border-l-4 border-l-red-500/50">
         <div className="flex items-center gap-2 mb-3">
           <AlertTriangle className="w-4 h-4 text-red-400" />
           <span className="text-sm font-medium text-red-400">
