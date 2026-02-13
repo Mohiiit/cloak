@@ -17,7 +17,11 @@ export type MessageRequest =
   | { type: "TRANSFER"; token: TokenKey; to: string; amount: string }
   | { type: "WITHDRAW"; token: TokenKey; amount: string }
   | { type: "ROLLOVER"; token: TokenKey }
-  | { type: "GET_TX_HISTORY"; fromNonce: number };
+  | { type: "GET_TX_HISTORY"; fromNonce: number }
+  | { type: "WALLET_RPC"; method: string; params?: any }
+  // ─── Approval popup messages ────────────────────────────────────
+  | { type: "GET_PENDING_APPROVAL" }
+  | { type: "RESOLVE_APPROVAL"; id: string; approved: boolean };
 
 // ─── Response types (background → popup) ────────────────────────────
 

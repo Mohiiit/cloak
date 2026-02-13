@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #0F172A;
+  color: #F8FAFC;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+/* ─── Animations ──────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes bounceIn {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.1); }
+  70% { transform: scale(0.95); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-bounce-in {
+  animation: bounceIn 0.5s ease-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3); }
+  50% { box-shadow: 0 0 20px 6px rgba(245, 158, 11, 0.1); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+/* ─── Steam lines ─────────────────────────────────── */
+
+@keyframes steam {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scaleX(1);
+  }
+  15% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+    transform: translateY(-16px) scaleX(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scaleX(0.8);
+  }
+}
+
+.steam-line {
+  display: block;
+  width: 2px;
+  height: 12px;
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 2px;
+  animation: steam 2s ease-out infinite;
+}
+.delay-0 { animation-delay: 0s; }
+.delay-1 { animation-delay: 0.4s; }
+.delay-2 { animation-delay: 0.8s; }
+
+/* ─── Confetti dots ───────────────────────────────── */
+
+@keyframes confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(120px) rotate(360deg);
+  }
+}
+
+.confetti-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: confetti-fall 1.5s ease-out forwards;
+}
+
+.confetti-0  { top: 8%;  left: 10%; background: #f59e0b; animation-delay: 0.0s; }
+.confetti-1  { top: 5%;  left: 30%; background: #3b82f6; animation-delay: 0.1s; }
+.confetti-2  { top: 10%; left: 50%; background: #22c55e; animation-delay: 0.2s; }
+.confetti-3  { top: 3%;  left: 70%; background: #ef4444; animation-delay: 0.15s; }
+.confetti-4  { top: 8%;  left: 85%; background: #7c3aed; animation-delay: 0.05s; }
+.confetti-5  { top: 12%; left: 20%; background: #f59e0b; animation-delay: 0.25s; }
+.confetti-6  { top: 6%;  left: 40%; background: #22c55e; animation-delay: 0.3s; }
+.confetti-7  { top: 15%; left: 60%; background: #3b82f6; animation-delay: 0.1s; }
+.confetti-8  { top: 4%;  left: 75%; background: #ef4444; animation-delay: 0.2s; }
+.confetti-9  { top: 10%; left: 90%; background: #7c3aed; animation-delay: 0.35s; }
+.confetti-10 { top: 7%;  left: 15%; background: #f59e0b; animation-delay: 0.12s; }
+.confetti-11 { top: 9%;  left: 55%; background: #3b82f6; animation-delay: 0.28s; }

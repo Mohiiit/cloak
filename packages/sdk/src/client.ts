@@ -13,7 +13,7 @@ const STORAGE_KEY_PK = "private_key";
 const STORAGE_KEY_ADDRESS = "stark_address";
 
 const DEFAULT_RPC: Record<Network, string> = {
-  sepolia: "https://starknet-sepolia.public.blastapi.io/rpc/v0_9",
+  sepolia: "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8",
   mainnet: "https://starknet-mainnet.public.blastapi.io/rpc/v0_9",
 };
 
