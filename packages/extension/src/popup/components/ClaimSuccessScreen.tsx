@@ -1,5 +1,5 @@
-import React from "react";
-import { CheckCircle2, ExternalLink } from "lucide-react";
+import React, { useState } from "react";
+import { CheckCircle2, ExternalLink, Copy } from "lucide-react";
 import { Header } from "./ShieldForm";
 
 interface Props {
@@ -8,7 +8,14 @@ interface Props {
 }
 
 export function ClaimSuccessScreen({ txHash, onBack }: Props) {
-  const explorerUrl = `https://sepolia.starkscan.co/tx/${txHash}`;
+  const [copied, setCopied] = useState(false);
+  const explorerUrl = `https://sepolia.voyager.online/tx/${txHash}`;
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(txHash);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="flex flex-col h-[580px] bg-cloak-bg p-6 animate-fade-in">
@@ -23,7 +30,16 @@ export function ClaimSuccessScreen({ txHash, onBack }: Props) {
 
         <div className="w-full bg-cloak-card border border-cloak-border rounded-xl p-4 mb-6">
           <p className="text-xs text-cloak-text-dim mb-1">Transaction Hash</p>
-          <p className="text-xs font-mono text-cloak-text break-all">{txHash}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-mono text-cloak-text break-all flex-1">{txHash}</p>
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-cloak-primary hover:bg-cloak-primary/10 transition-colors shrink-0"
+            >
+              <Copy className="w-3 h-3" />
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
         </div>
 
         <a
@@ -32,7 +48,7 @@ export function ClaimSuccessScreen({ txHash, onBack }: Props) {
           rel="noopener noreferrer"
           className="flex items-center gap-2 text-sm text-cloak-primary hover:text-cloak-primary-hover transition-colors"
         >
-          View on Explorer
+          View on Voyager
           <ExternalLink className="w-4 h-4" />
         </a>
       </div>

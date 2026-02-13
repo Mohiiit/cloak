@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { TOKENS, parseTokenAmount, validateTongoAddress } from "@cloak/sdk";
-import { Header, TxSuccess, ErrorBox } from "./ShieldForm";
+import { Header, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote, type TxMetadata } from "../lib/storage";
 import { useContacts } from "../hooks/useContacts";
+import { TxConfirmModal } from "./TxConfirmModal";
+import { TxSuccessModal } from "./TxSuccessModal";
 
 interface Props {
   wallet: ReturnType<typeof useExtensionWallet>;
@@ -17,24 +19,33 @@ export function SendForm({ wallet: w, onBack }: Props) {
   const [addressError, setAddressError] = useState("");
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const token = TOKENS[w.selectedToken];
 
-  const handleSubmit = async () => {
+  const handleRequestConfirm = () => {
     if (!amount || !recipient) return;
     if (!validateTongoAddress(recipient.trim())) {
       setAddressError("Invalid Cloak address. Please check and try again.");
       return;
     }
     setAddressError("");
+    const erc20Amount = parseTokenAmount(amount, token.decimals);
+    const tongoAmount = erc20Amount / token.rate;
+    if (tongoAmount <= 0n) {
+      w.setError("Amount too small");
+      return;
+    }
+    setShowConfirm(true);
+  };
+
+  const handleConfirmedSubmit = async () => {
+    setShowConfirm(false);
     setLoading(true);
     try {
       const erc20Amount = parseTokenAmount(amount, token.decimals);
       const tongoAmount = erc20Amount / token.rate;
-      if (tongoAmount <= 0n) {
-        w.setError("Amount too small");
-        return;
-      }
       const hash = await w.transfer(recipient.trim(), tongoAmount);
       if (hash) {
         setTxHash(hash);
@@ -49,10 +60,19 @@ export function SendForm({ wallet: w, onBack }: Props) {
           token: w.selectedToken,
           amount: amount,
         });
+        setShowSuccess(true);
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDone = () => {
+    setShowSuccess(false);
+    setTxHash(null);
+    setRecipient("");
+    setAmount("");
+    onBack();
   };
 
   return (
@@ -109,16 +129,35 @@ export function SendForm({ wallet: w, onBack }: Props) {
         />
       </div>
 
-      {txHash && <TxSuccess hash={txHash} />}
       {w.error && <ErrorBox message={w.error} onDismiss={() => w.setError(null)} />}
 
       <button
-        onClick={handleSubmit}
+        onClick={handleRequestConfirm}
         disabled={loading || !amount || !recipient}
         className="mt-auto w-full py-3 rounded-xl bg-cloak-primary hover:bg-cloak-primary-hover text-white font-medium transition-colors disabled:opacity-50"
       >
         {loading ? "Sending..." : `Send ${w.selectedToken}`}
       </button>
+
+      <TxConfirmModal
+        visible={showConfirm}
+        action="send"
+        token={w.selectedToken}
+        amount={amount}
+        recipient={recipient.trim()}
+        onConfirm={handleConfirmedSubmit}
+        onCancel={() => setShowConfirm(false)}
+      />
+
+      {txHash && (
+        <TxSuccessModal
+          visible={showSuccess}
+          title="Payment Sent!"
+          amount={`${amount} ${w.selectedToken}`}
+          txHash={txHash}
+          onDone={handleDone}
+        />
+      )}
     </div>
   );
 }

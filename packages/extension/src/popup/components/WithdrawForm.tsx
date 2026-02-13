@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { TOKENS, parseTokenAmount } from "@cloak/sdk";
-import { Header, TxSuccess, ErrorBox } from "./ShieldForm";
+import { Header, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote } from "../lib/storage";
+import { TxConfirmModal } from "./TxConfirmModal";
+import { TxSuccessModal } from "./TxSuccessModal";
 
 interface Props {
   wallet: ReturnType<typeof useExtensionWallet>;
@@ -13,19 +15,28 @@ export function WithdrawForm({ wallet: w, onBack }: Props) {
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const token = TOKENS[w.selectedToken];
 
-  const handleSubmit = async () => {
+  const handleRequestConfirm = () => {
     if (!amount) return;
+    const erc20Amount = parseTokenAmount(amount, token.decimals);
+    const tongoAmount = erc20Amount / token.rate;
+    if (tongoAmount <= 0n) {
+      w.setError("Amount too small");
+      return;
+    }
+    setShowConfirm(true);
+  };
+
+  const handleConfirmedSubmit = async () => {
+    setShowConfirm(false);
     setLoading(true);
     try {
       const erc20Amount = parseTokenAmount(amount, token.decimals);
       const tongoAmount = erc20Amount / token.rate;
-      if (tongoAmount <= 0n) {
-        w.setError("Amount too small");
-        return;
-      }
       const hash = await w.withdraw(tongoAmount);
       if (hash) {
         setTxHash(hash);
@@ -37,10 +48,18 @@ export function WithdrawForm({ wallet: w, onBack }: Props) {
           token: w.selectedToken,
           amount: amount,
         });
+        setShowSuccess(true);
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDone = () => {
+    setShowSuccess(false);
+    setTxHash(null);
+    setAmount("");
+    onBack();
   };
 
   return (
@@ -66,16 +85,34 @@ export function WithdrawForm({ wallet: w, onBack }: Props) {
         />
       </div>
 
-      {txHash && <TxSuccess hash={txHash} />}
       {w.error && <ErrorBox message={w.error} onDismiss={() => w.setError(null)} />}
 
       <button
-        onClick={handleSubmit}
+        onClick={handleRequestConfirm}
         disabled={loading || !amount}
         className="mt-auto w-full py-3 rounded-xl bg-cloak-primary hover:bg-cloak-primary-hover text-white font-medium transition-colors disabled:opacity-50"
       >
         {loading ? "Unshielding..." : `Unshield ${w.selectedToken}`}
       </button>
+
+      <TxConfirmModal
+        visible={showConfirm}
+        action="withdraw"
+        token={w.selectedToken}
+        amount={amount}
+        onConfirm={handleConfirmedSubmit}
+        onCancel={() => setShowConfirm(false)}
+      />
+
+      {txHash && (
+        <TxSuccessModal
+          visible={showSuccess}
+          title="Tokens Unshielded!"
+          amount={`${amount} ${w.selectedToken}`}
+          txHash={txHash}
+          onDone={handleDone}
+        />
+      )}
     </div>
   );
 }
