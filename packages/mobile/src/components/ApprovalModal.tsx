@@ -22,6 +22,8 @@ import {
   deserializeCalls,
   updateRequestStatus,
   promptBiometric,
+  getSecondaryPrivateKey,
+  DualKeySigner,
 } from "../lib/twoFactor";
 
 // ─── RPC Config ──────────────────────────────────────────────────────────────
@@ -40,8 +42,10 @@ function truncate(str: string, front = 8, back = 6): string {
 function formatAction(action: string): string {
   const map: Record<string, string> = {
     fund: "Shield (Fund)",
+    shield: "Shield (Fund)",
     transfer: "Transfer",
     withdraw: "Withdraw (Unshield)",
+    unshield: "Withdraw (Unshield)",
     rollover: "Claim (Rollover)",
   };
   return map[action] || action;
@@ -105,22 +109,37 @@ function ApprovalCard({
 
     setIsApproving(true);
     try {
-      // Deserialize the calls from the approval request
       const calls = deserializeCalls(request.calls_json);
 
-      // Create provider and account with the wallet's primary key
-      // (mobile holds the real keys — this is the security model for 2FA)
+      const secondaryPk = await getSecondaryPrivateKey();
+      if (!secondaryPk) {
+        showToast("Secondary key not found — re-enable 2FA", "error");
+        return;
+      }
+
+      // DualKeySigner: starknet.js computes hash, signRaw signs with both keys
+      const dualSigner = new DualKeySigner(
+        wallet.keys!.starkPrivateKey,
+        secondaryPk,
+      );
       const provider = new RpcProvider({ nodeUrl: RPC_URL });
       const account = new Account({
         provider,
         address: wallet.keys!.starkAddress,
-        signer: wallet.keys!.starkPrivateKey,
+        signer: dualSigner,
       });
 
-      // Execute the transaction (let starknet.js auto-estimate fees & nonce)
-      const txResponse = await account.execute(calls);
+      // Fresh nonce + fee estimation (no pre-computed data needed)
+      const nonce = await account.getNonce();
+      const feeEstimate = await account.estimateInvokeFee(calls, { nonce });
 
-      // Update Supabase status
+      // Execute with dual-sig — CloakAccount validates [r1,s1,r2,s2] on-chain
+      const txResponse = await account.execute(calls, {
+        nonce,
+        resourceBounds: feeEstimate.resourceBounds,
+        tip: 0,
+      });
+
       await updateRequestStatus(
         request.id,
         "approved",
@@ -131,7 +150,6 @@ function ApprovalCard({
       onApproved();
     } catch (e: any) {
       console.warn("[ApprovalModal] Approve error:", e);
-      // Update Supabase with failure
       await updateRequestStatus(
         request.id,
         "failed",
@@ -193,11 +211,15 @@ function ApprovalCard({
             value={truncate(request.recipient)}
           />
         )}
-        <DetailRow
-          label="Tx Hash"
-          value={truncate(request.tx_hash)}
-        />
-        <DetailRow label="Nonce" value={request.nonce} />
+        {request.tx_hash ? (
+          <DetailRow
+            label="Tx Hash"
+            value={truncate(request.tx_hash)}
+          />
+        ) : null}
+        {request.nonce ? (
+          <DetailRow label="Nonce" value={request.nonce} />
+        ) : null}
       </View>
 
       {/* Buttons */}

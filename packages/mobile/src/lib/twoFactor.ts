@@ -3,7 +3,89 @@
  * Supabase REST operations for approval_requests and two_factor_configs.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ec, num } from "starknet";
+import {
+  Signer,
+  ec,
+  num,
+  type Call,
+  type SignerInterface,
+  type InvocationsSignerDetails,
+  type DeclareSignerDetails,
+  type DeployAccountSignerDetails,
+  type TypedData,
+} from "starknet";
+
+// ─── DualKeySigner ──────────────────────────────────────────────────────────
+// Extends starknet.js Signer to sign with TWO private keys.
+// starknet.js computes the tx hash internally, then calls signRaw() →
+// we sign with both keys → return [r1, s1, r2, s2].
+// CloakAccount's on-chain __validate__ checks both signatures.
+
+export class DualKeySigner extends Signer {
+  private _pk2: string;
+
+  constructor(pk1: string, pk2: string) {
+    super(pk1);
+    this._pk2 = pk2;
+  }
+
+  protected async signRaw(msgHash: string): Promise<string[]> {
+    const sig1 = ec.starkCurve.sign(msgHash, this.pk);
+    const sig2 = ec.starkCurve.sign(msgHash, this._pk2);
+    return [
+      num.toHex(sig1.r),
+      num.toHex(sig1.s),
+      num.toHex(sig2.r),
+      num.toHex(sig2.s),
+    ];
+  }
+}
+
+// ─── DualSignSigner (legacy — pre-computed combined signature) ───────────────
+// Used when signature is already computed externally (e.g. disable2FA fallback).
+
+export class DualSignSigner implements SignerInterface {
+  constructor(private sig: string[]) {}
+
+  async getPubKey(): Promise<string> {
+    return "0x0";
+  }
+
+  async signMessage(
+    _typedData: TypedData,
+    _accountAddress: string,
+  ): Promise<string[]> {
+    return this.sig;
+  }
+
+  async signTransaction(
+    _transactions: Call[],
+    _details: InvocationsSignerDetails,
+  ): Promise<string[]> {
+    return this.sig;
+  }
+
+  async signDeclareTransaction(
+    _details: DeclareSignerDetails,
+  ): Promise<string[]> {
+    return this.sig;
+  }
+
+  async signDeployAccountTransaction(
+    _details: DeployAccountSignerDetails,
+  ): Promise<string[]> {
+    return this.sig;
+  }
+}
+
+// ─── Address Normalization ──────────────────────────────────────────────────
+
+export function normalizeAddress(addr: string): string {
+  const lower = addr.toLowerCase();
+  if (!lower.startsWith("0x")) return lower;
+  const stripped = lower.slice(2).replace(/^0+/, "");
+  return "0x" + (stripped || "0");
+}
 
 // ─── Storage Keys ────────────────────────────────────────────────────────────
 
@@ -123,11 +205,14 @@ export function generateSecondaryKey(): {
   privateKey: string;
   publicKey: string;
 } {
-  const privateKeyBytes = ec.starkCurve.utils.randomPrivateKey();
-  // Convert Uint8Array to hex string without Buffer
+  // Use crypto.getRandomValues directly (polyfilled by react-native-get-random-values)
+  // instead of ec.starkCurve.utils.randomPrivateKey() which fails on iOS
+  // because @noble/curves' internal RNG lookup doesn't find the polyfill.
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
   const privateKeyHex =
     "0x" +
-    Array.from(privateKeyBytes)
+    Array.from(bytes)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   const publicKey = ec.starkCurve.getStarkKey(privateKeyHex);

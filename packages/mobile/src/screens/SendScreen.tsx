@@ -17,6 +17,7 @@ import {
 import Clipboard from "@react-native-clipboard/clipboard";
 import { ShieldPlus, ShieldOff, ArrowUpFromLine, Check } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
+import { useDualSigExecutor } from "../hooks/useDualSigExecutor";
 import { tongoToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
@@ -30,6 +31,7 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function SendScreen({ navigation }: any) {
   const wallet = useWallet();
+  const { executeDualSig, is2FAEnabled } = useDualSigExecutor();
   const modal = useThemedModal();
   const { contacts } = useContacts();
   const [step, setStep] = useState<Step>(1);
@@ -86,7 +88,13 @@ export default function SendScreen({ navigation }: any) {
     triggerMedium();
     setIsPending(true);
     try {
-      const result = await wallet.transfer(amount, recipient);
+      let result: { txHash: string };
+      if (is2FAEnabled) {
+        const { calls } = await wallet.prepareTransfer(amount, recipient);
+        result = await executeDualSig(calls);
+      } else {
+        result = await wallet.transfer(amount, recipient);
+      }
       setTxHash(result.txHash);
       await saveTxNote(result.txHash, {
         txHash: result.txHash,

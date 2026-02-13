@@ -1,5 +1,6 @@
 import { CloakClient } from "@cloak/sdk";
 import type { MessageRequest, MessageResponse } from "@/shared/messages";
+import { check2FAEnabled, request2FAApproval, normalizeAddress } from "@/shared/two-factor";
 
 // ─── Chrome Storage Adapter ─────────────────────────────────────────
 
@@ -100,7 +101,16 @@ chrome.runtime.onMessage.addListener(
   (request: MessageRequest, sender, sendResponse) => {
     handleMessage(request, sender)
       .then((data) => sendResponse({ success: true, data }))
-      .catch((err) => sendResponse({ success: false, error: err.message }));
+      .catch((err) => {
+        // Format user-friendly error messages for common failures
+        let errorMsg = err.message || "Unknown error";
+        if (errorMsg.includes("starknet_addInvokeTransaction") || errorMsg.includes("TRANSACTION_EXECUTION_ERROR")) {
+          errorMsg = "Transaction failed on-chain. If 2FA is enabled, please approve from your mobile device.";
+        } else if (errorMsg.includes("is_2fa_enabled") || errorMsg.includes("Contract not found")) {
+          errorMsg = "Could not check 2FA status. The account may not be a CloakAccount.";
+        }
+        sendResponse({ success: false, error: errorMsg });
+      });
     return true; // Keep channel open for async response
   },
 );
@@ -159,7 +169,7 @@ async function handleMessage(
       return true;
 
     case "DEPLOY_ACCOUNT":
-      return c.deployAccount();
+      return c.deployMultiSigAccount();
 
     case "IS_DEPLOYED":
       return c.isDeployed();
@@ -231,6 +241,28 @@ async function handleMessage(
       };
     }
 
+    case "BUILD_CALLS": {
+      const { token, action, amount, recipient } = request;
+      const acct = c.account(token);
+      let calls;
+      if (action === "fund") {
+        calls = (await acct.prepareFund(BigInt(amount!))).calls;
+      } else if (action === "transfer") {
+        calls = (await acct.prepareTransfer(recipient!, BigInt(amount!))).calls;
+      } else if (action === "withdraw") {
+        calls = (await acct.prepareWithdraw(BigInt(amount!))).calls;
+      } else {
+        calls = (await acct.prepareRollover()).calls;
+      }
+      return {
+        calls: calls.map((c: any) => ({
+          contractAddress: c.contractAddress,
+          entrypoint: c.entrypoint,
+          calldata: c.calldata?.map((d: any) => d.toString()),
+        })),
+      };
+    }
+
     case "GET_TX_HISTORY": {
       const acct = c.account("STRK");
       const history = await acct.getTxHistory(request.fromNonce);
@@ -264,7 +296,14 @@ async function handleWalletRpc(
 ): Promise<any> {
   // ─── Check if this method needs user approval ────────────────
   if (APPROVAL_REQUIRED_METHODS.has(method)) {
-    const approved = await requestApproval(method, params, origin);
+    // Pre-check 2FA so the approval popup can show waiting UI
+    let is2FA = false;
+    try {
+      const wallet = await c.getWallet();
+      if (wallet) is2FA = await check2FAEnabled(wallet.starkAddress);
+    } catch {}
+
+    const approved = await requestApproval(method, { ...params, _is2FA: is2FA }, origin);
     if (!approved) {
       throw new Error("Transaction rejected by user");
     }
@@ -298,6 +337,39 @@ async function handleWalletRpc(
 
       const { calls } = params;
       if (!calls?.length) throw new Error("No calls provided");
+
+      // Check if 2FA is enabled — if so, route through mobile approval
+      const is2FA = await check2FAEnabled(wallet.starkAddress);
+      if (is2FA) {
+        const result = await request2FAApproval({
+          walletAddress: wallet.starkAddress,
+          action: "invoke",
+          token: "STRK",
+          amount: null,
+          recipient: null,
+          callsJson: JSON.stringify(calls.map((c: any) => ({
+            contractAddress: c.contractAddress || c.contract_address,
+            entrypoint: c.entrypoint || c.entry_point,
+            calldata: (c.calldata || []).map((d: any) => d.toString()),
+          }))),
+          sig1Json: "[]",
+          nonce: "",
+          resourceBoundsJson: "{}",
+          txHash: "",
+          onStatusChange: (status) => {
+            chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+          },
+        });
+        chrome.runtime.sendMessage({
+          type: "2FA_COMPLETE",
+          approved: result.approved,
+          txHash: result.txHash,
+        }).catch(() => {});
+        if (result.approved && result.txHash) {
+          return { transaction_hash: result.txHash };
+        }
+        throw new Error(result.error || "Transaction not approved");
+      }
 
       const { Account, RpcProvider } = await import("starknet");
       const provider = new RpcProvider({
@@ -343,25 +415,170 @@ async function handleWalletRpc(
 
     case "cloak_fund": {
       const { token, amount } = params;
-      const acct = c.account(token || "STRK");
+      const tokenKey = token || "STRK";
+      const acct = c.account(tokenKey);
+
+      // Check 2FA — if enabled, build calls + route through mobile approval
+      const wallet = await c.getWallet();
+      if (wallet && await check2FAEnabled(wallet.starkAddress)) {
+        const prepResult = (await acct.prepareFund(BigInt(amount))).calls;
+        const serializedCalls = prepResult.map((cl: any) => ({
+          contractAddress: cl.contractAddress,
+          entrypoint: cl.entrypoint,
+          calldata: cl.calldata?.map((d: any) => d.toString()),
+        }));
+        const result = await request2FAApproval({
+          walletAddress: wallet.starkAddress,
+          action: "fund",
+          token: tokenKey,
+          amount: amount?.toString() || null,
+          recipient: null,
+          callsJson: JSON.stringify(serializedCalls),
+          sig1Json: "[]",
+          nonce: "",
+          resourceBoundsJson: "{}",
+          txHash: "",
+          onStatusChange: (status) => {
+            chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+          },
+        });
+        chrome.runtime.sendMessage({
+          type: "2FA_COMPLETE",
+          approved: result.approved,
+          txHash: result.txHash,
+        }).catch(() => {});
+        if (result.approved && result.txHash) {
+          return { txHash: result.txHash };
+        }
+        throw new Error(result.error || "Transaction not approved");
+      }
+
       return acct.fund(BigInt(amount));
     }
 
     case "cloak_transfer": {
       const { token, to, amount } = params;
-      const acct = c.account(token || "STRK");
+      const tokenKey = token || "STRK";
+      const acct = c.account(tokenKey);
+
+      const wallet = await c.getWallet();
+      if (wallet && await check2FAEnabled(wallet.starkAddress)) {
+        const prepResult = (await acct.prepareTransfer(to, BigInt(amount))).calls;
+        const serializedCalls = prepResult.map((cl: any) => ({
+          contractAddress: cl.contractAddress,
+          entrypoint: cl.entrypoint,
+          calldata: cl.calldata?.map((d: any) => d.toString()),
+        }));
+        const result = await request2FAApproval({
+          walletAddress: wallet.starkAddress,
+          action: "transfer",
+          token: tokenKey,
+          amount: amount?.toString() || null,
+          recipient: to,
+          callsJson: JSON.stringify(serializedCalls),
+          sig1Json: "[]",
+          nonce: "",
+          resourceBoundsJson: "{}",
+          txHash: "",
+          onStatusChange: (status) => {
+            chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+          },
+        });
+        chrome.runtime.sendMessage({
+          type: "2FA_COMPLETE",
+          approved: result.approved,
+          txHash: result.txHash,
+        }).catch(() => {});
+        if (result.approved && result.txHash) {
+          return { txHash: result.txHash };
+        }
+        throw new Error(result.error || "Transaction not approved");
+      }
+
       return acct.transfer(to, BigInt(amount));
     }
 
     case "cloak_withdraw": {
       const { token, amount } = params;
-      const acct = c.account(token || "STRK");
+      const tokenKey = token || "STRK";
+      const acct = c.account(tokenKey);
+
+      const wallet = await c.getWallet();
+      if (wallet && await check2FAEnabled(wallet.starkAddress)) {
+        const prepResult = (await acct.prepareWithdraw(BigInt(amount))).calls;
+        const serializedCalls = prepResult.map((cl: any) => ({
+          contractAddress: cl.contractAddress,
+          entrypoint: cl.entrypoint,
+          calldata: cl.calldata?.map((d: any) => d.toString()),
+        }));
+        const result = await request2FAApproval({
+          walletAddress: wallet.starkAddress,
+          action: "withdraw",
+          token: tokenKey,
+          amount: amount?.toString() || null,
+          recipient: null,
+          callsJson: JSON.stringify(serializedCalls),
+          sig1Json: "[]",
+          nonce: "",
+          resourceBoundsJson: "{}",
+          txHash: "",
+          onStatusChange: (status) => {
+            chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+          },
+        });
+        chrome.runtime.sendMessage({
+          type: "2FA_COMPLETE",
+          approved: result.approved,
+          txHash: result.txHash,
+        }).catch(() => {});
+        if (result.approved && result.txHash) {
+          return { txHash: result.txHash };
+        }
+        throw new Error(result.error || "Transaction not approved");
+      }
+
       return acct.withdraw(BigInt(amount));
     }
 
     case "cloak_rollover": {
       const { token } = params;
-      const acct = c.account(token || "STRK");
+      const tokenKey = token || "STRK";
+      const acct = c.account(tokenKey);
+
+      const wallet = await c.getWallet();
+      if (wallet && await check2FAEnabled(wallet.starkAddress)) {
+        const prepResult = (await acct.prepareRollover()).calls;
+        const serializedCalls = prepResult.map((cl: any) => ({
+          contractAddress: cl.contractAddress,
+          entrypoint: cl.entrypoint,
+          calldata: cl.calldata?.map((d: any) => d.toString()),
+        }));
+        const result = await request2FAApproval({
+          walletAddress: wallet.starkAddress,
+          action: "rollover",
+          token: tokenKey,
+          amount: null,
+          recipient: null,
+          callsJson: JSON.stringify(serializedCalls),
+          sig1Json: "[]",
+          nonce: "",
+          resourceBoundsJson: "{}",
+          txHash: "",
+          onStatusChange: (status) => {
+            chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+          },
+        });
+        chrome.runtime.sendMessage({
+          type: "2FA_COMPLETE",
+          approved: result.approved,
+          txHash: result.txHash,
+        }).catch(() => {});
+        if (result.approved && result.txHash) {
+          return { txHash: result.txHash };
+        }
+        throw new Error(result.error || "Transaction not approved");
+      }
+
       return acct.rollover();
     }
 

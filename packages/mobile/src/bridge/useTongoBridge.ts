@@ -91,6 +91,38 @@ export function useTongoBridge() {
     [bridge],
   );
 
+  const prepareFund = useCallback(
+    async (amount: string, sender: string) => {
+      if (!bridge) throw new Error("Bridge not ready");
+      return bridge.send("prepareFund", { amount, sender });
+    },
+    [bridge],
+  );
+
+  const prepareTransfer = useCallback(
+    async (amount: string, recipientBase58: string, sender: string) => {
+      if (!bridge) throw new Error("Bridge not ready");
+      return bridge.send("prepareTransfer", { amount, recipientBase58, sender });
+    },
+    [bridge],
+  );
+
+  const prepareWithdraw = useCallback(
+    async (amount: string, to: string, sender: string) => {
+      if (!bridge) throw new Error("Bridge not ready");
+      return bridge.send("prepareWithdraw", { amount, to, sender });
+    },
+    [bridge],
+  );
+
+  const prepareRollover = useCallback(
+    async (sender: string) => {
+      if (!bridge) throw new Error("Bridge not ready");
+      return bridge.send("prepareRollover", { sender });
+    },
+    [bridge],
+  );
+
   const switchToken = useCallback(
     async (tongoPrivateKey: string, token: string) => {
       if (!bridge) throw new Error("Bridge not ready");
@@ -139,6 +171,10 @@ export function useTongoBridge() {
     transfer,
     withdraw,
     rollover,
+    prepareFund,
+    prepareTransfer,
+    prepareWithdraw,
+    prepareRollover,
     switchToken,
     generateKeypair,
     derivePublicKey,

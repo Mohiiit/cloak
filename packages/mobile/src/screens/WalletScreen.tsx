@@ -17,20 +17,24 @@ import {
 import Clipboard from "@react-native-clipboard/clipboard";
 import { ShieldPlus, ShieldOff, Check } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
+import { useDualSigExecutor } from "../hooks/useDualSigExecutor";
 import { tongoToDisplay, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { triggerMedium } from "../lib/haptics";
 
 type Mode = "shield" | "unshield" | null;
+type SuccessInfo = { txHash: string; amount: string; type: "shield" | "unshield" | "claim" };
 
 export default function WalletScreen({ route }: any) {
   const wallet = useWallet();
+  const { executeDualSig, is2FAEnabled } = useDualSigExecutor();
   const modal = useThemedModal();
   const [mode, setMode] = useState<Mode>(null);
   const [amount, setAmount] = useState("");
   const [isPending, setIsPending] = useState(false);
-  const [claimSuccess, setClaimSuccess] = useState<{ txHash: string; amount: string } | null>(null);
+  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
+  const [copiedTx, setCopiedTx] = useState(false);
 
   // Accept route params to auto-open shield/unshield mode
   useEffect(() => {
@@ -50,20 +54,25 @@ export default function WalletScreen({ route }: any) {
     triggerMedium();
     setIsPending(true);
     try {
+      let result: { txHash: string };
       if (mode === "shield") {
-        const result = await wallet.fund(amount);
-        modal.showSuccess(
-          "Shielded!",
-          `${amount} units shielded successfully.`,
-          { txHash: result.txHash, onDismiss: () => wallet.refreshBalance() },
-        );
+        if (is2FAEnabled) {
+          const { calls } = await wallet.prepareFund(amount);
+          result = await executeDualSig(calls);
+        } else {
+          result = await wallet.fund(amount);
+        }
+        setSuccessInfo({ txHash: result.txHash, amount, type: "shield" });
+        wallet.refreshBalance();
       } else if (mode === "unshield") {
-        const result = await wallet.withdraw(amount);
-        modal.showSuccess(
-          "Unshielded!",
-          `${amount} units withdrawn to your public wallet.`,
-          { txHash: result.txHash, onDismiss: () => wallet.refreshBalance() },
-        );
+        if (is2FAEnabled) {
+          const { calls } = await wallet.prepareWithdraw(amount);
+          result = await executeDualSig(calls);
+        } else {
+          result = await wallet.withdraw(amount);
+        }
+        setSuccessInfo({ txHash: result.txHash, amount, type: "unshield" });
+        wallet.refreshBalance();
       }
       setAmount("");
       setMode(null);
@@ -74,6 +83,12 @@ export default function WalletScreen({ route }: any) {
     }
   };
 
+  const handleCopyTx = (hash: string) => {
+    Clipboard.setString(hash);
+    setCopiedTx(true);
+    setTimeout(() => setCopiedTx(false), 2000);
+  };
+
   return (
     <KeyboardAvoidingView
       behavior="padding"
@@ -82,53 +97,62 @@ export default function WalletScreen({ route }: any) {
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {modal.ModalComponent}
 
-        {claimSuccess && (
-          <View style={styles.claimSuccessCard}>
-            <Check size={48} color={colors.success} style={{ marginBottom: spacing.md }} />
-            <Text style={styles.claimSuccessTitle}>Claimed!</Text>
-            <Text style={styles.claimSuccessAmount}>
-              {claimSuccess.amount} units
+        {successInfo && (
+          <View style={styles.successCard}>
+            <View style={styles.successIconCircle}>
+              <Check size={32} color={colors.success} />
+            </View>
+            <Text style={styles.successTitle}>
+              {successInfo.type === "shield" ? "Shielded!" :
+               successInfo.type === "unshield" ? "Unshielded!" : "Claimed!"}
             </Text>
-            <Text style={styles.claimSuccessEquiv}>
-              ({tongoToDisplay(claimSuccess.amount, wallet.selectedToken)} {wallet.selectedToken})
+            <Text style={styles.successAmount}>
+              {successInfo.amount} units
             </Text>
-            <Text style={styles.claimSuccessDesc}>
-              Pending funds added to your balance.
+            <Text style={styles.successEquiv}>
+              {tongoToDisplay(successInfo.amount, wallet.selectedToken)} {wallet.selectedToken}
+            </Text>
+            <Text style={styles.successDesc}>
+              {successInfo.type === "shield"
+                ? "Funds deposited into your private pool."
+                : successInfo.type === "unshield"
+                ? "Funds withdrawn to your public wallet."
+                : "Pending funds added to your balance."}
             </Text>
 
-            <View style={styles.claimTxSection}>
-              <Text style={styles.claimTxLabel}>Transaction Hash</Text>
-              <Text style={styles.claimTxHash} numberOfLines={2} selectable>
-                {claimSuccess.txHash}
+            <View style={styles.successTxSection}>
+              <Text style={styles.successTxLabel}>Transaction Hash</Text>
+              <Text style={styles.successTxHash} numberOfLines={2} selectable>
+                {successInfo.txHash}
               </Text>
-              <View style={styles.claimTxActions}>
+              <View style={styles.successTxActions}>
                 <TouchableOpacity
-                  style={styles.claimTxBtn}
-                  onPress={() => {
-                    Clipboard.setString(claimSuccess.txHash);
-                  }}
+                  style={styles.successTxBtn}
+                  onPress={() => handleCopyTx(successInfo.txHash)}
                 >
-                  <Text style={styles.claimTxBtnText}>Copy Tx Hash</Text>
+                  <Text style={styles.successTxBtnText}>
+                    {copiedTx ? "Copied!" : "Copy Tx Hash"}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.claimTxBtn}
-                  onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${claimSuccess.txHash}`)}
+                  style={styles.successTxBtn}
+                  onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${successInfo.txHash}`)}
                 >
-                  <Text style={styles.claimTxBtnText}>View on Voyager</Text>
+                  <Text style={styles.successTxBtnText}>View on Voyager</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             <TouchableOpacity
-              style={styles.claimDoneBtn}
-              onPress={() => setClaimSuccess(null)}
+              style={styles.successDoneBtn}
+              onPress={() => setSuccessInfo(null)}
             >
-              <Text style={styles.claimDoneBtnText}>Done</Text>
+              <Text style={styles.successDoneBtnText}>Done</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {!claimSuccess && (
+        {!successInfo && (
           <>
             {/* Balance Card */}
             <View style={styles.balanceCard}>
@@ -151,8 +175,14 @@ export default function WalletScreen({ route }: any) {
                 onPress={async () => {
                   try {
                     const pendingAmount = wallet.pending;
-                    const result = await wallet.rollover();
-                    setClaimSuccess({ txHash: result.txHash, amount: pendingAmount });
+                    let result: { txHash: string };
+                    if (is2FAEnabled) {
+                      const { calls } = await wallet.prepareRollover();
+                      result = await executeDualSig(calls);
+                    } else {
+                      result = await wallet.rollover();
+                    }
+                    setSuccessInfo({ txHash: result.txHash, amount: pendingAmount, type: "claim" });
                     wallet.refreshBalance();
                   } catch (e: any) {
                     modal.showError("Error", e.message || "Claim failed", e.message);
@@ -371,8 +401,8 @@ const styles = StyleSheet.create({
   submitBtnDisabled: { opacity: 0.4 },
   submitBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
 
-  // Claim Success Card
-  claimSuccessCard: {
+  // Success Card (shared for Shield, Unshield, Claim)
+  successCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.xl,
     padding: spacing.xl,
@@ -380,32 +410,43 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(16, 185, 129, 0.3)",
   },
-  claimSuccessTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.success, marginBottom: spacing.sm },
-  claimSuccessAmount: { fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text },
-  claimSuccessEquiv: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.xs },
-  claimSuccessDesc: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.lg },
-  claimTxSection: {
+  successIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    borderWidth: 2,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
+  },
+  successTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.success, marginBottom: spacing.sm },
+  successAmount: { fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text },
+  successEquiv: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.xs },
+  successDesc: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.lg, textAlign: "center" },
+  successTxSection: {
     width: "100%",
     backgroundColor: colors.bg,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.xl,
   },
-  claimTxLabel: {
+  successTxLabel: {
     fontSize: fontSize.xs,
     color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.xs,
   },
-  claimTxHash: {
+  successTxHash: {
     fontSize: fontSize.xs,
     color: colors.text,
     fontFamily: "monospace",
     marginBottom: spacing.sm,
   },
-  claimTxActions: { flexDirection: "row", gap: spacing.sm },
-  claimTxBtn: {
+  successTxActions: { flexDirection: "row", gap: spacing.sm },
+  successTxBtn: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: borderRadius.sm,
@@ -414,16 +455,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
   },
-  claimTxBtnText: {
+  successTxBtnText: {
     fontSize: fontSize.xs,
     color: colors.primary,
     fontWeight: "600",
   },
-  claimDoneBtn: {
+  successDoneBtn: {
     backgroundColor: colors.primary,
     paddingVertical: 14,
     paddingHorizontal: 48,
     borderRadius: borderRadius.md,
+    width: "100%",
+    alignItems: "center",
   },
-  claimDoneBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
+  successDoneBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
 });

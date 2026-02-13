@@ -307,7 +307,9 @@ export class CloakAccount {
         signer: dualSigner,
       });
 
-      const tx = await dualAccount.execute(calls, { nonce, resourceBounds });
+      // tip: 0 is critical — must match prepareAndSign's hash computation (tip: 0).
+      // Without it, starknet.js auto-estimates tip from recent blocks, causing hash mismatch.
+      const tx = await dualAccount.execute(calls, { nonce, resourceBounds, tip: 0 });
       return { txHash: tx.transaction_hash };
     } catch (err: any) {
       throw new TransactionFailedError(err?.message || "Dual-sig transaction failed");

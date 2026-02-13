@@ -59,8 +59,9 @@ export function SendForm({ wallet: w, onBack }: Props) {
         setShow2FAWaiting(true);
         setTwoFAStatus("Preparing transaction...");
 
+        // Build calls only (mobile handles both signatures)
         const prepResult = await chrome.runtime.sendMessage({
-          type: "PREPARE_AND_SIGN",
+          type: "BUILD_CALLS",
           token: w.selectedToken,
           action: "transfer",
           amount: tongoAmount.toString(),
@@ -73,6 +74,7 @@ export function SendForm({ wallet: w, onBack }: Props) {
           return;
         }
 
+        // Request approval via Supabase (mobile signs with both keys)
         const result = await request2FAApproval({
           walletAddress: w.wallet!.starkAddress,
           action: "transfer",
@@ -80,10 +82,10 @@ export function SendForm({ wallet: w, onBack }: Props) {
           amount: amount,
           recipient: recipient.trim(),
           callsJson: JSON.stringify(prepResult.data.calls),
-          sig1Json: JSON.stringify(prepResult.data.sig1),
-          nonce: prepResult.data.nonce,
-          resourceBoundsJson: prepResult.data.resourceBoundsJson,
-          txHash: prepResult.data.txHash,
+          sig1Json: "[]",
+          nonce: "",
+          resourceBoundsJson: "{}",
+          txHash: "",
           onStatusChange: setTwoFAStatus,
           signal: abortController.current.signal,
         });

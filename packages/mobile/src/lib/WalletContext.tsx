@@ -47,6 +47,10 @@ type WalletState = {
   transfer: (amount: string, recipientBase58: string) => Promise<{ txHash: string }>;
   withdraw: (amount: string) => Promise<{ txHash: string }>;
   rollover: () => Promise<{ txHash: string }>;
+  prepareFund: (amount: string) => Promise<{ calls: any[] }>;
+  prepareTransfer: (amount: string, recipientBase58: string) => Promise<{ calls: any[] }>;
+  prepareWithdraw: (amount: string) => Promise<{ calls: any[] }>;
+  prepareRollover: () => Promise<{ calls: any[] }>;
   validateAddress: (base58: string) => Promise<boolean>;
 };
 
@@ -321,6 +325,35 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return bridge.rollover(keys.starkAddress);
   }, [bridge, keys]);
 
+  const prepareFund = useCallback(
+    async (amount: string) => {
+      if (!keys) throw new Error("No wallet");
+      return bridge.prepareFund(amount, keys.starkAddress);
+    },
+    [bridge, keys],
+  );
+
+  const prepareTransfer = useCallback(
+    async (amount: string, recipientBase58: string) => {
+      if (!keys) throw new Error("No wallet");
+      return bridge.prepareTransfer(amount, recipientBase58, keys.starkAddress);
+    },
+    [bridge, keys],
+  );
+
+  const prepareWithdraw = useCallback(
+    async (amount: string) => {
+      if (!keys) throw new Error("No wallet");
+      return bridge.prepareWithdraw(amount, keys.starkAddress, keys.starkAddress);
+    },
+    [bridge, keys],
+  );
+
+  const prepareRollover = useCallback(async () => {
+    if (!keys) throw new Error("No wallet");
+    return bridge.prepareRollover(keys.starkAddress);
+  }, [bridge, keys]);
+
   const validateAddress = useCallback(
     async (base58: string): Promise<boolean> => {
       if (!bridge.isReady) return false;
@@ -361,6 +394,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         transfer,
         withdraw,
         rollover,
+        prepareFund,
+        prepareTransfer,
+        prepareWithdraw,
+        prepareRollover,
         validateAddress,
       }}
     >

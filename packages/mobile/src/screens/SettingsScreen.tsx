@@ -15,13 +15,50 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
-import { useTwoFactor } from "../lib/TwoFactorContext";
+import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
+
+const TFA_STEP_ORDER: TwoFAStep[] = ["auth", "keygen", "register", "onchain"];
+
+function TFAStepRow({ step, label, currentStep }: { step: TwoFAStep; label: string; currentStep: TwoFAStep }) {
+  const currentIdx = TFA_STEP_ORDER.indexOf(currentStep);
+  const stepIdx = TFA_STEP_ORDER.indexOf(step);
+  const isActive = currentStep === step;
+  const isComplete = currentIdx > stepIdx || currentStep === "done";
+
+  return (
+    <View style={styles.stepRow}>
+      <View style={[
+        styles.stepCircle,
+        isComplete && styles.stepCircleComplete,
+        isActive && styles.stepCircleActive,
+      ]}>
+        {isComplete ? (
+          <Check size={12} color="#fff" />
+        ) : isActive ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <Circle size={8} color={colors.textMuted} />
+        )}
+      </View>
+      {stepIdx < TFA_STEP_ORDER.length - 1 && (
+        <View style={[styles.stepLine, isComplete && styles.stepLineComplete]} />
+      )}
+      <Text style={[
+        styles.stepLabel,
+        isActive && styles.stepLabelActive,
+        isComplete && styles.stepLabelComplete,
+      ]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
 
 function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
@@ -113,6 +150,7 @@ export default function SettingsScreen() {
   const [tfaUrl, setTfaUrl] = useState(twoFactor.supabaseUrl);
   const [tfaKey, setTfaKey] = useState(twoFactor.supabaseKey);
   const [tfaLoading, setTfaLoading] = useState(false);
+  const [tfaStep, setTfaStep] = useState<TwoFAStep>("idle");
 
   // Reset scroll on focus
   useFocusEffect(
@@ -316,8 +354,18 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Stepper UI (shown during enable flow) */}
+        {tfaStep !== "idle" && tfaStep !== "done" && tfaStep !== "error" && (
+          <View style={styles.stepperContainer}>
+            <TFAStepRow step="auth" label="Authenticate" currentStep={tfaStep} />
+            <TFAStepRow step="keygen" label="Generate Keys" currentStep={tfaStep} />
+            <TFAStepRow step="register" label="Register Config" currentStep={tfaStep} />
+            <TFAStepRow step="onchain" label="On-Chain Transaction" currentStep={tfaStep} />
+          </View>
+        )}
+
         {/* Secondary Public Key (if enabled) */}
-        {twoFactor.secondaryPublicKey && (
+        {twoFactor.secondaryPublicKey && tfaStep === "idle" && (
           <View style={styles.tfaKeyRow}>
             <Text style={styles.tfaKeyLabel}>Secondary Public Key</Text>
             <Text style={styles.tfaKeyValue} numberOfLines={1}>
@@ -327,23 +375,30 @@ export default function SettingsScreen() {
         )}
 
         {/* Enable / Disable buttons */}
-        {!twoFactor.isEnabled ? (
-          <TouchableOpacity
-            style={[styles.tfaEnableBtn, tfaLoading && { opacity: 0.5 }]}
-            disabled={tfaLoading}
-            onPress={async () => {
-              setTfaLoading(true);
-              await twoFactor.enable2FA();
-              setTfaLoading(false);
-            }}
-          >
-            {tfaLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
+        {!twoFactor.isEnabled && tfaStep === "idle" ? (
+          <>
+            {/* Side-effect warning */}
+            <View style={styles.tfaWarning}>
+              <AlertTriangle size={16} color={colors.warning} />
+              <Text style={styles.tfaWarningText}>
+                Enabling 2FA will require this device to approve every transaction from the extension and web app. An on-chain transaction will be submitted to register the secondary key.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.tfaEnableBtn}
+              onPress={async () => {
+                setTfaLoading(true);
+                setTfaStep("auth");
+                await twoFactor.enable2FA((step) => setTfaStep(step));
+                setTfaLoading(false);
+                // Auto-reset after a delay if done/error
+                setTimeout(() => setTfaStep("idle"), 2000);
+              }}
+            >
               <Text style={styles.tfaEnableBtnText}>Enable 2FA</Text>
-            )}
-          </TouchableOpacity>
-        ) : (
+            </TouchableOpacity>
+          </>
+        ) : twoFactor.isEnabled && tfaStep === "idle" ? (
           <TouchableOpacity
             style={[styles.tfaDisableBtn, tfaLoading && { opacity: 0.5 }]}
             disabled={tfaLoading}
@@ -359,7 +414,7 @@ export default function SettingsScreen() {
               <Text style={styles.tfaDisableBtnText}>Disable 2FA</Text>
             )}
           </TouchableOpacity>
-        )}
+        ) : null}
 
         {/* Supabase Config */}
         <View style={styles.tfaConfigSection}>
@@ -727,6 +782,75 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.textMuted,
     fontFamily: "monospace",
+  },
+
+  // Stepper styles
+  stepperContainer: {
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+    position: "relative",
+  },
+  stepCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.bg,
+    borderWidth: 2,
+    borderColor: colors.borderLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.sm,
+  },
+  stepCircleActive: {
+    borderColor: colors.primary,
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+  },
+  stepCircleComplete: {
+    borderColor: colors.success,
+    backgroundColor: colors.success,
+  },
+  stepLine: {
+    position: "absolute",
+    left: 11,
+    top: 24,
+    width: 2,
+    height: spacing.sm,
+    backgroundColor: colors.borderLight,
+  },
+  stepLineComplete: {
+    backgroundColor: colors.success,
+  },
+  stepLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+  },
+  stepLabelActive: {
+    color: colors.primary,
+    fontWeight: "600",
+  },
+  stepLabelComplete: {
+    color: colors.success,
+  },
+  tfaWarning: {
+    flexDirection: "row",
+    backgroundColor: "rgba(245, 158, 11, 0.08)",
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.2)",
+    gap: spacing.sm,
+  },
+  tfaWarningText: {
+    flex: 1,
+    fontSize: fontSize.xs,
+    color: colors.warning,
+    lineHeight: 18,
   },
 
   // 2FA styles

@@ -10,6 +10,7 @@ import React, {
   useRef,
 } from "react";
 import { AppState, AppStateStatus } from "react-native";
+import { Account, RpcProvider } from "starknet";
 import { useWallet } from "./WalletContext";
 import { useToast } from "../components/Toast";
 import {
@@ -27,9 +28,16 @@ import {
   enableTwoFactorConfig,
   disableTwoFactorConfig,
   isTwoFactorConfigured,
+  normalizeAddress,
+  DualKeySigner,
 } from "./twoFactor";
 
+const RPC_URL =
+  "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8";
+
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+export type TwoFAStep = "idle" | "auth" | "keygen" | "register" | "onchain" | "done" | "error";
 
 type TwoFactorState = {
   isEnabled: boolean;
@@ -42,8 +50,8 @@ type TwoFactorState = {
   isLoading: boolean;
 
   // Actions
-  enable2FA: () => Promise<void>;
-  disable2FA: () => Promise<void>;
+  enable2FA: (onStep?: (step: TwoFAStep) => void) => Promise<void>;
+  disable2FA: (onStep?: (step: TwoFAStep) => void) => Promise<void>;
   refresh: () => Promise<void>;
   saveConfig: (url: string, key: string) => Promise<void>;
 };
@@ -104,7 +112,7 @@ export function TwoFactorProvider({
         // Check if 2FA is configured on Supabase
         if (wallet.keys?.starkAddress) {
           const { configured } = await isTwoFactorConfigured(
-            wallet.keys.starkAddress,
+            normalizeAddress(wallet.keys.starkAddress),
           );
           setIsConfigured(configured);
           setIsEnabled(configured && !!pubKey);
@@ -123,7 +131,7 @@ export function TwoFactorProvider({
     if (!wallet.keys?.starkAddress || !isEnabled) return;
     try {
       const { data, error } = await fetchPendingRequests(
-        wallet.keys.starkAddress,
+        normalizeAddress(wallet.keys.starkAddress),
       );
       if (!error && data) {
         setPendingRequests(data);
@@ -178,45 +186,74 @@ export function TwoFactorProvider({
 
   // ── Actions ────────────────────────────────────────────────────────────
 
-  const enable2FA = useCallback(async () => {
+  const enable2FA = useCallback(async (onStep?: (step: TwoFAStep) => void) => {
     if (!wallet.keys?.starkAddress) {
       showToast("No wallet connected", "error");
       return;
     }
 
-    // Biometric gate
+    // Step 1: Biometric authentication
+    onStep?.("auth");
     const authed = await promptBiometric("Authenticate to enable 2FA");
     if (!authed) {
+      onStep?.("error");
       showToast("Biometric authentication failed", "error");
       return;
     }
 
     try {
-      // Generate new secondary key
+      // Step 2: Generate new secondary key
+      onStep?.("keygen");
       const { privateKey, publicKey } = generateSecondaryKey();
       await saveSecondaryPrivateKey(privateKey);
 
-      // Register on Supabase
+      // Step 3: Register on Supabase
+      onStep?.("register");
       const { error } = await enableTwoFactorConfig(
-        wallet.keys.starkAddress,
+        normalizeAddress(wallet.keys.starkAddress),
         publicKey,
       );
       if (error) {
+        onStep?.("error");
         showToast(`Failed to enable 2FA: ${error}`, "error");
         return;
       }
 
+      // Step 4: Set secondary key on-chain (CloakAccount enforces dual-sig)
+      onStep?.("onchain");
+      try {
+        const provider = new RpcProvider({ nodeUrl: RPC_URL });
+        const account = new Account({
+          provider,
+          address: wallet.keys.starkAddress,
+          signer: wallet.keys.starkPrivateKey,
+        });
+        const tx = await account.execute([{
+          contractAddress: wallet.keys.starkAddress,
+          entrypoint: "set_secondary_key",
+          calldata: [publicKey],
+        }]);
+        console.warn("[TwoFactorContext] set_secondary_key tx:", tx.transaction_hash);
+        await provider.waitForTransaction(tx.transaction_hash);
+      } catch (onChainErr: any) {
+        // Non-fatal: on-chain call may fail if account is OZ (not CloakAccount)
+        console.warn("[TwoFactorContext] On-chain set_secondary_key failed (may be OZ account):", onChainErr.message);
+      }
+
+      // Step 5: Done
+      onStep?.("done");
       setSecondaryPublicKey(publicKey);
       setIsConfigured(true);
       setIsEnabled(true);
       showToast("Two-Factor Authentication enabled", "success");
     } catch (e: any) {
+      onStep?.("error");
       console.warn("[TwoFactorContext] enable2FA error:", e);
       showToast(`Error enabling 2FA: ${e.message}`, "error");
     }
   }, [wallet.keys?.starkAddress, showToast]);
 
-  const disable2FA = useCallback(async () => {
+  const disable2FA = useCallback(async (onStep?: (step: TwoFAStep) => void) => {
     if (!wallet.keys?.starkAddress) {
       showToast("No wallet connected", "error");
       return;
@@ -230,8 +267,45 @@ export function TwoFactorProvider({
     }
 
     try {
+      // Remove secondary key on-chain first (requires dual-sig if 2FA is active)
+      try {
+        const secondaryPk = await getSecondaryPrivateKey();
+        const provider = new RpcProvider({ nodeUrl: RPC_URL });
+        const calls = [{
+          contractAddress: wallet.keys.starkAddress,
+          entrypoint: "remove_secondary_key",
+          calldata: [],
+        }];
+
+        if (secondaryPk) {
+          // 2FA is active — use DualKeySigner (starknet.js handles hash + signing)
+          const dualSigner = new DualKeySigner(
+            wallet.keys.starkPrivateKey,
+            secondaryPk,
+          );
+          const dualAccount = new Account({
+            provider,
+            address: wallet.keys.starkAddress,
+            signer: dualSigner,
+          });
+          const tx = await dualAccount.execute(calls, { tip: 0 });
+          console.warn("[TwoFactorContext] remove_secondary_key tx:", tx.transaction_hash);
+        } else {
+          // No secondary key locally — try single-sig (2FA may not be active on-chain)
+          const account = new Account({
+            provider,
+            address: wallet.keys.starkAddress,
+            signer: wallet.keys.starkPrivateKey,
+          });
+          const tx = await account.execute(calls);
+          console.warn("[TwoFactorContext] remove_secondary_key tx:", tx.transaction_hash);
+        }
+      } catch (onChainErr: any) {
+        console.warn("[TwoFactorContext] On-chain remove_secondary_key failed:", onChainErr.message);
+      }
+
       const { error } = await disableTwoFactorConfig(
-        wallet.keys.starkAddress,
+        normalizeAddress(wallet.keys.starkAddress),
       );
       if (error) {
         showToast(`Failed to disable 2FA: ${error}`, "error");
@@ -254,7 +328,7 @@ export function TwoFactorProvider({
     await fetchPending();
     if (wallet.keys?.starkAddress) {
       const { configured } = await isTwoFactorConfigured(
-        wallet.keys.starkAddress,
+        normalizeAddress(wallet.keys.starkAddress),
       );
       setIsConfigured(configured);
       const pubKey = await getSecondaryPublicKey();

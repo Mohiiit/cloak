@@ -7,9 +7,9 @@ import type { WalletInfo } from "./types";
 export const OZ_ACCOUNT_CLASS_HASH =
   "0x04d07e40e93398ed3c76981e72dd1fd22557a78ce36c0515f679e27f0bb5bc5f";
 
-/** CloakAccount multi-sig class hash (set after declaring on Sepolia) */
+/** CloakAccount multi-sig class hash (declared on Sepolia) */
 export const CLOAK_ACCOUNT_CLASS_HASH =
-  "0x0"; // TODO: Replace after `starkli declare` on Sepolia
+  "0x034549a00718c3158349268f26047a311019e8fd328e9819e31187467de71f00";
 
 /**
  * Compute the OZ account address from a public key.
@@ -27,13 +27,14 @@ export function computeAddress(publicKey: string, classHash = OZ_ACCOUNT_CLASS_H
 
 /**
  * Generate a new wallet keypair and compute the account address.
+ * Defaults to CloakAccount class hash (supports 2FA when enabled).
  */
-export function createWalletInfo(privateKey?: string): WalletInfo {
+export function createWalletInfo(privateKey?: string, classHash = CLOAK_ACCOUNT_CLASS_HASH): WalletInfo {
   const pk = privateKey ?? generateKey();
   assertValidKey(pk);
 
   const publicKey = "0x" + ec.starkCurve.getStarkKey(pk).replace(/^0x/, "");
-  const starkAddress = computeAddress(publicKey);
+  const starkAddress = computeAddress(publicKey, classHash);
 
   // Tongo address derived at runtime when TongoAccount is created
   return {

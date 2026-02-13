@@ -68,6 +68,15 @@ function initStarkAccount(address, privateKey) {
   return true;
 }
 
+// Serialize a call object (convert BigInt calldata to strings)
+function serializeCall(call) {
+  return {
+    contractAddress: call.contractAddress,
+    entrypoint: call.entrypoint,
+    calldata: (call.calldata || []).map(d => d.toString()),
+  };
+}
+
 // Command handlers
 const handlers = {
   // System
@@ -195,6 +204,49 @@ const handlers = {
     const nonce = await freshNonce();
     const tx = await starkAccount.execute([rolloverOp.toCalldata()], { nonce });
     return { txHash: tx.transaction_hash };
+  },
+
+  // ─── Prepare commands (return calls without signing/executing) ──────
+
+  prepareFund: async ({ amount, sender }) => {
+    if (!tongoAccount) throw new Error("Tongo account not initialized");
+    const fundOp = await tongoAccount.fund({
+      amount: BigInt(amount),
+      sender: padAddress(sender),
+    });
+    const calls = [];
+    if (fundOp.approve) calls.push(serializeCall(fundOp.approve));
+    calls.push(serializeCall(fundOp.toCalldata()));
+    return { calls };
+  },
+
+  prepareTransfer: async ({ amount, recipientBase58, sender }) => {
+    if (!tongoAccount) throw new Error("Tongo account not initialized");
+    const recipientPubKey = pubKeyBase58ToAffine(recipientBase58);
+    const transferOp = await tongoAccount.transfer({
+      amount: BigInt(amount),
+      to: recipientPubKey,
+      sender: padAddress(sender),
+    });
+    return { calls: [serializeCall(transferOp.toCalldata())] };
+  },
+
+  prepareWithdraw: async ({ amount, to, sender }) => {
+    if (!tongoAccount) throw new Error("Tongo account not initialized");
+    const withdrawOp = await tongoAccount.withdraw({
+      amount: BigInt(amount),
+      to: padAddress(to),
+      sender: padAddress(sender),
+    });
+    return { calls: [serializeCall(withdrawOp.toCalldata())] };
+  },
+
+  prepareRollover: async ({ sender }) => {
+    if (!tongoAccount) throw new Error("Tongo account not initialized");
+    const rolloverOp = await tongoAccount.rollover({
+      sender: padAddress(sender),
+    });
+    return { calls: [serializeCall(rolloverOp.toCalldata())] };
   },
 
   // Transaction history

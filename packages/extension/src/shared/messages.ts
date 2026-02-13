@@ -18,6 +18,7 @@ export type MessageRequest =
   | { type: "WITHDRAW"; token: TokenKey; amount: string }
   | { type: "ROLLOVER"; token: TokenKey }
   | { type: "PREPARE_AND_SIGN"; token: TokenKey; action: string; amount?: string; recipient?: string }
+  | { type: "BUILD_CALLS"; token: TokenKey; action: string; amount?: string; recipient?: string }
   | { type: "GET_TX_HISTORY"; fromNonce: number }
   | { type: "WALLET_RPC"; method: string; params?: any }
   // ─── Approval popup messages ────────────────────────────────────

@@ -1,22 +1,60 @@
-// ─── 2FA approval system via Supabase ────────────────────────────────
+// ─── 2FA approval system via Supabase + on-chain ─────────────────────
 
 import { getSupabaseLite } from "./supabase-config";
 
 const POLL_INTERVAL_MS = 2000;
 const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-// ─── Check if a wallet has 2FA enabled ──────────────────────────────
+const RPC_URL =
+  "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8";
+
+// ─── Address normalization ────────────────────────────────────────────
+
+export function normalizeAddress(addr: string): string {
+  const lower = addr.toLowerCase();
+  if (!lower.startsWith("0x")) return lower;
+  const stripped = lower.slice(2).replace(/^0+/, "");
+  return "0x" + (stripped || "0");
+}
+
+// ─── Check if a wallet has 2FA enabled (on-chain first, Supabase fallback) ──
 
 export async function check2FAEnabled(walletAddress: string): Promise<boolean> {
+  // Try on-chain check first (CloakAccount contract)
+  const onChain = await check2FAEnabledOnChain(walletAddress);
+  if (onChain) return true;
+
+  // Fallback to Supabase check (for OZ accounts or if on-chain check fails)
   try {
+    const normalizedAddr = normalizeAddress(walletAddress);
     const sb = await getSupabaseLite();
     const rows = await sb.select("two_factor_configs", {
-      wallet_address: `eq.${walletAddress}`,
+      wallet_address: `eq.${normalizedAddr}`,
       is_enabled: "eq.true",
     });
     return rows.length > 0;
   } catch (err) {
     console.warn("[2FA] Failed to check 2FA status:", err);
+    return false;
+  }
+}
+
+/**
+ * Check if 2FA is enabled on-chain by reading the CloakAccount contract.
+ * Returns false if the account is not a CloakAccount or if the call fails.
+ */
+export async function check2FAEnabledOnChain(walletAddress: string): Promise<boolean> {
+  try {
+    const { RpcProvider } = await import("starknet");
+    const provider = new RpcProvider({ nodeUrl: RPC_URL });
+    const result = await provider.callContract({
+      contractAddress: walletAddress,
+      entrypoint: "is_2fa_enabled",
+      calldata: [],
+    });
+    return result[0] !== "0x0" && result[0] !== "0";
+  } catch {
+    // Not a CloakAccount or not deployed — 2FA not enabled on-chain
     return false;
   }
 }
@@ -63,13 +101,14 @@ export async function request2FAApproval(
   } = params;
 
   const sb = await getSupabaseLite();
+  const normalizedAddress = normalizeAddress(walletAddress);
 
   // 1. Insert the approval request
   onStatusChange?.("Submitting approval request...");
   let requestRow: any;
   try {
     requestRow = await sb.insert("approval_requests", {
-      wallet_address: walletAddress,
+      wallet_address: normalizedAddress,
       action,
       token,
       amount,
