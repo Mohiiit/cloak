@@ -1,10 +1,17 @@
-import { RpcProvider, Account, type Call } from "starknet";
+import { RpcProvider, Account, Contract, type Call } from "starknet";
 import { Account as TongoAccount } from "@fatsolutions/tongo-sdk";
 import { CloakAccount } from "./account";
 import { generateKey, isValidKey, assertValidKey } from "./keys";
 import { padAddress } from "./address";
 import { TOKENS } from "./tokens";
-import { createWalletInfo, computeAddress, buildDeployAccountPayload, OZ_ACCOUNT_CLASS_HASH } from "./wallet";
+import {
+  createWalletInfo,
+  computeAddress,
+  computeMultiSigAddress,
+  buildDeployAccountPayload,
+  OZ_ACCOUNT_CLASS_HASH,
+  CLOAK_ACCOUNT_CLASS_HASH,
+} from "./wallet";
 import { MemoryStorage } from "./storage/memory";
 import { WalletNotFoundError, InvalidKeyError } from "./errors";
 import type { CloakClientConfig, StorageAdapter, TokenKey, WalletInfo, Network } from "./types";
@@ -178,7 +185,7 @@ export class CloakClient {
       this.provider as any,
     );
 
-    return new CloakAccount(tongoAccount, this._starkAccount, token);
+    return new CloakAccount(tongoAccount, this._starkAccount, token, this._privateKey ?? undefined);
   }
 
   private _privateKey: string | null = null;
@@ -205,9 +212,109 @@ export class CloakClient {
     return true;
   }
 
+  // ─── Multi-sig / 2FA ─────────────────────────────────────────────
+
+  /**
+   * Deploy a NEW CloakAccount (multi-sig capable) on-chain.
+   * The account must be funded with ETH/STRK for gas before calling this.
+   */
+  async deployMultiSigAccount(): Promise<string> {
+    const wallet = await this.getWallet();
+    if (!wallet) throw new WalletNotFoundError();
+
+    const payload = buildDeployAccountPayload(wallet.publicKey, CLOAK_ACCOUNT_CLASS_HASH);
+
+    const account = new Account({
+      provider: this.provider,
+      address: payload.contractAddress,
+      signer: wallet.privateKey,
+    });
+
+    const { transaction_hash } = await account.deployAccount({
+      classHash: payload.classHash,
+      constructorCalldata: payload.constructorCalldata,
+      addressSalt: payload.addressSalt,
+    });
+
+    return transaction_hash;
+  }
+
+  /**
+   * Set the secondary (2FA) public key on a deployed CloakAccount.
+   * This is a self-call: the account calls set_secondary_key on itself.
+   */
+  async setSecondaryKey(secondaryPubKey: string): Promise<string> {
+    if (!this._starkAccount) throw new WalletNotFoundError();
+
+    const call: Call = {
+      contractAddress: this._starkAccount.address,
+      entrypoint: "set_secondary_key",
+      calldata: [secondaryPubKey],
+    };
+
+    const tx = await this._starkAccount.execute([call]);
+    return tx.transaction_hash;
+  }
+
+  /**
+   * Remove the secondary key (disable 2FA) on the CloakAccount.
+   */
+  async removeSecondaryKey(): Promise<string> {
+    if (!this._starkAccount) throw new WalletNotFoundError();
+
+    const call: Call = {
+      contractAddress: this._starkAccount.address,
+      entrypoint: "remove_secondary_key",
+      calldata: [],
+    };
+
+    const tx = await this._starkAccount.execute([call]);
+    return tx.transaction_hash;
+  }
+
+  /**
+   * Check if 2FA is enabled on-chain by reading the contract state.
+   */
+  async is2FAEnabled(): Promise<boolean> {
+    const wallet = await this.getWallet();
+    if (!wallet) return false;
+
+    try {
+      const result = await this.provider.callContract({
+        contractAddress: wallet.starkAddress,
+        entrypoint: "is_2fa_enabled",
+        calldata: [],
+      });
+      return result[0] !== "0x0" && result[0] !== "0";
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get the secondary public key from on-chain contract state.
+   * Returns "0x0" if 2FA is not enabled.
+   */
+  async getSecondaryKey(): Promise<string> {
+    const wallet = await this.getWallet();
+    if (!wallet) return "0x0";
+
+    try {
+      const result = await this.provider.callContract({
+        contractAddress: wallet.starkAddress,
+        entrypoint: "get_secondary_key",
+        calldata: [],
+      });
+      return result[0];
+    } catch {
+      return "0x0";
+    }
+  }
+
   // ─── Static utilities ─────────────────────────────────────────────
 
   static generateKey = generateKey;
   static isValidKey = isValidKey;
   static computeAddress = computeAddress;
+  static computeMultiSigAddress = computeMultiSigAddress;
 }

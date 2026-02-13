@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Settings,
   Shield,
@@ -14,10 +14,13 @@ import {
   Globe,
   Users,
   Lock,
+  Smartphone,
+  Save,
 } from "lucide-react";
 import { useAccount } from "@starknet-react/core";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { getSettings, saveSettings, clearAllData } from "~~/lib/storage";
+import { getSupabaseConfig, saveSupabaseConfig, check2FAEnabled } from "~~/lib/two-factor";
 import toast from "react-hot-toast";
 
 export default function SettingsPage() {
@@ -26,6 +29,23 @@ export default function SettingsPage() {
   const [showKey, setShowKey] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const settings = getSettings();
+
+  // 2FA state
+  const supabaseConfig = typeof window !== "undefined" ? getSupabaseConfig() : { url: "", key: "" };
+  const [supabaseUrl, setSupabaseUrl] = useState(supabaseConfig.url);
+  const [supabaseKey, setSupabaseKey] = useState(supabaseConfig.key);
+  const [twoFAEnabled, setTwoFAEnabled] = useState<boolean | null>(null);
+  const [checking2FA, setChecking2FA] = useState(false);
+
+  // Check 2FA status on mount / address change
+  useEffect(() => {
+    if (!starkAddress) return;
+    setChecking2FA(true);
+    check2FAEnabled(starkAddress)
+      .then(setTwoFAEnabled)
+      .catch(() => setTwoFAEnabled(null))
+      .finally(() => setChecking2FA(false));
+  }, [starkAddress]);
 
   if (status !== "connected") {
     return (
@@ -112,6 +132,89 @@ export default function SettingsPage() {
             <span className="text-sm text-slate-300">Sepolia Testnet</span>
           </div>
           <span className="text-[10px] px-2 py-0.5 bg-blue-600/20 text-blue-400 rounded-full font-medium">Active</span>
+        </div>
+      </div>
+
+      {/* Two-Factor Authentication */}
+      <div className="relative overflow-hidden bg-slate-800/50 rounded-xl p-4 border border-slate-700/30 border-l-4 border-l-cyan-500/50">
+        <div className="absolute -top-8 -right-8 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl" />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-3">
+            <Smartphone className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm font-medium text-slate-200">
+              Two-Factor Authentication
+            </span>
+          </div>
+
+          {/* 2FA Status */}
+          <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3 mb-3">
+            <span className="text-sm text-slate-300">Status</span>
+            {checking2FA ? (
+              <span className="text-xs text-slate-500">Checking...</span>
+            ) : twoFAEnabled === true ? (
+              <span className="text-xs px-2 py-0.5 bg-green-600/20 text-green-400 rounded-full font-medium">
+                Enabled
+              </span>
+            ) : twoFAEnabled === false ? (
+              <span className="text-xs px-2 py-0.5 bg-slate-600/20 text-slate-400 rounded-full font-medium">
+                Disabled
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-0.5 bg-yellow-600/20 text-yellow-400 rounded-full font-medium">
+                Unknown
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-slate-500 mb-3">
+            Enable or disable 2FA from the Cloak mobile app. Transactions will require mobile approval when enabled.
+          </p>
+
+          {/* Supabase config */}
+          <div className="space-y-2">
+            <div>
+              <label className="text-[11px] text-slate-500 mb-1 block">
+                Supabase URL
+              </label>
+              <input
+                type="text"
+                value={supabaseUrl}
+                onChange={(e) => setSupabaseUrl(e.target.value)}
+                placeholder="https://your-project.supabase.co"
+                className="w-full bg-slate-900 rounded-lg border border-slate-700/50 px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-cyan-500/50 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-500 mb-1 block">
+                Supabase Anon Key
+              </label>
+              <input
+                type="password"
+                value={supabaseKey}
+                onChange={(e) => setSupabaseKey(e.target.value)}
+                placeholder="sb_publishable_..."
+                className="w-full bg-slate-900 rounded-lg border border-slate-700/50 px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-cyan-500/50 transition-colors"
+              />
+            </div>
+            <button
+              onClick={() => {
+                saveSupabaseConfig(supabaseUrl, supabaseKey);
+                toast.success("Supabase config saved");
+                // Re-check 2FA status with new config
+                if (starkAddress) {
+                  setChecking2FA(true);
+                  check2FAEnabled(starkAddress)
+                    .then(setTwoFAEnabled)
+                    .catch(() => setTwoFAEnabled(null))
+                    .finally(() => setChecking2FA(false));
+                }
+              }}
+              className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600/30 transition-colors"
+            >
+              <Save className="w-3.5 h-3.5" />
+              Save Config
+            </button>
+          </div>
         </div>
       </div>
 

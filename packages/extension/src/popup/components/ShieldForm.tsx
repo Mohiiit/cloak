@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { ArrowLeft } from "lucide-react";
 import { TOKENS, parseTokenAmount } from "@cloak/sdk";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote } from "../lib/storage";
+import { check2FAEnabled, request2FAApproval } from "@/shared/two-factor";
 import { TxConfirmModal } from "./TxConfirmModal";
 import { TxSuccessModal } from "./TxSuccessModal";
+import { TwoFactorWaiting } from "./TwoFactorWaiting";
 
 interface Props {
   wallet: ReturnType<typeof useExtensionWallet>;
@@ -17,6 +19,9 @@ export function ShieldForm({ wallet: w, onBack }: Props) {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [show2FAWaiting, setShow2FAWaiting] = useState(false);
+  const [twoFAStatus, setTwoFAStatus] = useState("");
+  const abortController = useRef<AbortController | null>(null);
 
   const token = TOKENS[w.selectedToken];
 
@@ -35,6 +40,65 @@ export function ShieldForm({ wallet: w, onBack }: Props) {
     setShowConfirm(false);
     setLoading(true);
     try {
+      // ─── 2FA gate ─────────────────────────────────────────────
+      const is2FA = await check2FAEnabled(w.wallet!.starkAddress);
+      if (is2FA) {
+        const erc20Amount = parseTokenAmount(amount, token.decimals);
+        const tongoAmount = erc20Amount / token.rate;
+
+        abortController.current = new AbortController();
+        setShow2FAWaiting(true);
+        setTwoFAStatus("Preparing transaction...");
+
+        // Ask background to prepare + sign
+        const prepResult = await chrome.runtime.sendMessage({
+          type: "PREPARE_AND_SIGN",
+          token: w.selectedToken,
+          action: "fund",
+          amount: tongoAmount.toString(),
+        });
+
+        if (!prepResult.success) {
+          setShow2FAWaiting(false);
+          w.setError(prepResult.error || "Failed to prepare transaction");
+          return;
+        }
+
+        // Request approval via Supabase
+        const result = await request2FAApproval({
+          walletAddress: w.wallet!.starkAddress,
+          action: "fund",
+          token: w.selectedToken,
+          amount: amount,
+          recipient: null,
+          callsJson: JSON.stringify(prepResult.data.calls),
+          sig1Json: JSON.stringify(prepResult.data.sig1),
+          nonce: prepResult.data.nonce,
+          resourceBoundsJson: prepResult.data.resourceBoundsJson,
+          txHash: prepResult.data.txHash,
+          onStatusChange: setTwoFAStatus,
+          signal: abortController.current.signal,
+        });
+
+        setShow2FAWaiting(false);
+        if (result.approved && result.txHash) {
+          setTxHash(result.txHash);
+          await saveTxNote(result.txHash, {
+            txHash: result.txHash,
+            privacyLevel: "private",
+            timestamp: Date.now(),
+            type: "fund",
+            token: w.selectedToken,
+            amount: amount,
+          });
+          setShowSuccess(true);
+        } else {
+          w.setError(result.error || "Approval denied");
+        }
+        return; // Skip normal execution
+      }
+
+      // ─── Normal (non-2FA) execution ───────────────────────────
       const erc20Amount = parseTokenAmount(amount, token.decimals);
       const tongoAmount = erc20Amount / token.rate;
       const hash = await w.fund(tongoAmount);
@@ -113,6 +177,16 @@ export function ShieldForm({ wallet: w, onBack }: Props) {
           onDone={handleDone}
         />
       )}
+
+      <TwoFactorWaiting
+        isOpen={show2FAWaiting}
+        status={twoFAStatus}
+        onCancel={() => {
+          abortController.current?.abort();
+          setShow2FAWaiting(false);
+          setLoading(false);
+        }}
+      />
     </div>
   );
 }

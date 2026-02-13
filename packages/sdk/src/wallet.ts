@@ -7,6 +7,10 @@ import type { WalletInfo } from "./types";
 export const OZ_ACCOUNT_CLASS_HASH =
   "0x04d07e40e93398ed3c76981e72dd1fd22557a78ce36c0515f679e27f0bb5bc5f";
 
+/** CloakAccount multi-sig class hash (set after declaring on Sepolia) */
+export const CLOAK_ACCOUNT_CLASS_HASH =
+  "0x0"; // TODO: Replace after `starkli declare` on Sepolia
+
 /**
  * Compute the OZ account address from a public key.
  */
@@ -38,6 +42,13 @@ export function createWalletInfo(privateKey?: string): WalletInfo {
     starkAddress,
     tongoAddress: "", // Filled in by CloakClient after TongoAccount init
   };
+}
+
+/**
+ * Compute the CloakAccount (multi-sig) address from a public key.
+ */
+export function computeMultiSigAddress(publicKey: string): string {
+  return computeAddress(publicKey, CLOAK_ACCOUNT_CLASS_HASH);
 }
 
 /**

@@ -16,6 +16,10 @@ import { useTongoBalance } from "~~/hooks/useTongoBalance";
 import { useTongoFund } from "~~/hooks/useTongoFund";
 import { useTongoWithdraw } from "~~/hooks/useTongoWithdraw";
 import { useTongoRollover } from "~~/hooks/useTongoRollover";
+import { use2FA } from "~~/hooks/use2FA";
+import { check2FAEnabled } from "~~/lib/two-factor";
+import { TwoFactorWaiting } from "~~/components/TwoFactorWaiting";
+import { padAddress } from "~~/lib/address";
 import {
   TOKENS,
   type TokenKey,
@@ -134,7 +138,7 @@ function AmountModal({
 }
 
 export default function WalletPage() {
-  const { status } = useAccount();
+  const { status, address } = useAccount();
   const {
     selectedToken,
     tongoAccount,
@@ -150,6 +154,7 @@ export default function WalletPage() {
   const { fund, isPending: fundPending } = useTongoFund();
   const { withdraw, isPending: withdrawPending } = useTongoWithdraw();
   const { rollover, isPending: rolloverPending } = useTongoRollover();
+  const { gate, isWaiting: is2FAWaiting, status: twoFAStatus, cancel: cancel2FA } = use2FA();
 
   const [showBalance, setShowBalance] = useState(false);
   const [showFundModal, setShowFundModal] = useState(false);
@@ -171,10 +176,49 @@ export default function WalletPage() {
   }
 
   const handleFund = async (amountStr: string) => {
-    if (!tongoAccount) return;
+    if (!tongoAccount || !address) return;
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
       const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
+
+      // Check if 2FA is enabled for this wallet
+      const is2FA = await check2FAEnabled(address);
+      if (is2FA) {
+        // Prepare calls to serialize for mobile approval
+        const fundOp = await tongoAccount.fund({
+          amount: tongoAmount,
+          sender: padAddress(address),
+        });
+        const calls: any[] = [];
+        if (fundOp.approve) calls.push(fundOp.approve);
+        calls.push(fundOp.toCalldata());
+        const callsJson = JSON.stringify(calls, (_k, v) =>
+          typeof v === "bigint" ? v.toString() : v,
+        );
+
+        setShowFundModal(false);
+
+        const result = await gate({
+          walletAddress: address,
+          action: "shield",
+          token: selectedToken,
+          amount: amountStr,
+          callsJson,
+          sig1Json: "[]", // web cannot sign — mobile handles both keys
+          nonce: Date.now().toString(),
+          resourceBoundsJson: "{}",
+          txHash: "",
+        });
+
+        if (result.approved) {
+          toast.success("Funds shielded (approved via mobile)!");
+          setTimeout(refresh, 3000);
+        } else {
+          toast.error(result.error || "2FA approval failed");
+        }
+        return;
+      }
+
       const txHash = await fund(tongoAmount);
       if (txHash) {
         toast.success("Funds shielded!");
@@ -187,10 +231,48 @@ export default function WalletPage() {
   };
 
   const handleWithdraw = async (amountStr: string) => {
-    if (!tongoAccount) return;
+    if (!tongoAccount || !address) return;
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
       const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
+
+      // Check if 2FA is enabled for this wallet
+      const is2FA = await check2FAEnabled(address);
+      if (is2FA) {
+        // Prepare calls to serialize for mobile approval
+        const withdrawOp = await tongoAccount.withdraw({
+          amount: tongoAmount,
+          to: padAddress(address),
+          sender: padAddress(address),
+        });
+        const calls = [withdrawOp.toCalldata()];
+        const callsJson = JSON.stringify(calls, (_k, v) =>
+          typeof v === "bigint" ? v.toString() : v,
+        );
+
+        setShowWithdrawModal(false);
+
+        const result = await gate({
+          walletAddress: address,
+          action: "unshield",
+          token: selectedToken,
+          amount: amountStr,
+          callsJson,
+          sig1Json: "[]", // web cannot sign — mobile handles both keys
+          nonce: Date.now().toString(),
+          resourceBoundsJson: "{}",
+          txHash: "",
+        });
+
+        if (result.approved) {
+          toast.success("Funds unshielded (approved via mobile)!");
+          setTimeout(refresh, 3000);
+        } else {
+          toast.error(result.error || "2FA approval failed");
+        }
+        return;
+      }
+
       const txHash = await withdraw(tongoAmount);
       if (txHash) {
         toast.success("Funds unshielded!");
@@ -350,6 +432,13 @@ export default function WalletPage() {
           isPending={withdrawPending}
         />
       )}
+
+      {/* 2FA Waiting Modal */}
+      <TwoFactorWaiting
+        isOpen={is2FAWaiting}
+        status={twoFAStatus}
+        onCancel={cancel2FA}
+      />
     </div>
   );
 }

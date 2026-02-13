@@ -203,6 +203,34 @@ async function handleMessage(
       return acct.rollover();
     }
 
+    case "PREPARE_AND_SIGN": {
+      const { token, action, amount, recipient } = request;
+      const acct = c.account(token);
+      let calls;
+      if (action === "fund") {
+        calls = (await acct.prepareFund(BigInt(amount!))).calls;
+      } else if (action === "transfer") {
+        calls = (await acct.prepareTransfer(recipient!, BigInt(amount!))).calls;
+      } else if (action === "withdraw") {
+        calls = (await acct.prepareWithdraw(BigInt(amount!))).calls;
+      } else {
+        calls = (await acct.prepareRollover()).calls;
+      }
+      const result = await acct.prepareAndSign(calls);
+      // Serialize calls for message passing (BigInt -> string)
+      return {
+        calls: result.calls.map((c: any) => ({
+          contractAddress: c.contractAddress,
+          entrypoint: c.entrypoint,
+          calldata: c.calldata?.map((d: any) => d.toString()),
+        })),
+        txHash: result.txHash,
+        sig1: result.sig1,
+        nonce: result.nonce,
+        resourceBoundsJson: result.resourceBoundsJson,
+      };
+    }
+
     case "GET_TX_HISTORY": {
       const acct = c.account("STRK");
       const history = await acct.getTxHistory(request.fromNonce);

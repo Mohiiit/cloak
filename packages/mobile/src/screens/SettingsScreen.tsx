@@ -10,14 +10,16 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
+import { useTwoFactor } from "../lib/TwoFactorContext";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 
@@ -98,6 +100,7 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
 export default function SettingsScreen() {
   const wallet = useWallet();
   const modal = useThemedModal();
+  const twoFactor = useTwoFactor();
   const { contacts, addContact, removeContact, refresh: refreshContacts } = useContacts();
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
@@ -105,6 +108,11 @@ export default function SettingsScreen() {
   const [newContactAddr, setNewContactAddr] = useState("");
   const scrollRef = useRef<ScrollView>(null);
   const [qrModal, setQrModal] = useState<{ label: string; value: string } | null>(null);
+
+  // 2FA config state
+  const [tfaUrl, setTfaUrl] = useState(twoFactor.supabaseUrl);
+  const [tfaKey, setTfaKey] = useState(twoFactor.supabaseKey);
+  const [tfaLoading, setTfaLoading] = useState(false);
 
   // Reset scroll on focus
   useFocusEffect(
@@ -276,6 +284,113 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         )}
+      </View>
+
+      {/* Two-Factor Authentication */}
+      <View style={[styles.section, styles.tfaSection]}>
+        <View style={styles.sectionHeader}>
+          <Lock size={18} color={colors.primary} />
+          <Text style={styles.sectionTitle}>Two-Factor Authentication</Text>
+        </View>
+        <Text style={styles.sectionDesc}>
+          Require mobile approval for extension transactions.
+        </Text>
+
+        {/* Status badge */}
+        <View style={styles.tfaStatusRow}>
+          <Text style={styles.tfaStatusLabel}>Status</Text>
+          <View
+            style={[
+              styles.tfaBadge,
+              twoFactor.isEnabled ? styles.tfaBadgeActive : styles.tfaBadgeInactive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.tfaBadgeText,
+                twoFactor.isEnabled ? styles.tfaBadgeTextActive : styles.tfaBadgeTextInactive,
+              ]}
+            >
+              {twoFactor.isEnabled ? "Active" : "Inactive"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Secondary Public Key (if enabled) */}
+        {twoFactor.secondaryPublicKey && (
+          <View style={styles.tfaKeyRow}>
+            <Text style={styles.tfaKeyLabel}>Secondary Public Key</Text>
+            <Text style={styles.tfaKeyValue} numberOfLines={1}>
+              {twoFactor.secondaryPublicKey.slice(0, 12)}...{twoFactor.secondaryPublicKey.slice(-8)}
+            </Text>
+          </View>
+        )}
+
+        {/* Enable / Disable buttons */}
+        {!twoFactor.isEnabled ? (
+          <TouchableOpacity
+            style={[styles.tfaEnableBtn, tfaLoading && { opacity: 0.5 }]}
+            disabled={tfaLoading}
+            onPress={async () => {
+              setTfaLoading(true);
+              await twoFactor.enable2FA();
+              setTfaLoading(false);
+            }}
+          >
+            {tfaLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.tfaEnableBtnText}>Enable 2FA</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.tfaDisableBtn, tfaLoading && { opacity: 0.5 }]}
+            disabled={tfaLoading}
+            onPress={async () => {
+              setTfaLoading(true);
+              await twoFactor.disable2FA();
+              setTfaLoading(false);
+            }}
+          >
+            {tfaLoading ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <Text style={styles.tfaDisableBtnText}>Disable 2FA</Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* Supabase Config */}
+        <View style={styles.tfaConfigSection}>
+          <Text style={styles.tfaConfigTitle}>Supabase Config</Text>
+          <TextInput
+            style={styles.tfaInput}
+            placeholder="Supabase URL"
+            placeholderTextColor={colors.textMuted}
+            value={tfaUrl}
+            onChangeText={setTfaUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TextInput
+            style={styles.tfaInput}
+            placeholder="Supabase Anon Key"
+            placeholderTextColor={colors.textMuted}
+            value={tfaKey}
+            onChangeText={setTfaKey}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            style={styles.tfaSaveBtn}
+            onPress={async () => {
+              await twoFactor.saveConfig(tfaUrl.trim(), tfaKey.trim());
+            }}
+          >
+            <Text style={styles.tfaSaveBtnText}>Save Config</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Network */}
@@ -612,6 +727,118 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.textMuted,
     fontFamily: "monospace",
+  },
+
+  // 2FA styles
+  tfaSection: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  tfaStatusRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  tfaStatusLabel: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+  },
+  tfaBadge: {
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  tfaBadgeActive: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+  },
+  tfaBadgeInactive: {
+    backgroundColor: "rgba(100, 116, 139, 0.15)",
+  },
+  tfaBadgeText: {
+    fontSize: fontSize.xs,
+    fontWeight: "600",
+  },
+  tfaBadgeTextActive: {
+    color: colors.success,
+  },
+  tfaBadgeTextInactive: {
+    color: colors.textMuted,
+  },
+  tfaKeyRow: {
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  tfaKeyLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  tfaKeyValue: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+    fontFamily: "monospace",
+  },
+  tfaEnableBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  tfaEnableBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: fontSize.sm,
+  },
+  tfaDisableBtn: {
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    marginBottom: spacing.md,
+  },
+  tfaDisableBtnText: {
+    color: colors.error,
+    fontWeight: "600",
+    fontSize: fontSize.sm,
+  },
+  tfaConfigSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  tfaConfigTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  tfaInput: {
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: fontSize.sm,
+    color: colors.text,
+  },
+  tfaSaveBtn: {
+    backgroundColor: colors.surfaceLight,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+    alignItems: "center",
+  },
+  tfaSaveBtnText: {
+    color: colors.text,
+    fontSize: fontSize.sm,
+    fontWeight: "500",
   },
 
   aboutSection: { alignItems: "center", paddingVertical: spacing.xl },

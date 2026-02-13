@@ -3,7 +3,7 @@ export { CloakClient } from "./client";
 export { CloakAccount } from "./account";
 
 // Wallet utilities
-export { computeAddress, createWalletInfo, OZ_ACCOUNT_CLASS_HASH } from "./wallet";
+export { computeAddress, computeMultiSigAddress, createWalletInfo, OZ_ACCOUNT_CLASS_HASH, CLOAK_ACCOUNT_CLASS_HASH } from "./wallet";
 
 // Key utilities
 export { generateKey, isValidKey, CURVE_ORDER } from "./keys";
@@ -27,6 +27,23 @@ export {
   InsufficientBalanceError,
   TransactionFailedError,
 } from "./errors";
+
+// Two-factor utilities
+export {
+  signTransactionHash,
+  combinedSignature,
+  serializeCalls,
+  deserializeCalls,
+} from "./two-factor";
+export type {
+  TwoFactorAction,
+  ApprovalStatus,
+  TwoFactorConfig,
+  ApprovalRequest,
+} from "./two-factor";
+
+// Supabase client
+export { SupabaseLite } from "./supabase";
 
 // Types
 export type {

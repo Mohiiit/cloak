@@ -19,6 +19,10 @@ import { useTongo } from "~~/components/providers/TongoProvider";
 import { useTongoBalance } from "~~/hooks/useTongoBalance";
 import { useTongoTransfer } from "~~/hooks/useTongoTransfer";
 import { useContacts } from "~~/hooks/useContacts";
+import { use2FA } from "~~/hooks/use2FA";
+import { check2FAEnabled } from "~~/lib/two-factor";
+import { TwoFactorWaiting } from "~~/components/TwoFactorWaiting";
+import { padAddress } from "~~/lib/address";
 import { TOKENS, parseTokenAmount } from "~~/lib/tokens";
 import { saveTxNote } from "~~/lib/storage";
 import toast from "react-hot-toast";
@@ -27,11 +31,12 @@ type Step = "recipient" | "amount" | "note" | "success";
 
 export default function SendPage() {
   const router = useRouter();
-  const { status } = useAccount();
+  const { status, address } = useAccount();
   const { selectedToken, tongoAccount, tongoAddress } = useTongo();
   const { shieldedDisplay, balance } = useTongoBalance();
   const { transfer, isPending } = useTongoTransfer();
   const { contacts } = useContacts();
+  const { gate, isWaiting: is2FAWaiting, status: twoFAStatus, cancel: cancel2FA } = use2FA();
   const tokenConfig = TOKENS[selectedToken];
 
   const [step, setStep] = useState<Step>("recipient");
@@ -57,11 +62,62 @@ export default function SendPage() {
   }
 
   const handleSend = async () => {
-    if (!tongoAccount || !recipientAddress || !amount) return;
+    if (!tongoAccount || !recipientAddress || !amount || !address) return;
 
     try {
       const erc20Amount = parseTokenAmount(amount, tokenConfig.decimals);
       const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
+
+      // Check if 2FA is enabled for this wallet
+      const is2FA = await check2FAEnabled(address);
+      if (is2FA) {
+        // Prepare transfer calls to serialize for mobile approval
+        const { pubKeyBase58ToAffine } = await import("@fatsolutions/tongo-sdk");
+        const recipientPubKey = pubKeyBase58ToAffine(recipientAddress);
+        const transferOp = await tongoAccount.transfer({
+          amount: tongoAmount,
+          to: recipientPubKey,
+          sender: padAddress(address),
+        });
+        const calls = [transferOp.toCalldata()];
+        const callsJson = JSON.stringify(calls, (_k, v) =>
+          typeof v === "bigint" ? v.toString() : v,
+        );
+
+        const result = await gate({
+          walletAddress: address,
+          action: "transfer",
+          token: selectedToken,
+          amount,
+          recipient: recipientAddress,
+          callsJson,
+          sig1Json: "[]", // web cannot sign — mobile handles both keys
+          nonce: Date.now().toString(),
+          resourceBoundsJson: "{}",
+          txHash: "",
+        });
+
+        if (result.approved) {
+          const finalHash = result.txHash || "";
+          setTxHash(finalHash);
+          saveTxNote(finalHash, {
+            txHash: finalHash,
+            recipient: recipientAddress,
+            recipientName: recipientName || undefined,
+            note: note || undefined,
+            privacyLevel,
+            timestamp: Math.floor(Date.now() / 1000),
+            type: "send",
+            token: selectedToken,
+            amount,
+          });
+          toast.success("Payment sent (approved via mobile)!");
+          setStep("success");
+        } else {
+          toast.error(result.error || "2FA approval failed");
+        }
+        return;
+      }
 
       const hash = await transfer(recipientAddress, tongoAmount);
       if (hash) {
@@ -459,6 +515,13 @@ export default function SendPage() {
           </div>
         </div>
       )}
+
+      {/* 2FA Waiting Modal */}
+      <TwoFactorWaiting
+        isOpen={is2FAWaiting}
+        status={twoFAStatus}
+        onCancel={cancel2FA}
+      />
     </div>
   );
 }
