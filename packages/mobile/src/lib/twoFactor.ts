@@ -208,8 +208,13 @@ export function generateSecondaryKey(): {
   // Use crypto.getRandomValues directly (polyfilled by react-native-get-random-values)
   // instead of ec.starkCurve.utils.randomPrivateKey() which fails on iOS
   // because @noble/curves' internal RNG lookup doesn't find the polyfill.
+  //
+  // The Stark curve order is ~2^251, so we generate 32 bytes (256 bits) and
+  // mask the top byte to ensure the value fits within the valid range.
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
+  // Mask top byte to keep value < 2^251 (well within Stark curve order)
+  bytes[0] = bytes[0] & 0x07;
   const privateKeyHex =
     "0x" +
     Array.from(bytes)
@@ -407,11 +412,36 @@ export async function enableTwoFactorConfig(
   secondaryPubKey: string,
 ): Promise<{ data: any; error: string | null }> {
   const sb = await getSupabaseLite();
-  return sb.post("two_factor_configs", {
-    wallet_address: walletAddress,
-    secondary_public_key: secondaryPubKey,
-    is_enabled: true,
-  });
+  // Use upsert with on_conflict so re-enabling doesn't fail
+  // if a row already exists for this wallet address.
+  const upsertHeaders = {
+    apikey: sb.key,
+    Authorization: `Bearer ${sb.key}`,
+    "Content-Type": "application/json",
+    Prefer: "return=representation,resolution=merge-duplicates",
+  };
+  try {
+    const res = await fetch(
+      `${sb.url}/rest/v1/two_factor_configs?on_conflict=wallet_address`,
+      {
+        method: "POST",
+        headers: upsertHeaders,
+        body: JSON.stringify({
+          wallet_address: walletAddress,
+          secondary_public_key: secondaryPubKey,
+          is_enabled: true,
+        }),
+      },
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      return { data: null, error: text };
+    }
+    const data = await res.json();
+    return { data, error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
 }
 
 export async function disableTwoFactorConfig(

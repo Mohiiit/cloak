@@ -146,9 +146,7 @@ export default function SettingsScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [qrModal, setQrModal] = useState<{ label: string; value: string } | null>(null);
 
-  // 2FA config state
-  const [tfaUrl, setTfaUrl] = useState(twoFactor.supabaseUrl);
-  const [tfaKey, setTfaKey] = useState(twoFactor.supabaseKey);
+  // 2FA state
   const [tfaLoading, setTfaLoading] = useState(false);
   const [tfaStep, setTfaStep] = useState<TwoFAStep>("idle");
 
@@ -391,8 +389,9 @@ export default function SettingsScreen() {
                 setTfaStep("auth");
                 await twoFactor.enable2FA((step) => setTfaStep(step));
                 setTfaLoading(false);
-                // Auto-reset after a delay if done/error
-                setTimeout(() => setTfaStep("idle"), 2000);
+                // Reset after done (longer delay on error so user can read it)
+                const delay = twoFactor.isEnabled ? 2000 : 5000;
+                setTimeout(() => setTfaStep("idle"), delay);
               }}
             >
               <Text style={styles.tfaEnableBtnText}>Enable 2FA</Text>
@@ -416,36 +415,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* Supabase Config */}
-        <View style={styles.tfaConfigSection}>
-          <Text style={styles.tfaConfigTitle}>Supabase Config</Text>
-          <TextInput
-            style={styles.tfaInput}
-            placeholder="Supabase URL"
-            placeholderTextColor={colors.textMuted}
-            value={tfaUrl}
-            onChangeText={setTfaUrl}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            style={styles.tfaInput}
-            placeholder="Supabase Anon Key"
-            placeholderTextColor={colors.textMuted}
-            value={tfaKey}
-            onChangeText={setTfaKey}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TouchableOpacity
-            style={styles.tfaSaveBtn}
-            onPress={async () => {
-              await twoFactor.saveConfig(tfaUrl.trim(), tfaKey.trim());
-            }}
-          >
-            <Text style={styles.tfaSaveBtnText}>Save Config</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Supabase config is hardcoded — no need to expose in UI */}
       </View>
 
       {/* Network */}
@@ -932,37 +902,6 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontWeight: "600",
     fontSize: fontSize.sm,
-  },
-  tfaConfigSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    paddingTop: spacing.md,
-    gap: spacing.sm,
-  },
-  tfaConfigTitle: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  tfaInput: {
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    fontSize: fontSize.sm,
-    color: colors.text,
-  },
-  tfaSaveBtn: {
-    backgroundColor: colors.surfaceLight,
-    paddingVertical: 10,
-    borderRadius: borderRadius.md,
-    alignItems: "center",
-  },
-  tfaSaveBtnText: {
-    color: colors.text,
-    fontSize: fontSize.sm,
-    fontWeight: "500",
   },
 
   aboutSection: { alignItems: "center", paddingVertical: spacing.xl },
