@@ -17,7 +17,7 @@ import { useTongoFund } from "~~/hooks/useTongoFund";
 import { useTongoWithdraw } from "~~/hooks/useTongoWithdraw";
 import { useTongoRollover } from "~~/hooks/useTongoRollover";
 import { use2FA } from "~~/hooks/use2FA";
-import { check2FAEnabled } from "~~/lib/two-factor";
+import { check2FAEnabled, fetchWalletNonce } from "~~/lib/two-factor";
 import { TwoFactorWaiting } from "~~/components/TwoFactorWaiting";
 import { padAddress } from "~~/lib/address";
 import {
@@ -205,7 +205,7 @@ export default function WalletPage() {
           amount: amountStr,
           callsJson,
           sig1Json: "[]", // web cannot sign — mobile handles both keys
-          nonce: Date.now().toString(),
+          nonce: await fetchWalletNonce(address),
           resourceBoundsJson: "{}",
           txHash: "",
         });
@@ -259,7 +259,7 @@ export default function WalletPage() {
           amount: amountStr,
           callsJson,
           sig1Json: "[]", // web cannot sign — mobile handles both keys
-          nonce: Date.now().toString(),
+          nonce: await fetchWalletNonce(address),
           resourceBoundsJson: "{}",
           txHash: "",
         });

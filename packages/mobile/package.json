@@ -19,6 +19,7 @@
     "lucide-react-native": "^0.563.0",
     "react": "19.2.0",
     "react-native": "0.83.1",
+    "react-native-biometrics": "^3.0.1",
     "react-native-get-random-values": "^2.0.0",
     "react-native-haptic-feedback": "^2.3.3",
     "react-native-qrcode-svg": "^6.3.21",

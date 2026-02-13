@@ -20,7 +20,7 @@ import { useTongoBalance } from "~~/hooks/useTongoBalance";
 import { useTongoTransfer } from "~~/hooks/useTongoTransfer";
 import { useContacts } from "~~/hooks/useContacts";
 import { use2FA } from "~~/hooks/use2FA";
-import { check2FAEnabled } from "~~/lib/two-factor";
+import { check2FAEnabled, fetchWalletNonce } from "~~/lib/two-factor";
 import { TwoFactorWaiting } from "~~/components/TwoFactorWaiting";
 import { padAddress } from "~~/lib/address";
 import { TOKENS, parseTokenAmount } from "~~/lib/tokens";
@@ -92,7 +92,7 @@ export default function SendPage() {
           recipient: recipientAddress,
           callsJson,
           sig1Json: "[]", // web cannot sign — mobile handles both keys
-          nonce: Date.now().toString(),
+          nonce: await fetchWalletNonce(address),
           resourceBoundsJson: "{}",
           txHash: "",
         });

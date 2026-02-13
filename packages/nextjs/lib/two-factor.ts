@@ -182,6 +182,22 @@ export interface ApprovalResult {
  *
  * Polls every 2 seconds with a 5 minute timeout.
  */
+/**
+ * Fetch the on-chain nonce for a wallet address.
+ * Falls back to "auto" if the RPC call fails.
+ */
+export async function fetchWalletNonce(walletAddress: string): Promise<string> {
+  try {
+    const { RpcProvider } = await import("starknet");
+    const provider = new RpcProvider({ nodeUrl: "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8" });
+    const nonce = await provider.getNonceForAddress(normalizeAddress(walletAddress));
+    return nonce.toString();
+  } catch {
+    console.warn("[2FA] Failed to fetch nonce");
+    return "auto";
+  }
+}
+
 export async function request2FAApproval(
   params: ApprovalRequestParams,
 ): Promise<ApprovalResult> {
