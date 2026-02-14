@@ -1,0 +1,15 @@
+appId: ${APP_ID}
+---
+- assertVisible:
+    id: deploy.account.deploy.press
+- tapOn:
+    id: deploy.account.deploy.press
+- extendedWaitUntil:
+    visible:
+      id: deploy.status
+      text: deploy.status=deployed
+    timeout: 120000
+- extendedWaitUntil:
+    visible:
+      id: home.quick.send.press
+    timeout: 120000

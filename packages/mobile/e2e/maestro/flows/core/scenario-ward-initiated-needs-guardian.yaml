@@ -1,0 +1,16 @@
+appId: ${APP_ID}
+name: scenario-ward-initiated-needs-guardian
+---
+- runFlow:
+    file: ../shared/fill-send-form.yaml
+- tapOn:
+    id: send.confirm.send.press
+- assertVisible:
+    id: transaction.router.path
+    text: transaction.router.path=ward
+- assertVisible:
+    id: approval.queue.count
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: core-ward-initiated-needs-guardian

@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+name: scenario-guardian-approve-path
+---
+- assertVisible:
+    id: approval.guardian.approve.press
+    optional: true
+- tapOn:
+    id: approval.guardian.approve.press
+    optional: true
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: ward-guardian-approve

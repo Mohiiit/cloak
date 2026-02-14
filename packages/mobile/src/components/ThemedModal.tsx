@@ -14,6 +14,7 @@ import {
 import Clipboard from "@react-native-clipboard/clipboard";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { triggerSuccess, triggerError } from "../lib/haptics";
+import { testIDs, testProps } from "../testing/testIDs";
 
 type ModalType = "success" | "error" | "confirm";
 
@@ -156,11 +157,17 @@ function TxHashRow({ txHash }: { txHash: string }) {
         <Text style={styles.txHash} numberOfLines={1}>
           {txHash.slice(0, 20)}...{txHash.slice(-6)}
         </Text>
-        <TouchableOpacity onPress={handleCopy}>
+        <TouchableOpacity
+          {...testProps(testIDs.themedModal.txCopy)}
+          onPress={handleCopy}
+        >
           <Text style={styles.txCopyBtn}>{copied ? "Copied!" : "Copy"}</Text>
         </TouchableOpacity>
       </View>
-      <TouchableOpacity onPress={handleViewOnVoyager}>
+      <TouchableOpacity
+        {...testProps(testIDs.themedModal.txViewVoyager)}
+        onPress={handleViewOnVoyager}
+      >
         <Text style={styles.voyagerLink}>View on Voyager</Text>
       </TouchableOpacity>
     </View>
@@ -179,7 +186,10 @@ function ErrorDetailsSection({ details }: { details: string }) {
 
   return (
     <View style={styles.errorDetailsSection}>
-      <TouchableOpacity onPress={() => setExpanded(!expanded)}>
+      <TouchableOpacity
+        {...testProps(testIDs.themedModal.errorDetailsToggle)}
+        onPress={() => setExpanded(!expanded)}
+      >
         <Text style={styles.showDetailsToggle}>
           {expanded ? "Hide Details" : "Show Details"}
         </Text>
@@ -189,7 +199,11 @@ function ErrorDetailsSection({ details }: { details: string }) {
           <Text style={styles.errorDetailsText}>{details}</Text>
         </ScrollView>
       )}
-      <TouchableOpacity style={styles.reportBtn} onPress={handleReport}>
+      <TouchableOpacity
+        {...testProps(testIDs.themedModal.errorCopyReport)}
+        style={styles.reportBtn}
+        onPress={handleReport}
+      >
         <Text style={styles.reportBtnText}>
           {reportCopied ? "Copied!" : "Copy Error Report"}
         </Text>
@@ -249,6 +263,7 @@ function ThemedModal({
           {config.type === "confirm" ? (
             <View style={styles.buttonRow}>
               <TouchableOpacity
+                {...testProps(testIDs.themedModal.cancel)}
                 style={styles.cancelButton}
                 onPress={onClose}
               >
@@ -257,6 +272,7 @@ function ThemedModal({
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
+                {...testProps(testIDs.themedModal.confirm)}
                 style={[
                   styles.confirmButton,
                   config.destructive && styles.destructiveButton,
@@ -278,6 +294,7 @@ function ThemedModal({
             </View>
           ) : (
             <TouchableOpacity
+              {...testProps(testIDs.themedModal.ok)}
               style={[styles.okButton, { backgroundColor: iconColor + "20" }]}
               onPress={onClose}
             >

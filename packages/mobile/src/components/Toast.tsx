@@ -8,8 +8,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  View,
 } from "react-native";
 import { colors, fontSize, borderRadius, spacing } from "../lib/theme";
+import { testIDs, testProps } from "../testing/testIDs";
 
 type ToastType = "error" | "warning" | "success" | "info";
 
@@ -40,6 +42,7 @@ const TYPE_COLORS: Record<ToastType, string> = {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [lastToastType, setLastToastType] = useState<ToastType | "none">("none");
   const translateY = useRef(new Animated.Value(-100)).current;
   const idCounter = useRef(0);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,6 +61,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
       const id = ++idCounter.current;
       setToast({ message, type, id });
+      setLastToastType(type);
       translateY.setValue(-100);
 
       Animated.timing(translateY, {
@@ -77,6 +81,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
+      <View pointerEvents="none" style={styles.markerContainer} accessible={false}>
+        <Text
+          {...testProps(testIDs.markers.toastLastType)}
+          style={styles.markerText}
+          accessible={false}
+        >
+          {`toast.last.type=${lastToastType}`}
+        </Text>
+      </View>
       {toast && (
         <Animated.View
           style={[
@@ -85,6 +98,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           ]}
         >
           <TouchableOpacity
+            {...testProps(testIDs.toast.dismiss)}
             style={styles.touchable}
             onPress={dismiss}
             activeOpacity={0.8}
@@ -122,5 +136,18 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.sm,
     lineHeight: fontSize.sm * 1.4,
+  },
+  markerContainer: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 2,
+    height: 2,
+    opacity: 0.01,
+  },
+  markerText: {
+    fontSize: 1,
+    lineHeight: 1,
+    color: "#000000",
   },
 });

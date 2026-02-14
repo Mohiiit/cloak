@@ -1,0 +1,23 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: ./open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- scrollUntilVisible:
+    element:
+      id: settings.ward.create.press
+    direction: DOWN
+- tapOn:
+    id: settings.ward.create.press
+- tapOn:
+    id: modal.themed.confirm.press
+- extendedWaitUntil:
+    visible:
+      id: ward.creation.status
+      text: ward.creation.status=done
+    timeout: 180000
+- tapOn:
+    id: settings.ward.creation.done.press
+    optional: true

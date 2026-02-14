@@ -11,14 +11,13 @@ import {
   ScrollView,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { ShieldPlus, ShieldOff, ArrowUpFromLine, Check, ClipboardPaste } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
+import { tongoUnitToErc20Display } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -26,6 +25,7 @@ import { useThemedModal } from "../components/ThemedModal";
 import { FeeRetryModal } from "../components/FeeRetryModal";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { triggerMedium } from "../lib/haptics";
+import { testIDs, testProps } from "../testing/testIDs";
 
 const QUICK_EMOJIS = ["🍕", "🍔", "🍺", "🎵", "🏠", "🚗", "🎮", "💰", "🎉", "🎂"];
 
@@ -52,7 +52,7 @@ export default function SendScreen({ navigation }: any) {
 
   useEffect(() => {
     wallet.refreshTxHistory();
-  }, []);
+  }, [wallet]);
 
   const conversionHint = `1 unit = ${tongoUnitToErc20Display("1", wallet.selectedToken)}`;
 
@@ -228,6 +228,7 @@ export default function SendScreen({ navigation }: any) {
             )}
             <View style={styles.addressInputRow}>
               <TextInput
+                {...testProps(testIDs.send.recipientInput)}
                 style={styles.addressInput}
                 placeholder="Enter recipient's Cloak address"
                 placeholderTextColor={colors.textMuted}
@@ -241,6 +242,7 @@ export default function SendScreen({ navigation }: any) {
                 numberOfLines={2}
               />
               <TouchableOpacity
+                {...testProps(testIDs.send.recipientPaste)}
                 style={styles.pasteBtn}
                 onPress={async () => {
                   const text = await Clipboard.getString();
@@ -254,6 +256,7 @@ export default function SendScreen({ navigation }: any) {
               <Text style={styles.errorText}>{addressError}</Text>
             ) : null}
             <TouchableOpacity
+              {...testProps(testIDs.send.recipientNext)}
               style={[styles.nextBtn, (!recipient || isValidating) && styles.nextBtnDisabled]}
               onPress={handleNextRecipient}
               disabled={!recipient || isValidating}
@@ -311,6 +314,7 @@ export default function SendScreen({ navigation }: any) {
             </Text>
             <View style={styles.amountInputRow}>
               <TextInput
+                {...testProps(testIDs.send.amountInput)}
                 style={styles.amountInput}
                 placeholder="0"
                 placeholderTextColor={colors.textMuted}
@@ -328,10 +332,15 @@ export default function SendScreen({ navigation }: any) {
               <Text style={styles.errorText}>{amountError}</Text>
             ) : null}
             <View style={styles.navRow}>
-              <TouchableOpacity style={styles.backBtn} onPress={() => setStep(1)}>
+              <TouchableOpacity
+                {...testProps(testIDs.send.amountBack)}
+                style={styles.backBtn}
+                onPress={() => setStep(1)}
+              >
                 <Text style={styles.backBtnText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                {...testProps(testIDs.send.amountNext)}
                 style={[styles.nextBtn, { flex: 2 }, !amount && styles.nextBtnDisabled]}
                 onPress={validateAndNext}
                 disabled={!amount}
@@ -363,6 +372,7 @@ export default function SendScreen({ navigation }: any) {
             {/* Note */}
             <Text style={styles.noteLabel}>Add a note (optional)</Text>
             <TextInput
+              {...testProps(testIDs.send.noteInput)}
               style={styles.noteInput}
               placeholder="Pizza night!"
               placeholderTextColor={colors.textMuted}
@@ -383,10 +393,15 @@ export default function SendScreen({ navigation }: any) {
             </View>
 
             <View style={styles.navRow}>
-              <TouchableOpacity style={styles.backBtn} onPress={() => setStep(2)}>
+              <TouchableOpacity
+                {...testProps(testIDs.send.confirmBack)}
+                style={styles.backBtn}
+                onPress={() => setStep(2)}
+              >
                 <Text style={styles.backBtnText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                {...testProps(testIDs.send.confirmSend)}
                 style={[styles.sendBtn, { flex: 2 }]}
                 onPress={() => { setFeeRetryCount(0); handleSend(); }}
                 disabled={isPending}
@@ -424,10 +439,15 @@ export default function SendScreen({ navigation }: any) {
                 {txHash}
               </Text>
               <View style={styles.txActionRow}>
-                <TouchableOpacity style={styles.txActionBtn} onPress={handleCopyTx}>
+                <TouchableOpacity
+                  {...testProps(testIDs.send.successCopyTx)}
+                  style={styles.txActionBtn}
+                  onPress={handleCopyTx}
+                >
                   <Text style={styles.txActionBtnText}>{txCopied ? "Copied!" : "Copy Tx Hash"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  {...testProps(testIDs.send.successViewVoyager)}
                   style={styles.txActionBtn}
                   onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${txHash}`)}
                 >
@@ -436,10 +456,17 @@ export default function SendScreen({ navigation }: any) {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.doneBtn} onPress={reset}>
+            <TouchableOpacity
+              {...testProps(testIDs.send.successSendAnother)}
+              style={styles.doneBtn}
+              onPress={reset}
+            >
               <Text style={styles.doneBtnText}>Send Another</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate("Home")}>
+            <TouchableOpacity
+              {...testProps(testIDs.send.successGoHome)}
+              onPress={() => navigation.navigate("Home")}
+            >
               <Text style={styles.goHomeText}>Go Home</Text>
             </TouchableOpacity>
           </View>

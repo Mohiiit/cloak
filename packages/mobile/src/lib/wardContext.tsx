@@ -54,6 +54,7 @@ import {
   deserializeCalls,
   DualSignSigner,
 } from "./twoFactor";
+import { isMockMode } from "../testing/runtimeConfig";
 
 const STORAGE_KEY_IS_WARD = "cloak_is_ward";
 const STORAGE_KEY_GUARDIAN_ADDR = "cloak_guardian_address";
@@ -62,6 +63,16 @@ const STORAGE_KEY_PARTIAL_WARD = "cloak_partial_ward";
 const MAX_GAS_RETRIES = 2;
 
 const WARD_CREATION_TOTAL_STEPS = 6;
+
+function createDeterministicHex(seed: string, length = 64): string {
+  let out = "";
+  for (let i = 0; out.length < length; i += 1) {
+    const charCode = seed.charCodeAt(i % seed.length);
+    const mixed = (charCode + i * 13 + seed.length * 29) & 0xff;
+    out += mixed.toString(16).padStart(2, "0");
+  }
+  return `0x${out.slice(0, length)}`;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -173,6 +184,20 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     if (!wallet.keys?.starkAddress) return false;
     setIsCheckingWard(true);
     try {
+      if (isMockMode()) {
+        const [cachedFlag, guardianAddr] = await AsyncStorage.multiGet([
+          STORAGE_KEY_IS_WARD,
+          STORAGE_KEY_GUARDIAN_ADDR,
+        ]);
+        const isWardAccount = cachedFlag[1] === "true" || !!guardianAddr[1];
+        setIsWard(isWardAccount);
+        await AsyncStorage.setItem(
+          STORAGE_KEY_IS_WARD,
+          isWardAccount ? "true" : "false",
+        );
+        return isWardAccount;
+      }
+
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const isWardAccount = await sdkCheckIfWardAccount(provider as any, wallet.keys.starkAddress);
       setIsWard(isWardAccount);
@@ -194,6 +219,36 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const refreshWardInfo = useCallback(async () => {
     if (!wallet.keys?.starkAddress) return;
     try {
+      if (isMockMode()) {
+        const [cachedGuardian, cachedWardInfo] = await AsyncStorage.multiGet([
+          STORAGE_KEY_GUARDIAN_ADDR,
+          STORAGE_KEY_WARD_INFO,
+        ]);
+
+        if (cachedWardInfo[1]) {
+          const parsed = JSON.parse(cachedWardInfo[1]) as WardInfo;
+          setWardInfo(parsed);
+          wardInfoRef.current = parsed;
+          return;
+        }
+
+        if (cachedGuardian[1]) {
+          const mockInfo: WardInfo = {
+            guardianAddress: cachedGuardian[1],
+            guardianPublicKey: createDeterministicHex("guardian_pubkey"),
+            isGuardian2faEnabled: false,
+            is2faEnabled: false,
+            isFrozen: false,
+            spendingLimitPerTx: "0",
+            requireGuardianForAll: true,
+          };
+          setWardInfo(mockInfo);
+          wardInfoRef.current = mockInfo;
+          await AsyncStorage.setItem(STORAGE_KEY_WARD_INFO, JSON.stringify(mockInfo));
+        }
+        return;
+      }
+
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const info = await sdkFetchWardInfo(provider as any, wallet.keys.starkAddress);
       if (info) {
@@ -344,6 +399,57 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const createWard = useCallback(async (onProgress?: WardCreationProgress) => {
     if (!wallet.keys) throw new Error("No wallet keys");
 
+    if (isMockMode()) {
+      const counterRaw = await AsyncStorage.getItem("cloak_mock_ward_counter");
+      const counter = Number(counterRaw || "0") + 1;
+      await AsyncStorage.setItem("cloak_mock_ward_counter", String(counter));
+
+      const wardPrivateKey = createDeterministicHex(`ward_pk_${counter}`);
+      const wardPublicKey = createDeterministicHex(`ward_pub_${counter}`);
+      const wardAddress = createDeterministicHex(`ward_addr_${counter}`);
+      const guardianPublicKey = wallet.keys.starkPublicKey;
+
+      for (const step of [1, 2, 3, 4, 5, 6]) {
+        const stepMessage =
+          step === 1
+            ? "Generating ward keys..."
+            : step === 2
+              ? "Deploying ward contract..."
+              : step === 3
+                ? "Waiting for deployment confirmation..."
+                : step === 4
+                  ? "Funding ward with 0.5 STRK..."
+                  : step === 5
+                    ? "Adding STRK as known token..."
+                    : "Registering ward in database...";
+        onProgress?.(step, WARD_CREATION_TOTAL_STEPS, stepMessage);
+      }
+
+      const sb = await getSupabaseLite();
+      await sb.insert("ward_configs", {
+        ward_address: normalizeAddress(wardAddress),
+        guardian_address: normalizeAddress(wallet.keys.starkAddress),
+        ward_public_key: wardPublicKey,
+        guardian_public_key: guardianPublicKey,
+        status: "active",
+        require_guardian_for_all: true,
+      });
+
+      await AsyncStorage.removeItem(STORAGE_KEY_PARTIAL_WARD);
+      setPartialWard(null);
+
+      const qrPayload = JSON.stringify({
+        type: "cloak_ward_invite",
+        wardAddress,
+        wardPrivateKey,
+        guardianAddress: wallet.keys.starkAddress,
+        network: "sepolia",
+      });
+
+      await refreshWards();
+      return { wardAddress, wardPrivateKey, qrPayload };
+    }
+
     const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
 
     // Step 1: Generate ward keypair
@@ -398,11 +504,14 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       wardPrivateKey, wardPublicKey, guardianPublicKey,
       4, onProgress,
     );
-  }, [wallet.keys, finishWardCreation]);
+  }, [wallet.keys, finishWardCreation, refreshWards]);
 
   /** Retry a partially-created ward from where it left off */
   const retryPartialWard = useCallback(async (onProgress?: WardCreationProgress) => {
     if (!wallet.keys) throw new Error("No wallet keys");
+    if (isMockMode()) {
+      return createWard(onProgress);
+    }
     const raw = await AsyncStorage.getItem(STORAGE_KEY_PARTIAL_WARD);
     if (!raw) throw new Error("No partial ward state found");
 
@@ -425,7 +534,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       partial.wardPrivateKey, partial.wardPublicKey, partial.guardianPublicKey,
       partial.failedAtStep, onProgress,
     );
-  }, [wallet.keys, finishWardCreation]);
+  }, [wallet.keys, finishWardCreation, createWard]);
 
   const clearPartialWard = useCallback(async () => {
     await AsyncStorage.removeItem(STORAGE_KEY_PARTIAL_WARD);
@@ -622,6 +731,36 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
   const approveAsWard = useCallback(async (request: WardApprovalRequest) => {
     if (!wallet.keys) throw new Error("No wallet keys");
+    if (isMockMode()) {
+      const sb = await getSupabaseLite();
+      const txHash = createDeterministicHex(`ward_tx_${Date.now()}`);
+      const updateBody: Record<string, any> = {
+        nonce: "1",
+        resource_bounds_json: "{}",
+        tx_hash: txHash,
+        ward_sig_json: JSON.stringify(["0x1", "0x2"]),
+        status: request.needs_guardian ? "pending_guardian" : "approved",
+        responded_at: new Date().toISOString(),
+      };
+
+      if (!request.needs_guardian) {
+        updateBody.final_tx_hash = txHash;
+      }
+      if (request.needs_ward_2fa) {
+        updateBody.ward_2fa_sig_json = JSON.stringify(["0x3", "0x4"]);
+      }
+
+      await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+      await fetchWardSignRequests();
+      await fetchGuardianRequests();
+      showToast(
+        request.needs_guardian
+          ? "Ward signature submitted"
+          : "Ward transaction confirmed",
+        "success",
+      );
+      return;
+    }
 
     const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
     const calls = deserializeCalls(request.calls_json);
@@ -750,10 +889,26 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     }
 
     throw new Error("Max gas retries exceeded");
-  }, [wallet.keys, fetchWardSignRequests, showToast]);
+  }, [wallet.keys, fetchWardSignRequests, fetchGuardianRequests, showToast]);
 
   const approveAsGuardian = useCallback(async (request: WardApprovalRequest) => {
     if (!wallet.keys) throw new Error("No wallet keys");
+    if (isMockMode()) {
+      const sb = await getSupabaseLite();
+      const txHash = createDeterministicHex(`guardian_tx_${Date.now()}`);
+      await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+        guardian_sig_json: JSON.stringify(["0x5", "0x6"]),
+        guardian_2fa_sig_json: request.needs_guardian_2fa
+          ? JSON.stringify(["0x7", "0x8"])
+          : null,
+        status: "approved",
+        final_tx_hash: txHash,
+        responded_at: new Date().toISOString(),
+      });
+      await fetchGuardianRequests();
+      showToast("Guardian approval confirmed", "success");
+      return;
+    }
 
     const guardianSig = signHash(request.tx_hash, wallet.keys.starkPrivateKey);
 
@@ -866,6 +1021,50 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     if (!wallet.keys?.starkAddress) {
       throw new Error("No wallet connected");
     }
+    if (isMockMode()) {
+      const sb = await getSupabaseLite();
+      const now = new Date();
+      const txHash = createDeterministicHex(`mock_ward_request_${now.getTime()}`);
+      const requestId = `mock-ward-${now.getTime()}`;
+      const secondaryPk = await getSecondaryPrivateKey();
+      const needsWard2fa = !!secondaryPk;
+      const status = needsWard2fa ? "pending_ward_sig" : "pending_guardian";
+      const guardianAddress =
+        wardInfoRef.current?.guardianAddress ||
+        (await AsyncStorage.getItem(STORAGE_KEY_GUARDIAN_ADDR)) ||
+        wallet.keys.starkAddress;
+
+      await sb.insert("ward_approval_requests", {
+        id: requestId,
+        ward_address: normalizeAddress(wallet.keys.starkAddress),
+        guardian_address: normalizeAddress(guardianAddress),
+        action: params.action,
+        token: params.token,
+        amount: params.amount || null,
+        recipient: params.recipient || null,
+        calls_json: serializeCalls(params.calls),
+        nonce: "1",
+        resource_bounds_json: "{}",
+        tx_hash: txHash,
+        ward_sig_json: "[]",
+        ward_2fa_sig_json: null,
+        guardian_sig_json: null,
+        guardian_2fa_sig_json: null,
+        needs_ward_2fa: needsWard2fa,
+        needs_guardian: true,
+        needs_guardian_2fa: false,
+        status,
+        final_tx_hash: null,
+        error_message: null,
+        created_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + 10 * 60 * 1000).toISOString(),
+        responded_at: null,
+      });
+
+      await fetchWardSignRequests();
+      await fetchGuardianRequests();
+      return { approved: true, txHash };
+    }
     // Auto-refresh wardInfo if not yet loaded (race condition fix)
     if (!wardInfoRef.current) {
       await refreshWardInfo();
@@ -906,7 +1105,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       needsGuardian: needs.needsGuardian,
       needsGuardian2fa: needs.guardianHas2fa,
     });
-  }, [wallet.keys?.starkAddress, refreshWardInfo]);
+  }, [
+    wallet.keys?.starkAddress,
+    refreshWardInfo,
+    fetchWardSignRequests,
+    fetchGuardianRequests,
+  ]);
 
   const rejectWardRequest = useCallback(async (requestId: string) => {
     const sb = await getSupabaseLite();

@@ -1,0 +1,252 @@
+name: mobile-testability
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+  pull_request:
+    paths:
+      - "packages/mobile/**"
+      - ".github/workflows/mobile-e2e.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/mobile/**"
+      - ".github/workflows/mobile-e2e.yml"
+
+concurrency:
+  group: mobile-testability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-unit:
+    name: mobile-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run mobile unit tests
+        run: yarn mobile:test:unit
+
+  mobile-e2e-android-mock:
+    name: mobile-e2e-android-mock
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    needs: mobile-unit
+
+    env:
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-android
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Install Maestro CLI
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Run Android mock matrix (retry once)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          disable-animations: true
+          script: |
+            set -euxo pipefail
+            chmod +x packages/mobile/scripts/run-e2e-android.sh
+            ATTEMPT=1
+            until [ "$ATTEMPT" -gt 2 ]; do
+              if RUN_ID="$RUN_ID" yarn mobile:test:e2e:android:mock; then
+                break
+              fi
+              if [ "$ATTEMPT" -eq 2 ]; then
+                exit 1
+              fi
+              ATTEMPT=$((ATTEMPT + 1))
+              sleep 20
+            done
+
+      - name: Upload Android E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-e2e-android-mock-${{ env.RUN_ID }}
+          path: packages/mobile/e2e/artifacts/${{ env.RUN_ID }}/android
+          if-no-files-found: warn
+
+  mobile-e2e-ios-mock:
+    name: mobile-e2e-ios-mock
+    runs-on: macos-15
+    timeout-minutes: 90
+    needs: mobile-unit
+
+    env:
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-ios
+      IOS_SIMULATOR_NAME: iPhone 16
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Install Maestro CLI
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Install CocoaPods
+        run: |
+          cd packages/mobile/ios
+          pod install --repo-update
+
+      - name: Run iOS mock matrix (retry once)
+        run: |
+          set -euxo pipefail
+          chmod +x packages/mobile/scripts/run-e2e-ios.sh
+          ATTEMPT=1
+          until [ "$ATTEMPT" -gt 2 ]; do
+            if RUN_ID="$RUN_ID" IOS_SIMULATOR_NAME="$IOS_SIMULATOR_NAME" yarn mobile:test:e2e:ios:mock; then
+              break
+            fi
+            if [ "$ATTEMPT" -eq 2 ]; then
+              exit 1
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 20
+          done
+
+      - name: Upload iOS E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-e2e-ios-mock-${{ env.RUN_ID }}
+          path: packages/mobile/e2e/artifacts/${{ env.RUN_ID }}/ios
+          if-no-files-found: warn
+
+  mobile-e2e-live-smoke:
+    name: mobile-e2e-live-smoke-${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 70
+    continue-on-error: true
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-15
+
+    env:
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-live-${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Install Maestro CLI
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Setup Java (Android)
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Run Android live smoke
+        if: matrix.platform == 'android'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          disable-animations: true
+          script: |
+            chmod +x packages/mobile/scripts/run-e2e-live-smoke.sh
+            RUN_ID="$RUN_ID" TARGET_PLATFORM=android yarn mobile:test:e2e:live-smoke
+
+      - name: Install CocoaPods (iOS)
+        if: matrix.platform == 'ios'
+        run: |
+          cd packages/mobile/ios
+          pod install --repo-update
+
+      - name: Run iOS live smoke
+        if: matrix.platform == 'ios'
+        run: |
+          chmod +x packages/mobile/scripts/run-e2e-live-smoke.sh
+          RUN_ID="$RUN_ID" TARGET_PLATFORM=ios IOS_SIMULATOR_NAME='iPhone 16' yarn mobile:test:e2e:live-smoke
+
+      - name: Upload live smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-e2e-live-smoke-${{ matrix.platform }}-${{ env.RUN_ID }}
+          path: packages/mobile/e2e/artifacts/${{ env.RUN_ID }}/${{ matrix.platform }}
+          if-no-files-found: warn

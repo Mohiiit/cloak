@@ -17,6 +17,7 @@ import { CloakIcon } from "../components/CloakIcon";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { colors, fontSize, spacing } from "../lib/theme";
+import { testIDs } from "../testing/testIDs";
 
 const Tab = createBottomTabNavigator();
 
@@ -26,6 +27,14 @@ const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
   Wallet: ({ size, color }) => <CloakIcon size={size} color={color} />,
   Activity: ({ size, color }) => <Clock size={size} color={color} />,
   Settings: ({ size, color }) => <Settings size={size} color={color} />,
+};
+
+const TAB_TEST_IDS: Record<string, string> = {
+  Home: testIDs.navigation.tabHome,
+  Send: testIDs.navigation.tabSend,
+  Wallet: testIDs.navigation.tabWallet,
+  Activity: testIDs.navigation.tabActivity,
+  Settings: testIDs.navigation.tabSettings,
 };
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
@@ -87,6 +96,8 @@ export default function AppNavigator() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarLabelStyle: styles.tabLabel,
+          tabBarButtonTestID: TAB_TEST_IDS[route.name],
+          tabBarAccessibilityLabel: TAB_TEST_IDS[route.name],
           tabBarIcon: ({ focused }) => (
             <TabIcon label={route.name} focused={focused} />
           ),

@@ -1,0 +1,19 @@
+appId: ${APP_ID}
+name: ios-mock-full-matrix
+env:
+  CLEAR_STATE: true
+---
+- runFlow: ../setup/onboarding-create-import-clear.yaml
+- runFlow: ../setup/deploy-success-failure-retry.yaml
+- runFlow: ../setup/guardian-create-ward.yaml
+- runFlow: ../setup/ward-import-second-device.yaml
+- runFlow: ./scenario-guardian-transactions.yaml
+- runFlow: ./scenario-ward-claim-mobile.yaml
+- runFlow: ./scenario-ward-initiated-needs-guardian.yaml
+- runFlow: ../ward/scenario-guardian-approve-path.yaml
+- runFlow: ../ward/scenario-guardian-reject-path.yaml
+- runFlow: ../twofa/scenario-ward-2fa-matrix.yaml
+- runFlow: ../twofa/scenario-ward-guardian-2fa-matrix.yaml
+- runFlow: ../regressions/scenario-fee-estimation-retry.yaml
+- runFlow: ../regressions/scenario-network-interruption-resume.yaml
+- runFlow: ../regressions/scenario-background-foreground-pending.yaml

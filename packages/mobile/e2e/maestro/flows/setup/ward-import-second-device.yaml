@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+name: setup-ward-import-second-device
+---
+- runFlow:
+    file: ../shared/reset-app.yaml
+- runFlow:
+    file: ../shared/import-ward-wallet.yaml
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: setup-ward-import-second-device

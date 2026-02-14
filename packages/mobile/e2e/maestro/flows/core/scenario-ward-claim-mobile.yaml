@@ -1,0 +1,15 @@
+appId: ${APP_ID}
+name: scenario-ward-claim-mobile
+---
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.home.press
+      ASSERT_TEXT: Cloak
+- tapOn:
+    id: home.claim.pending.press
+    optional: true
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: core-ward-claim-mobile

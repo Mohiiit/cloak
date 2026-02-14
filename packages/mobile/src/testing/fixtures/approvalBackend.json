@@ -1,0 +1,35 @@
+{
+  "biometricPrompts": [true, true, false, true, true],
+  "approval_requests": [
+    {
+      "id": "mock-req-1",
+      "wallet_address": "0x012345",
+      "action": "transfer",
+      "token": "STRK",
+      "amount": "100000000000000000",
+      "recipient": "7YWHMfk9JZe0LM0g1ZauHuiSxhI",
+      "calls_json": "[]",
+      "sig1_json": "[]",
+      "nonce": "0",
+      "resource_bounds_json": "{}",
+      "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000001001",
+      "status": "pending",
+      "final_tx_hash": null,
+      "error_message": null,
+      "created_at": "2026-01-12T10:00:00.000Z",
+      "expires_at": "2030-01-12T10:00:00.000Z",
+      "responded_at": null
+    }
+  ],
+  "two_factor_configs": [
+    {
+      "id": "mock-2fa-1",
+      "wallet_address": "0x012345",
+      "secondary_public_key": "0x0abc",
+      "is_enabled": true,
+      "created_at": "2026-01-10T08:00:00.000Z"
+    }
+  ],
+  "ward_configs": [],
+  "ward_approval_requests": []
+}

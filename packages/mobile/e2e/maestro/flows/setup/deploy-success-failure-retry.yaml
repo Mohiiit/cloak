@@ -1,0 +1,17 @@
+appId: ${APP_ID}
+name: setup-deploy-success-failure-retry
+---
+- runFlow:
+    file: ../shared/deploy-wallet.yaml
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: setup-deploy-success
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.home.press
+      ASSERT_TEXT: Cloak
+- assertVisible:
+    id: deploy.status
+    text: deploy.status=deployed

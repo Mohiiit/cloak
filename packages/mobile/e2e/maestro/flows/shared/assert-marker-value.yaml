@@ -1,0 +1,5 @@
+appId: ${APP_ID}
+---
+- assertVisible:
+    id: ${MARKER_ID}
+    text: ${MARKER_VALUE}

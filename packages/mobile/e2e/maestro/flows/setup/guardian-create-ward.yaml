@@ -1,0 +1,9 @@
+appId: ${APP_ID}
+name: setup-guardian-create-ward
+---
+- runFlow:
+    file: ../shared/create-ward.yaml
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: setup-guardian-create-ward-done

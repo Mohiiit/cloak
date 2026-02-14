@@ -1,0 +1,16 @@
+appId: ${APP_ID}
+name: scenario-background-foreground-pending
+---
+- runFlow:
+    file: ../shared/fill-send-form.yaml
+- stopApp:
+    appId: ${APP_ID}
+- launchApp:
+    appId: ${APP_ID}
+    clearState: false
+- assertVisible:
+    id: transaction.router.path
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: regress-background-foreground

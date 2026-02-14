@@ -1,0 +1,18 @@
+appId: ${APP_ID}
+name: scenario-guardian-reject-path
+---
+- assertVisible:
+    id: approval.guardian.reject.press
+    optional: true
+- tapOn:
+    id: approval.guardian.reject.press
+    optional: true
+- runFlow:
+    file: ../shared/assert-marker-value.yaml
+    env:
+      MARKER_ID: toast.last.type
+      MARKER_VALUE: toast.last.type=error
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: ward-guardian-reject

@@ -1,0 +1,20 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: ./open-tab.yaml
+    env:
+      TAB_ID: nav.tab.send.press
+      ASSERT_TEXT: Send Payment
+- tapOn:
+    id: send.recipient.address.input
+- inputText: ${SEND_RECIPIENT}
+- tapOn:
+    id: send.recipient.next.press
+- tapOn:
+    id: send.amount.value.input
+- inputText: ${SEND_AMOUNT}
+- tapOn:
+    id: send.amount.next.press
+- tapOn:
+    id: send.confirm.note.input
+- inputText: ${SEND_NOTE}

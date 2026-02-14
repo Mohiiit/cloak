@@ -76,5 +76,9 @@ export async function loadWalletKeys(): Promise<WalletKeys | null> {
 
 /** Clear all wallet data */
 export async function clearWallet(): Promise<void> {
-  await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+  const allKeys = await AsyncStorage.getAllKeys();
+  const cloakScopedKeys = allKeys.filter((key) => key.startsWith("cloak_"));
+  if (cloakScopedKeys.length > 0) {
+    await AsyncStorage.multiRemove(cloakScopedKeys);
+  }
 }

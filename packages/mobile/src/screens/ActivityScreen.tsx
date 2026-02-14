@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { ShieldPlus, ShieldOff, ArrowUpFromLine, ArrowDownToLine, RefreshCw, Ext
 import { useWallet } from "../lib/WalletContext";
 import { getTxNotes } from "../lib/storage";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { testIDs, testProps } from "../testing/testIDs";
 
 function TxIcon({ type }: { type: string }) {
   switch (type) {
@@ -46,8 +47,7 @@ export default function ActivityScreen() {
   const [enrichedHistory, setEnrichedHistory] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadHistory = async () => {
-    await wallet.refreshTxHistory();
+  const loadHistory = useCallback(async () => {
     const notes = await getTxNotes();
     const enriched = (wallet.txHistory || []).map((event: any) => {
       const txHash = event.txHash || event.transaction_hash || "";
@@ -61,9 +61,11 @@ export default function ActivityScreen() {
       };
     });
     setEnrichedHistory(enriched);
-  };
+  }, [wallet.txHistory]);
 
-  useEffect(() => { loadHistory(); }, [wallet.txHistory]);
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -88,8 +90,12 @@ export default function ActivityScreen() {
       ) : (
         enrichedHistory.map((tx: any, i: number) => {
           const hash = tx.txHash || "";
+          const rowTestID = hash
+            ? `${testIDs.activity.rowPrefix}.${hash}`
+            : `${testIDs.activity.rowPrefix}.${i}`;
           return (
             <TouchableOpacity
+              {...testProps(rowTestID)}
               key={hash || i}
               style={styles.txRow}
               onPress={() => hash && Linking.openURL(`https://sepolia.voyager.online/tx/${hash}`)}

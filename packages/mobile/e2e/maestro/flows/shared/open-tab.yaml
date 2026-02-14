@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: ${TAB_ID}
+- waitForAnimationToEnd
+- assertVisible:
+    text: ${ASSERT_TEXT}

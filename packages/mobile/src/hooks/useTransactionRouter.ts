@@ -11,6 +11,7 @@ import { useCallback } from "react";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useDualSigExecutor } from "./useDualSigExecutor";
+import { setTransactionRouterPath } from "../testing/transactionRouteTrace";
 
 type Action = "fund" | "transfer" | "withdraw" | "rollover";
 
@@ -48,6 +49,7 @@ export function useTransactionRouter() {
 
       // 1. Ward path — insert Supabase request + poll for guardian approval
       if (ward.isWard) {
+        setTransactionRouterPath(is2FAEnabled ? "ward+2fa" : "ward");
         const { calls } = await prepareCalls(action, amount, recipient);
         const wardResult = await ward.initiateWardTransaction({
           action,
@@ -64,11 +66,13 @@ export function useTransactionRouter() {
 
       // 2. 2FA path — biometric gate + dual-key signing
       if (is2FAEnabled) {
+        setTransactionRouterPath("2fa");
         const { calls } = await prepareCalls(action, amount, recipient);
         return executeDualSig(calls);
       }
 
       // 3. Direct execution
+      setTransactionRouterPath("direct");
       switch (action) {
         case "fund":
           return wallet.fund(amount!);

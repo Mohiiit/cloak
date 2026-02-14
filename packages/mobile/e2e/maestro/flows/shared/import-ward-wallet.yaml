@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: onboarding.ward.import.toggle
+- tapOn:
+    id: home.ward.import.json.input
+- inputText: ${WARD_INVITE_JSON}
+- tapOn:
+    id: onboarding.ward.import.submit
+- extendedWaitUntil:
+    visible:
+      id: home.quick.send.press
+    timeout: 120000

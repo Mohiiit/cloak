@@ -1,0 +1,38 @@
+{
+  "tongoAddress": "mock_tongo_addr_1",
+  "rateByToken": {
+    "STRK": "1.0000",
+    "ETH": "3012.1200",
+    "USDC": "1.0000"
+  },
+  "stateByToken": {
+    "STRK": { "balance": "2500000000000000000", "pending": "0", "nonce": "12" },
+    "ETH": { "balance": "42000000000000000", "pending": "0", "nonce": "7" },
+    "USDC": { "balance": "15750000", "pending": "0", "nonce": "3" }
+  },
+  "erc20BalancesByToken": {
+    "STRK": "5600000000000000000",
+    "ETH": "230000000000000000",
+    "USDC": "25000000"
+  },
+  "txHistory": [
+    {
+      "txHash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "action": "fund",
+      "token": "STRK",
+      "amount": "500000000000000000",
+      "created_at": "2026-01-12T10:00:00.000Z"
+    },
+    {
+      "txHash": "0x0000000000000000000000000000000000000000000000000000000000000002",
+      "action": "transfer",
+      "token": "STRK",
+      "amount": "100000000000000000",
+      "created_at": "2026-01-13T12:10:00.000Z"
+    }
+  ],
+  "validBase58": [
+    "7YWHMfk9JZe0LM0g1ZauHuiSxhI",
+    "4mzk1A1sdQUnapTdp6MGvM4QxQ8"
+  ]
+}

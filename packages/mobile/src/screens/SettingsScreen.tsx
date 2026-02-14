@@ -23,6 +23,7 @@ import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
 import { useWardContext, type WardEntry, type WardCreationProgress } from "../lib/wardContext";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
+import { testIDs, testProps } from "../testing/testIDs";
 
 const TFA_STEP_ORDER: TwoFAStep[] = ["auth", "keygen", "onchain", "register"];
 
@@ -171,18 +172,30 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
 
           {/* Actions */}
           {isDone && (
-            <TouchableOpacity style={wardModalStyles.doneBtn} onPress={onClose}>
+            <TouchableOpacity
+              {...testProps(testIDs.settings.wardCreationDone)}
+              style={wardModalStyles.doneBtn}
+              onPress={onClose}
+            >
               <Text style={wardModalStyles.doneBtnText}>Done</Text>
             </TouchableOpacity>
           )}
 
           {failed && (
             <View style={wardModalStyles.failedActions}>
-              <TouchableOpacity style={wardModalStyles.retryBtn} onPress={onRetry}>
+              <TouchableOpacity
+                {...testProps(testIDs.settings.wardCreationRetry)}
+                style={wardModalStyles.retryBtn}
+                onPress={onRetry}
+              >
                 <RefreshCw size={14} color="#fff" />
                 <Text style={wardModalStyles.retryBtnText}>Retry</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={wardModalStyles.dismissBtn} onPress={onClose}>
+              <TouchableOpacity
+                {...testProps(testIDs.settings.wardCreationDismiss)}
+                style={wardModalStyles.dismissBtn}
+                onPress={onClose}
+              >
                 <Text style={wardModalStyles.dismissBtnText}>Dismiss</Text>
               </TouchableOpacity>
             </View>
@@ -272,7 +285,7 @@ export default function SettingsScreen() {
   const modal = useThemedModal();
   const twoFactor = useTwoFactor();
   const ward = useWardContext();
-  const { contacts, addContact, removeContact, refresh: refreshContacts } = useContacts();
+  const { contacts, addContact, removeContact } = useContacts();
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactName, setNewContactName] = useState("");
@@ -299,6 +312,14 @@ export default function SettingsScreen() {
     setWardStep(step);
     setWardStepMessage(message);
   };
+
+  const wardCreationStatus = wardFailed
+    ? "failed"
+    : wardStep > 6
+    ? "done"
+    : wardModalVisible || isCreatingWard
+    ? "in_progress"
+    : "idle";
 
   const startWardCreation = async (isRetry: boolean = false) => {
     setWardFailed(false);
@@ -365,6 +386,22 @@ export default function SettingsScreen() {
           onClose={() => setQrModal(null)}
         />
       )}
+      <View pointerEvents="none" style={styles.testMarkerContainer} accessible={false}>
+        <Text
+          {...testProps(testIDs.markers.wardCreationStep)}
+          style={styles.testMarkerText}
+          accessible={false}
+        >
+          {`ward.creation.step=${wardStep}`}
+        </Text>
+        <Text
+          {...testProps(testIDs.markers.wardCreationStatus)}
+          style={styles.testMarkerText}
+          accessible={false}
+        >
+          {`ward.creation.status=${wardCreationStatus}`}
+        </Text>
+      </View>
       {/* Cloak Address */}
       <View style={[styles.section, styles.addressSection]}>
         <View style={styles.sectionHeader}>
@@ -404,7 +441,10 @@ export default function SettingsScreen() {
             <Users size={18} color={colors.primary} />
             <Text style={styles.sectionTitle}>Contacts</Text>
           </View>
-          <TouchableOpacity onPress={() => setShowAddContact(!showAddContact)}>
+          <TouchableOpacity
+            {...testProps(testIDs.settings.contactsAddToggle)}
+            onPress={() => setShowAddContact(!showAddContact)}
+          >
             <Plus size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -431,6 +471,7 @@ export default function SettingsScreen() {
               autoComplete="off"
             />
             <TouchableOpacity
+              {...testProps(testIDs.settings.contactsAddSubmit)}
               style={[styles.addContactBtn, !newContactAddr.trim() && { opacity: 0.4 }]}
               disabled={!newContactAddr.trim()}
               onPress={async () => {
@@ -511,6 +552,7 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.partialWardActions}>
                 <TouchableOpacity
+                  {...testProps(testIDs.settings.wardPartialResume)}
                   style={styles.partialWardRetryBtn}
                   onPress={() => startWardCreation(true)}
                 >
@@ -518,6 +560,7 @@ export default function SettingsScreen() {
                   <Text style={styles.partialWardRetryText}>Resume</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  {...testProps(testIDs.settings.wardPartialDismiss)}
                   style={styles.partialWardDismissBtn}
                   onPress={() => ward.clearPartialWard()}
                 >
@@ -529,6 +572,7 @@ export default function SettingsScreen() {
 
           {/* Create Ward Button */}
           <TouchableOpacity
+            {...testProps(testIDs.settings.wardCreate)}
             style={[styles.wardCreateBtn, (isCreatingWard || !wallet.isDeployed) && { opacity: 0.5 }]}
             disabled={isCreatingWard || !wallet.isDeployed}
             onPress={() => {
@@ -644,13 +688,6 @@ export default function SettingsScreen() {
                       <TouchableOpacity
                         style={styles.wardActionBtnSecondary}
                         onPress={() => {
-                          const qrPayload = JSON.stringify({
-                            type: "cloak_ward_invite",
-                            wardAddress: w.wardAddress,
-                            wardPrivateKey: "(scan from original invite)",
-                            guardianAddress: wallet.keys?.starkAddress || "",
-                            network: "sepolia",
-                          });
                           setQrModal({ label: "Ward Address", value: w.wardAddress });
                         }}
                       >
@@ -677,6 +714,7 @@ export default function SettingsScreen() {
 
         {!showPrivateKey ? (
           <TouchableOpacity
+            {...testProps(testIDs.settings.keyBackupReveal)}
             style={styles.revealBtn}
             onPress={() => {
               modal.showConfirm(
@@ -694,6 +732,7 @@ export default function SettingsScreen() {
             <CopyRow label="Stark Private Key" value={wallet.keys.starkPrivateKey} />
             <CopyRow label="Tongo Private Key" value={wallet.keys.tongoPrivateKey} />
             <TouchableOpacity
+              {...testProps(testIDs.settings.keyBackupHide)}
               style={styles.hideBtn}
               onPress={() => setShowPrivateKey(false)}
             >
@@ -772,6 +811,7 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <TouchableOpacity
+                {...testProps(testIDs.settings.tfaEnable)}
                 style={styles.tfaEnableBtn}
                 onPress={async () => {
                   setTfaLoading(true);
@@ -789,6 +829,7 @@ export default function SettingsScreen() {
           )
         ) : twoFactor.isEnabled && tfaStep === "idle" ? (
           <TouchableOpacity
+            {...testProps(testIDs.settings.tfaDisable)}
             style={[styles.tfaDisableBtn, tfaLoading && { opacity: 0.5 }]}
             disabled={tfaLoading}
             onPress={async () => {
@@ -833,6 +874,7 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.error }]}>Danger Zone</Text>
         </View>
         <TouchableOpacity
+          {...testProps(testIDs.settings.clearAllData)}
           style={styles.dangerBtn}
           onPress={() => {
             modal.showConfirm(
@@ -865,6 +907,19 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: 100 },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: "center", alignItems: "center" },
   emptyText: { color: colors.textSecondary, fontSize: fontSize.md },
+  testMarkerContainer: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 2,
+    height: 2,
+    opacity: 0.01,
+  },
+  testMarkerText: {
+    fontSize: 1,
+    lineHeight: 1,
+    color: "#000000",
+  },
 
   section: {
     backgroundColor: colors.surface,

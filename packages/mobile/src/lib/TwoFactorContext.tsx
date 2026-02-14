@@ -19,6 +19,7 @@ import {
 } from "@cloak-wallet/sdk";
 import { useWallet } from "./WalletContext";
 import { useToast } from "../components/Toast";
+import { isMockMode } from "../testing/runtimeConfig";
 import {
   ApprovalRequest,
   getSupabaseConfig,
@@ -211,6 +212,29 @@ export function TwoFactorProvider({
     }
 
     try {
+      if (isMockMode()) {
+        onStep?.("keygen");
+        const { privateKey, publicKey } = generateSecondaryKey();
+        await saveSecondaryPrivateKey(privateKey);
+
+        onStep?.("onchain");
+        onStep?.("register");
+        const { error } = await enableTwoFactorConfig(
+          normalizeAddress(wallet.keys.starkAddress),
+          publicKey,
+        );
+        if (error) {
+          throw new Error(error);
+        }
+
+        onStep?.("done");
+        setSecondaryPublicKey(publicKey);
+        setIsConfigured(true);
+        setIsEnabled(true);
+        showToast("Two-Factor Authentication enabled", "success");
+        return;
+      }
+
       // Step 2: Generate new secondary key
       onStep?.("keygen");
       const { privateKey, publicKey } = generateSecondaryKey();
@@ -283,6 +307,22 @@ export function TwoFactorProvider({
     }
 
     try {
+      if (isMockMode()) {
+        const { error } = await disableTwoFactorConfig(
+          normalizeAddress(wallet.keys.starkAddress),
+        );
+        if (error) {
+          throw new Error(error);
+        }
+        await clearSecondaryKey();
+        setSecondaryPublicKey(null);
+        setIsConfigured(false);
+        setIsEnabled(false);
+        setPendingRequests([]);
+        showToast("Two-Factor Authentication disabled", "success");
+        return;
+      }
+
       // Step 1: On-chain remove_secondary_key — MUST succeed before anything else
       const secondaryPk = await getSecondaryPrivateKey();
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });

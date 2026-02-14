@@ -23,6 +23,16 @@ import {
   DEFAULT_SUPABASE_KEY,
   SupabaseLite as SdkSupabaseLite,
 } from "@cloak-wallet/sdk";
+import { getRuntimeMode, isMockMode } from "../testing/runtimeConfig";
+import { MockApprovalBackend } from "../testing/mocks/MockApprovalBackend";
+import { loadActiveScenarioFixture } from "../testing/fixtures/loadScenarioFixture";
+import type {
+  ApprovalBackend,
+  ApprovalRequestRecord,
+  ApprovalStatus as BackendApprovalStatus,
+  SupabaseLiteLike,
+  TwoFactorConfigRecord,
+} from "../testing/interfaces/ApprovalBackend";
 
 // Re-export SDK utilities so existing callers don't break
 export { normalizeAddress, signTransactionHash, combinedSignature, deserializeCalls };
@@ -100,42 +110,12 @@ const STORAGE_KEYS = {
 
 // ─── Types (matching SDK two-factor.ts) ──────────────────────────────────────
 
-export type TwoFactorAction = "fund" | "transfer" | "withdraw" | "rollover";
-export type ApprovalStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "completed"
-  | "failed"
-  | "expired";
+export type TwoFactorAction = ApprovalRequestRecord["action"];
+export type ApprovalStatus = BackendApprovalStatus;
 
-export interface TwoFactorConfig {
-  id: string;
-  wallet_address: string;
-  secondary_public_key: string;
-  is_enabled: boolean;
-  created_at: string;
-}
+export interface TwoFactorConfig extends TwoFactorConfigRecord {}
 
-export interface ApprovalRequest {
-  id: string;
-  wallet_address: string;
-  action: TwoFactorAction;
-  token: string;
-  amount: string | null;
-  recipient: string | null;
-  calls_json: string;
-  sig1_json: string; // JSON: ["r1_hex", "s1_hex"]
-  nonce: string;
-  resource_bounds_json: string;
-  tx_hash: string;
-  status: ApprovalStatus;
-  final_tx_hash: string | null;
-  error_message: string | null;
-  created_at: string;
-  expires_at: string;
-  responded_at: string | null;
-}
+export interface ApprovalRequest extends ApprovalRequestRecord {}
 
 // ─── Supabase Config ─────────────────────────────────────────────────────────
 
@@ -182,6 +162,14 @@ export async function isBiometricsAvailable(): Promise<boolean> {
 }
 
 export async function promptBiometric(message: string): Promise<boolean> {
+  if (isMockMode()) {
+    const approved = getNextMockBiometricDecision();
+    console.warn(
+      `[twoFactor] e2e-mock biometric ${approved ? "approved" : "rejected"}: ${message}`,
+    );
+    return approved;
+  }
+
   try {
     const ReactNativeBiometrics =
       require("react-native-biometrics").default ||
@@ -203,6 +191,27 @@ export async function promptBiometric(message: string): Promise<boolean> {
   }
 }
 
+type BiometricFixture = {
+  biometricPrompts?: boolean[];
+};
+
+let biometricPromptIndex = 0;
+
+function getNextMockBiometricDecision(): boolean {
+  const fixture =
+    loadActiveScenarioFixture<BiometricFixture>("approvalBackend");
+  const sequence = fixture.biometricPrompts;
+  if (!sequence?.length) return true;
+
+  const index = biometricPromptIndex % sequence.length;
+  biometricPromptIndex += 1;
+  return !!sequence[index];
+}
+
+export function resetMockBiometricSequenceForTesting(): void {
+  biometricPromptIndex = 0;
+}
+
 // ─── Secondary Key Management ────────────────────────────────────────────────
 
 export function generateSecondaryKey(): {
@@ -216,7 +225,11 @@ export function generateSecondaryKey(): {
   // The Stark curve order is ~2^251, so we generate 32 bytes (256 bits) and
   // mask the top byte to ensure the value fits within the valid range.
   const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
+  const cryptoApi = (globalThis as any)?.crypto;
+  if (!cryptoApi?.getRandomValues) {
+    throw new Error("crypto.getRandomValues is unavailable");
+  }
+  cryptoApi.getRandomValues(bytes);
   // Mask top byte to keep value < 2^251 (well within Stark curve order)
   bytes[0] = bytes[0] & 0x07;
   const privateKeyHex =
@@ -253,66 +266,57 @@ export async function getSecondaryPublicKey(): Promise<string | null> {
   }
 }
 
-// ─── Supabase REST Client (uses SDK SupabaseLite) ───────────────────────────
+// ─── Supabase Backend Selection ──────────────────────────────────────────────
 
-export async function getSupabaseLite(): Promise<SdkSupabaseLite> {
-  const { url, key } = await getSupabaseConfig();
-  return new SdkSupabaseLite(url, key);
-}
+class LiveApprovalBackend implements ApprovalBackend {
+  readonly mode = getRuntimeMode();
 
-// ─── Supabase CRUD Operations ────────────────────────────────────────────────
+  async getSupabaseLite(): Promise<SupabaseLiteLike> {
+    const { url, key } = await getSupabaseConfig();
+    return new SdkSupabaseLite(url, key);
+  }
 
-export async function fetchPendingRequests(
-  walletAddress: string,
-): Promise<{ data: ApprovalRequest[]; error: string | null }> {
-  try {
-    const sb = await getSupabaseLite();
-    const data = await sb.select<ApprovalRequest>(
+  async fetchPendingRequests(
+    walletAddress: string,
+  ): Promise<ApprovalRequestRecord[]> {
+    const sb = await this.getSupabaseLite();
+    return sb.select<ApprovalRequestRecord>(
       "approval_requests",
       `status=eq.pending&wallet_address=eq.${walletAddress}&order=created_at.desc`,
     );
-    return { data, error: null };
-  } catch (e: any) {
-    return { data: [], error: e.message };
   }
-}
 
-export async function updateRequestStatus(
-  id: string,
-  status: ApprovalStatus,
-  finalTxHash?: string,
-  errorMessage?: string,
-): Promise<{ data: any; error: string | null }> {
-  try {
-    const sb = await getSupabaseLite();
+  async updateRequestStatus(
+    id: string,
+    status: ApprovalStatus,
+    finalTxHash?: string,
+    errorMessage?: string,
+  ): Promise<any> {
+    const sb = await this.getSupabaseLite();
     const body: any = {
       status,
       responded_at: new Date().toISOString(),
     };
     if (finalTxHash) body.final_tx_hash = finalTxHash;
     if (errorMessage) body.error_message = errorMessage;
-    const data = await sb.update("approval_requests", `id=eq.${id}`, body);
-    return { data, error: null };
-  } catch (e: any) {
-    return { data: null, error: e.message };
+    return sb.update("approval_requests", `id=eq.${id}`, body);
   }
-}
 
-export async function enableTwoFactorConfig(
-  walletAddress: string,
-  secondaryPubKey: string,
-): Promise<{ data: any; error: string | null }> {
-  // Use upsert with on_conflict so re-enabling doesn't fail
-  // if a row already exists for this wallet address.
-  // SDK's SupabaseLite doesn't expose upsert, so use raw fetch with config from storage.
-  const { url, key } = await getSupabaseConfig();
-  const upsertHeaders = {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-    Prefer: "return=representation,resolution=merge-duplicates",
-  };
-  try {
+  async enableTwoFactorConfig(
+    walletAddress: string,
+    secondaryPubKey: string,
+  ): Promise<any> {
+    // Use upsert with on_conflict so re-enabling doesn't fail
+    // if a row already exists for this wallet address.
+    // SDK's SupabaseLite doesn't expose upsert, so use raw fetch with config from storage.
+    const { url, key } = await getSupabaseConfig();
+    const upsertHeaders = {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation,resolution=merge-duplicates",
+    };
+
     const res = await fetch(
       `${url}/rest/v1/two_factor_configs?on_conflict=wallet_address`,
       {
@@ -325,11 +329,92 @@ export async function enableTwoFactorConfig(
         }),
       },
     );
+
     if (!res.ok) {
       const text = await res.text();
-      return { data: null, error: text };
+      throw new Error(text);
     }
-    const data = await res.json();
+
+    return res.json();
+  }
+
+  async disableTwoFactorConfig(walletAddress: string): Promise<any> {
+    const sb = await this.getSupabaseLite();
+    await sb.delete("two_factor_configs", `wallet_address=eq.${walletAddress}`);
+    return null;
+  }
+
+  async isTwoFactorConfigured(
+    walletAddress: string,
+  ): Promise<TwoFactorConfigRecord | null> {
+    const sb = await this.getSupabaseLite();
+    const data = await sb.select<TwoFactorConfigRecord>(
+      "two_factor_configs",
+      `wallet_address=eq.${walletAddress}&limit=1`,
+    );
+    return data[0] ?? null;
+  }
+}
+
+let backendCache: ApprovalBackend | null = null;
+
+function getApprovalBackend(): ApprovalBackend {
+  const mode = getRuntimeMode();
+  if (backendCache && backendCache.mode === mode) {
+    return backendCache;
+  }
+
+  backendCache = mode === "e2e-mock" ? new MockApprovalBackend() : new LiveApprovalBackend();
+  return backendCache;
+}
+
+// ─── Supabase REST Client ────────────────────────────────────────────────────
+
+export async function getSupabaseLite(): Promise<SupabaseLiteLike> {
+  return getApprovalBackend().getSupabaseLite();
+}
+
+// ─── Supabase CRUD Operations ────────────────────────────────────────────────
+
+export async function fetchPendingRequests(
+  walletAddress: string,
+): Promise<{ data: ApprovalRequest[]; error: string | null }> {
+  try {
+    const data = await getApprovalBackend().fetchPendingRequests(walletAddress);
+    return { data: data as ApprovalRequest[], error: null };
+  } catch (e: any) {
+    return { data: [], error: e.message };
+  }
+}
+
+export async function updateRequestStatus(
+  id: string,
+  status: ApprovalStatus,
+  finalTxHash?: string,
+  errorMessage?: string,
+): Promise<{ data: any; error: string | null }> {
+  try {
+    const data = await getApprovalBackend().updateRequestStatus(
+      id,
+      status,
+      finalTxHash,
+      errorMessage,
+    );
+    return { data, error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
+}
+
+export async function enableTwoFactorConfig(
+  walletAddress: string,
+  secondaryPubKey: string,
+): Promise<{ data: any; error: string | null }> {
+  try {
+    const data = await getApprovalBackend().enableTwoFactorConfig(
+      walletAddress,
+      secondaryPubKey,
+    );
     return { data, error: null };
   } catch (e: any) {
     return { data: null, error: e.message };
@@ -340,12 +425,8 @@ export async function disableTwoFactorConfig(
   walletAddress: string,
 ): Promise<{ data: any; error: string | null }> {
   try {
-    const sb = await getSupabaseLite();
-    await sb.delete(
-      "two_factor_configs",
-      `wallet_address=eq.${walletAddress}`,
-    );
-    return { data: null, error: null };
+    const data = await getApprovalBackend().disableTwoFactorConfig(walletAddress);
+    return { data, error: null };
   } catch (e: any) {
     return { data: null, error: e.message };
   }
@@ -355,15 +436,11 @@ export async function isTwoFactorConfigured(
   walletAddress: string,
 ): Promise<{ configured: boolean; config: TwoFactorConfig | null }> {
   try {
-    const sb = await getSupabaseLite();
-    const data = await sb.select<TwoFactorConfig>(
-      "two_factor_configs",
-      `wallet_address=eq.${walletAddress}&limit=1`,
-    );
-    if (!data || data.length === 0) {
+    const config = await getApprovalBackend().isTwoFactorConfigured(walletAddress);
+    if (!config) {
       return { configured: false, config: null };
     }
-    return { configured: true, config: data[0] };
+    return { configured: true, config: config as TwoFactorConfig };
   } catch {
     return { configured: false, config: null };
   }

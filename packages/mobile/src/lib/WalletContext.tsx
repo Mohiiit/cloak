@@ -3,13 +3,16 @@
  */
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { hash, CallData, Account, RpcProvider } from "starknet";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTongoBridge } from "../bridge/useTongoBridge";
 import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet } from "./keys";
 import { TokenKey, TOKENS } from "./tokens";
 import { useToast } from "../components/Toast";
 import { DEFAULT_RPC, CLOAK_ACCOUNT_CLASS_HASH } from "@cloak-wallet/sdk";
+import { isMockMode } from "../testing/runtimeConfig";
 
 const ALL_TOKENS: TokenKey[] = ["STRK", "ETH", "USDC"];
+const MOCK_DEPLOY_FLAG_KEY = "cloak_mock_deployed";
 
 type WalletState = {
   // Status
@@ -237,6 +240,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (!keys?.starkAddress) return false;
     setIsCheckingDeployment(true);
     try {
+      if (isMockMode()) {
+        const deployed = (await AsyncStorage.getItem(MOCK_DEPLOY_FLAG_KEY)) === "true";
+        setIsDeployed(deployed);
+        return deployed;
+      }
+
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       await provider.getNonceForAddress(keys.starkAddress);
       setIsDeployed(true);
@@ -251,6 +260,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const deployAccount = useCallback(async (): Promise<string> => {
     if (!keys) throw new Error("No wallet keys");
+
+    if (isMockMode()) {
+      const txHash = `0xmockdeploy${Date.now().toString(16)}`;
+      await AsyncStorage.setItem(MOCK_DEPLOY_FLAG_KEY, "true");
+      setIsDeployed(true);
+      return txHash;
+    }
+
     const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
     const constructorCalldata = CallData.compile({ publicKey: keys.starkPublicKey });
     const account = new Account({
@@ -310,9 +327,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
 
     await saveWalletKeys(newKeys);
+    await AsyncStorage.setItem(MOCK_DEPLOY_FLAG_KEY, "false");
     setKeys(newKeys);
     setIsWalletCreated(true);
     setIsInitialized(true);
+    setIsDeployed(false);
 
     return newKeys;
   }, [bridge]);
@@ -343,9 +362,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       };
 
       await saveWalletKeys(newKeys);
+      await AsyncStorage.setItem(MOCK_DEPLOY_FLAG_KEY, "false");
       setKeys(newKeys);
       setIsWalletCreated(true);
       setIsInitialized(true);
+      setIsDeployed(false);
 
       // Refresh balance immediately
       const state = await bridge.getState();

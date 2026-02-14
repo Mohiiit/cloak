@@ -20,6 +20,7 @@ import { useWallet } from "../lib/WalletContext";
 import { useToast } from "../components/Toast";
 import { CloakIcon } from "../components/CloakIcon";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { testIDs, testProps } from "../testing/testIDs";
 
 const FAUCET_URL = "https://starknet-faucet.vercel.app/";
 const VOYAGER_TX_URL = "https://sepolia.voyager.online/tx/";
@@ -98,7 +99,11 @@ export default function DeployScreen() {
             />
           </View>
         </View>
-        <TouchableOpacity style={styles.addressRow} onPress={handleCopy}>
+        <TouchableOpacity
+          {...testProps(testIDs.deploy.copyAddress)}
+          style={styles.addressRow}
+          onPress={handleCopy}
+        >
           <Text style={styles.addressText} numberOfLines={2}>
             {address}
           </Text>
@@ -117,6 +122,7 @@ export default function DeployScreen() {
           Send STRK or ETH to the address above to cover gas fees, then deploy your account on-chain.
         </Text>
         <TouchableOpacity
+          {...testProps(testIDs.deploy.openFaucet)}
           style={styles.faucetLink}
           onPress={() => Linking.openURL(FAUCET_URL)}
         >
@@ -130,6 +136,7 @@ export default function DeployScreen() {
         <View style={styles.successCard}>
           <Text style={styles.successTitle}>Deployment submitted!</Text>
           <TouchableOpacity
+            {...testProps(testIDs.deploy.viewVoyager)}
             onPress={() => Linking.openURL(`${VOYAGER_TX_URL}${txHash}`)}
           >
             <Text style={styles.successHash}>
@@ -150,6 +157,7 @@ export default function DeployScreen() {
       {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
+          {...testProps(testIDs.deploy.deployAccount)}
           style={[styles.deployBtn, deploying && styles.deployBtnDisabled]}
           disabled={deploying}
           onPress={handleDeploy}
@@ -165,6 +173,7 @@ export default function DeployScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          {...testProps(testIDs.deploy.checkIfDeployed)}
           style={[styles.checkBtn, wallet.isCheckingDeployment && { opacity: 0.5 }]}
           disabled={wallet.isCheckingDeployment}
           onPress={handleCheckDeployed}

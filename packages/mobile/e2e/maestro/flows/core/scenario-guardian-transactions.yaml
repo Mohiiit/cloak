@@ -1,0 +1,41 @@
+appId: ${APP_ID}
+name: scenario-guardian-transactions
+---
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.home.press
+      ASSERT_TEXT: Cloak
+- tapOn:
+    id: home.quick.shield.press
+- assertVisible:
+    id: transaction.router.path
+    text: transaction.router.path=direct
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: core-guardian-shield
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.wallet.press
+      ASSERT_TEXT: Wallet
+- tapOn:
+    id: wallet.mode.unshield.press
+- tapOn:
+    id: wallet.amount.value.input
+- inputText: ${UNSHIELD_AMOUNT}
+- tapOn:
+    id: wallet.input.submit.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: core-guardian-unshield
+- runFlow:
+    file: ../shared/fill-send-form.yaml
+- tapOn:
+    id: send.confirm.send.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: core-guardian-send-to-ward

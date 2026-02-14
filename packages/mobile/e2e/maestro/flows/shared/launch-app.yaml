@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+---
+- launchApp:
+    appId: ${APP_ID}
+    clearState: ${CLEAR_STATE}
+    stopApp: true
+- waitForAnimationToEnd

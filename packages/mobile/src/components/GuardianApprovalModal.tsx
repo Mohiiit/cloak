@@ -16,6 +16,7 @@ import { useWardContext, type WardApprovalRequest } from "../lib/wardContext";
 import { useThemedModal } from "./ThemedModal";
 import { promptBiometric } from "../lib/twoFactor";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { testIDs, testProps } from "../testing/testIDs";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -154,6 +155,7 @@ function GuardianApprovalCard({
 
       <View style={styles.buttonRow}>
         <TouchableOpacity
+          {...testProps(testIDs.guardianApprovalModal.reject)}
           style={[styles.rejectBtn, isRejecting && styles.btnDisabled]}
           onPress={handleReject}
           disabled={isApproving || isRejecting}
@@ -165,6 +167,7 @@ function GuardianApprovalCard({
           )}
         </TouchableOpacity>
         <TouchableOpacity
+          {...testProps(testIDs.guardianApprovalModal.approve)}
           style={[
             styles.approveBtn,
             (isApproving || isExpired) && styles.btnDisabled,

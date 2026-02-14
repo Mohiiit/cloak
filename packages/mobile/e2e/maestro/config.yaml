@@ -1,0 +1,21 @@
+profiles:
+  androidMockFull:
+    flow: packages/mobile/e2e/maestro/flows/core/android-mock-full-matrix.yaml
+    appId: com.cloakmobile.e2e
+    runtimeMode: e2e-mock
+    networkMode: mock
+  iosMockFull:
+    flow: packages/mobile/e2e/maestro/flows/core/ios-mock-full-matrix.yaml
+    appId: com.cloakmobile.e2e
+    runtimeMode: e2e-mock
+    networkMode: mock
+  androidLiveSmoke:
+    flow: packages/mobile/e2e/maestro/flows/core/android-live-smoke.yaml
+    appId: com.cloakmobile.e2e
+    runtimeMode: e2e-live
+    networkMode: live
+  iosLiveSmoke:
+    flow: packages/mobile/e2e/maestro/flows/core/ios-live-smoke.yaml
+    appId: com.cloakmobile.e2e
+    runtimeMode: e2e-live
+    networkMode: live

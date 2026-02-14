@@ -1,0 +1,28 @@
+appId: ${APP_ID}
+name: android-live-smoke
+env:
+  CLEAR_STATE: false
+---
+- runFlow:
+    file: ../shared/launch-app.yaml
+    env:
+      CLEAR_STATE: ${CLEAR_STATE}
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.home.press
+      ASSERT_TEXT: Cloak
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.send.press
+      ASSERT_TEXT: Send Payment
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: live-smoke-android

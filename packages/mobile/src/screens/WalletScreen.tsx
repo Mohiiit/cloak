@@ -11,7 +11,6 @@ import {
   ScrollView,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -24,6 +23,7 @@ import { useThemedModal } from "../components/ThemedModal";
 import { FeeRetryModal } from "../components/FeeRetryModal";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { triggerMedium } from "../lib/haptics";
+import { testIDs, testProps } from "../testing/testIDs";
 
 type Mode = "shield" | "unshield" | null;
 type SuccessInfo = { txHash: string; amount: string; type: "shield" | "unshield" | "claim" };
@@ -164,24 +164,27 @@ export default function WalletScreen({ route }: any) {
                 {successInfo.txHash}
               </Text>
               <View style={styles.successTxActions}>
-                <TouchableOpacity
-                  style={styles.successTxBtn}
-                  onPress={() => handleCopyTx(successInfo.txHash)}
-                >
+              <TouchableOpacity
+                {...testProps(testIDs.wallet.successCopyTx)}
+                style={styles.successTxBtn}
+                onPress={() => handleCopyTx(successInfo.txHash)}
+              >
                   <Text style={styles.successTxBtnText}>
                     {copiedTx ? "Copied!" : "Copy Tx Hash"}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.successTxBtn}
-                  onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${successInfo.txHash}`)}
-                >
+              <TouchableOpacity
+                {...testProps(testIDs.wallet.successViewVoyager)}
+                style={styles.successTxBtn}
+                onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${successInfo.txHash}`)}
+              >
                   <Text style={styles.successTxBtnText}>View on Voyager</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             <TouchableOpacity
+              {...testProps(testIDs.wallet.successDone)}
               style={styles.successDoneBtn}
               onPress={() => setSuccessInfo(null)}
             >
@@ -209,6 +212,7 @@ export default function WalletScreen({ route }: any) {
                 </Text>
               </View>
               <TouchableOpacity
+                {...testProps(testIDs.wallet.claimPending)}
                 style={styles.claimFullButton}
                 onPress={handleRollover}
               >
@@ -230,6 +234,7 @@ export default function WalletScreen({ route }: any) {
         {!mode && (
           <View style={styles.actionRow}>
             <TouchableOpacity
+              {...testProps(testIDs.wallet.modeShield)}
               style={[styles.actionBtn, styles.shieldBtn]}
               onPress={() => setMode("shield")}
             >
@@ -238,6 +243,7 @@ export default function WalletScreen({ route }: any) {
               <Text style={styles.actionBtnDesc}>Deposit into private pool</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              {...testProps(testIDs.wallet.modeUnshield)}
               style={[styles.actionBtn, styles.unshieldBtn]}
               onPress={() => setMode("unshield")}
             >
@@ -262,6 +268,7 @@ export default function WalletScreen({ route }: any) {
 
             <View style={styles.inputRow}>
               <TextInput
+                {...testProps(testIDs.wallet.amountInput)}
                 style={styles.input}
                 placeholder="0"
                 placeholderTextColor={colors.textMuted}
@@ -276,12 +283,14 @@ export default function WalletScreen({ route }: any) {
 
             <View style={styles.buttonRow}>
               <TouchableOpacity
+                {...testProps(testIDs.wallet.inputCancel)}
                 style={styles.cancelBtn}
                 onPress={() => { setMode(null); setAmount(""); }}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                {...testProps(testIDs.wallet.inputSubmit)}
                 style={[styles.submitBtn, !amount && styles.submitBtnDisabled]}
                 onPress={() => { setFeeRetryCount(0); handleSubmit(); }}
                 disabled={!amount || isPending}

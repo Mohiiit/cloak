@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+name: scenario-fee-estimation-retry
+---
+- runFlow:
+    file: ../shared/fill-send-form.yaml
+- tapOn:
+    id: send.confirm.send.press
+- assertVisible:
+    id: toast.last.type
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: regress-fee-estimation-retry

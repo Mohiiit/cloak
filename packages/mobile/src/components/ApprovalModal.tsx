@@ -2,7 +2,7 @@
  * ApprovalModal — Full-screen modal for approving/rejecting 2FA transactions.
  * Shows when there are pending approval requests from the extension.
  */
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { useTwoFactor } from "../lib/TwoFactorContext";
 import { useWallet } from "../lib/WalletContext";
 import { useToast } from "./Toast";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { testIDs, testProps } from "../testing/testIDs";
 import {
   ApprovalRequest,
   deserializeCalls,
@@ -221,6 +222,7 @@ function ApprovalCard({
       {/* Buttons */}
       <View style={styles.buttonRow}>
         <TouchableOpacity
+          {...testProps(testIDs.approvalModal.reject)}
           style={[styles.rejectBtn, isRejecting && styles.btnDisabled]}
           onPress={handleReject}
           disabled={isApproving || isRejecting}
@@ -232,6 +234,7 @@ function ApprovalCard({
           )}
         </TouchableOpacity>
         <TouchableOpacity
+          {...testProps(testIDs.approvalModal.approve)}
           style={[
             styles.approveBtn,
             (isApproving || isExpired) && styles.btnDisabled,

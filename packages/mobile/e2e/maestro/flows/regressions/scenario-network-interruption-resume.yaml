@@ -1,0 +1,16 @@
+appId: ${APP_ID}
+name: scenario-network-interruption-resume
+---
+- runFlow:
+    file: ../shared/fill-send-form.yaml
+- stopApp:
+    appId: ${APP_ID}
+- launchApp:
+    appId: ${APP_ID}
+    clearState: false
+- assertVisible:
+    id: approval.queue.count
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: regress-network-interruption-resume

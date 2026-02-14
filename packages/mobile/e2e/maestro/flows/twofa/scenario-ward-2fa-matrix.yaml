@@ -1,0 +1,29 @@
+appId: ${APP_ID}
+name: scenario-ward-2fa-matrix
+---
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- scrollUntilVisible:
+    element:
+      id: settings.twofa.enable.press
+    direction: DOWN
+- tapOn:
+    id: settings.twofa.enable.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: twofa-ward-enabled
+- runFlow:
+    file: ../shared/fill-send-form.yaml
+- tapOn:
+    id: send.confirm.send.press
+- assertVisible:
+    id: transaction.router.path
+    text: transaction.router.path=ward+2fa
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: twofa-ward-routing

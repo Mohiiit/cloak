@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ClipboardPaste, ShieldAlert, Info } from "lucide-react-native";
+import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ShieldAlert, Info } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
@@ -25,6 +25,7 @@ import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
+import { testIDs, testProps } from "../testing/testIDs";
 
 export default function HomeScreen({ navigation }: any) {
   const wallet = useWallet();
@@ -80,9 +81,15 @@ export default function HomeScreen({ navigation }: any) {
             Shielded payments on Starknet
           </Text>
           <TouchableOpacity
+            {...testProps(testIDs.home.createWallet)}
             style={styles.createButton}
             onPress={async () => {
               try {
+                await AsyncStorage.multiRemove([
+                  "cloak_is_ward",
+                  "cloak_guardian_address",
+                  "cloak_ward_info_cache",
+                ]);
                 await wallet.createWallet();
               } catch (e: any) {
                 modal.showError("Error", e.message || "Failed to create wallet", e.message);
@@ -93,6 +100,7 @@ export default function HomeScreen({ navigation }: any) {
           </TouchableOpacity>
 
           <TouchableOpacity
+            {...testProps(testIDs.home.importExistingToggle)}
             style={styles.importToggle}
             onPress={() => { setShowImport(!showImport); setShowWardImport(false); }}
           >
@@ -105,6 +113,7 @@ export default function HomeScreen({ navigation }: any) {
             <View style={styles.importCard}>
               <Text style={styles.importLabel}>Stark Private Key</Text>
               <TextInput
+                {...testProps(testIDs.home.importExistingPrivateKeyInput)}
                 style={styles.importInput}
                 placeholder="0x..."
                 placeholderTextColor={colors.textMuted}
@@ -117,6 +126,7 @@ export default function HomeScreen({ navigation }: any) {
               />
               <Text style={styles.importLabel}>Starknet Address</Text>
               <TextInput
+                {...testProps(testIDs.home.importExistingAddressInput)}
                 style={styles.importInput}
                 placeholder="0x..."
                 placeholderTextColor={colors.textMuted}
@@ -128,11 +138,17 @@ export default function HomeScreen({ navigation }: any) {
                 autoComplete="off"
               />
               <TouchableOpacity
+                {...testProps(testIDs.home.importExistingSubmit)}
                 style={[styles.createButton, (!importPK || !importAddr || isImporting) && { opacity: 0.4 }]}
                 disabled={!importPK || !importAddr || isImporting}
                 onPress={async () => {
                   setIsImporting(true);
                   try {
+                    await AsyncStorage.multiRemove([
+                      "cloak_is_ward",
+                      "cloak_guardian_address",
+                      "cloak_ward_info_cache",
+                    ]);
                     await wallet.importWallet(importPK.trim(), importAddr.trim());
                     modal.showSuccess("Success", "Wallet imported!");
                   } catch (e: any) {
@@ -152,11 +168,12 @@ export default function HomeScreen({ navigation }: any) {
           )}
 
           <TouchableOpacity
+            {...testProps(testIDs.home.importWardToggle)}
             style={styles.importToggle}
             onPress={() => { setShowWardImport(!showWardImport); setShowImport(false); }}
           >
             <Text style={[styles.importToggleText, { color: colors.warning }]}>
-              {showWardImport ? "Hide Ward Import" : "Import Ward Account"}
+              {showWardImport ? "Hide Ward Invite Form" : "Open Ward Invite Form"}
             </Text>
           </TouchableOpacity>
 
@@ -171,6 +188,7 @@ export default function HomeScreen({ navigation }: any) {
               </Text>
               <Text style={styles.importLabel}>Ward Invite JSON</Text>
               <TextInput
+                {...testProps(testIDs.home.importWardJsonInput)}
                 style={[styles.importInput, { minHeight: 80, textAlignVertical: "top" }]}
                 placeholder='{"type":"cloak_ward_invite","wardAddress":"0x...","wardPrivateKey":"0x...","guardianAddress":"0x..."}'
                 placeholderTextColor={colors.textMuted}
@@ -184,6 +202,7 @@ export default function HomeScreen({ navigation }: any) {
                 numberOfLines={4}
               />
               <TouchableOpacity
+                {...testProps(testIDs.home.importWardSubmit)}
                 style={[styles.createButton, { backgroundColor: colors.warning }, (!wardInviteJson.trim() || isImporting) && { opacity: 0.4 }]}
                 disabled={!wardInviteJson.trim() || isImporting}
                 onPress={async () => {
@@ -193,6 +212,22 @@ export default function HomeScreen({ navigation }: any) {
                     if (invite.type !== "cloak_ward_invite" || !invite.wardAddress || !invite.wardPrivateKey) {
                       throw new Error("Invalid ward invite format");
                     }
+                    if (invite.guardianAddress) {
+                      await AsyncStorage.setItem("cloak_guardian_address", invite.guardianAddress);
+                    }
+                    await AsyncStorage.setItem("cloak_is_ward", "true");
+                    await AsyncStorage.setItem(
+                      "cloak_ward_info_cache",
+                      JSON.stringify({
+                        guardianAddress: invite.guardianAddress || "",
+                        guardianPublicKey: "0x0",
+                        isGuardian2faEnabled: false,
+                        is2faEnabled: false,
+                        isFrozen: false,
+                        spendingLimitPerTx: "0",
+                        requireGuardianForAll: true,
+                      }),
+                    );
                     await wallet.importWallet(invite.wardPrivateKey, invite.wardAddress);
                     modal.showSuccess("Ward Imported", "This account is managed by a guardian.");
                     setWardInviteJson("");
@@ -385,6 +420,7 @@ export default function HomeScreen({ navigation }: any) {
             </View>
           </View>
           <TouchableOpacity
+            {...testProps(testIDs.home.claimPending)}
             style={styles.claimPill}
             onPress={handleClaim}
             disabled={isClaiming}
@@ -405,7 +441,11 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.balanceContent}>
           <View style={styles.balanceLabelRow}>
             <Text style={styles.balanceLabel}>Shielded Balance</Text>
-            <TouchableOpacity onPress={toggleBalanceVisibility} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity
+              {...testProps(testIDs.home.toggleBalanceVisibility)}
+              onPress={toggleBalanceVisibility}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               {balanceHidden ? (
                 <Eye size={20} color={colors.textMuted} />
               ) : (
@@ -435,6 +475,7 @@ export default function HomeScreen({ navigation }: any) {
       {/* Quick Actions */}
       <View style={styles.actionsRow}>
         <TouchableOpacity
+          {...testProps(testIDs.home.quickSend)}
           style={[styles.actionButton, styles.actionSend]}
           onPress={() => navigation.navigate("Send")}
         >
@@ -442,6 +483,7 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={styles.actionLabel}>Send</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          {...testProps(testIDs.home.quickShield)}
           style={[styles.actionButton, styles.actionShield]}
           onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
         >
@@ -449,6 +491,7 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={styles.actionLabel}>Shield</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          {...testProps(testIDs.home.quickUnshield)}
           style={[styles.actionButton, styles.actionUnshield]}
           onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
         >
@@ -462,7 +505,10 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.recentSection}>
           <View style={styles.recentHeader}>
             <Text style={styles.recentTitle}>Recent Activity</Text>
-            <TouchableOpacity onPress={() => navigation.navigate("Activity")}>
+            <TouchableOpacity
+              {...testProps(testIDs.home.recentSeeAll)}
+              onPress={() => navigation.navigate("Activity")}
+            >
               <Text style={styles.recentSeeAll}>See All</Text>
             </TouchableOpacity>
           </View>

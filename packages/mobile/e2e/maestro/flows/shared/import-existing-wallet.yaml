@@ -1,0 +1,16 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: onboarding.wallet.importexisting.toggle
+- tapOn:
+    id: home.wallet.importexisting.privatekey.input
+- inputText: ${IMPORT_STARK_PRIVATE_KEY}
+- tapOn:
+    id: home.wallet.importexisting.address.input
+- inputText: ${IMPORT_STARK_ADDRESS}
+- tapOn:
+    id: onboarding.wallet.importexisting.submit
+- extendedWaitUntil:
+    visible:
+      id: deploy.account.deploy.press
+    timeout: 120000

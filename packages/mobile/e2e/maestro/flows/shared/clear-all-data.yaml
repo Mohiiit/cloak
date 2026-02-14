@@ -1,0 +1,15 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: ./open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- scrollUntilVisible:
+    element:
+      id: settings.data.clearall.press
+    direction: DOWN
+- tapOn:
+    id: settings.data.clearall.press
+- assertVisible:
+    id: onboarding.wallet.create.press

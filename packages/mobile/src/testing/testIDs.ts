@@ -1,0 +1,150 @@
+/**
+ * Central testID registry for mobile E2E and accessibility automation hooks.
+ */
+
+export const testIDs = {
+  markers: {
+    wardCreationStep: "ward.creation.step",
+    wardCreationStatus: "ward.creation.status",
+    deployStatus: "deploy.status",
+    approvalQueueCount: "approval.queue.count",
+    transactionRouterPath: "transaction.router.path",
+    toastLastType: "toast.last.type",
+  },
+  onboarding: {
+    createWallet: "onboarding.wallet.create.press",
+    importExistingToggle: "onboarding.wallet.importexisting.toggle",
+    importExistingSubmit: "onboarding.wallet.importexisting.submit",
+    importWardToggle: "onboarding.ward.import.toggle",
+    importWardSubmit: "onboarding.ward.import.submit",
+  },
+  nav: {
+    tabHome: "nav.tab.home.press",
+    tabSend: "nav.tab.send.press",
+    tabWallet: "nav.tab.wallet.press",
+    tabActivity: "nav.tab.activity.press",
+    tabSettings: "nav.tab.settings.press",
+  },
+  toast: {
+    dismiss: "toast.alert.dismiss.press",
+  },
+  themedModal: {
+    cancel: "modal.themed.cancel.press",
+    confirm: "modal.themed.confirm.press",
+    ok: "modal.themed.ok.press",
+    txCopy: "modal.themed.tx.copy.press",
+    txViewVoyager: "modal.themed.tx.voyager.press",
+    errorDetailsToggle: "modal.themed.error.details.toggle",
+    errorCopyReport: "modal.themed.error.report.copy",
+  },
+  approval: {
+    primaryApprove: "approval.primary.approve.press",
+    primaryReject: "approval.primary.reject.press",
+    wardApprove: "approval.ward.approve.press",
+    wardReject: "approval.ward.reject.press",
+    guardianApprove: "approval.guardian.approve.press",
+    guardianReject: "approval.guardian.reject.press",
+  },
+  ward: {
+    create: "ward.manage.create.press",
+    partialResume: "ward.partial.resume.press",
+    partialDismiss: "ward.partial.dismiss.press",
+    creationDone: "ward.creation.done.press",
+    creationRetry: "ward.creation.retry.press",
+    creationDismiss: "ward.creation.dismiss.press",
+  },
+  home: {
+    createWallet: "home.wallet.create.press",
+    importExistingToggle: "home.wallet.importexisting.toggle",
+    importExistingPrivateKeyInput: "home.wallet.importexisting.privatekey.input",
+    importExistingAddressInput: "home.wallet.importexisting.address.input",
+    importExistingSubmit: "home.wallet.importexisting.submit",
+    importWardToggle: "home.ward.import.toggle",
+    importWardJsonInput: "home.ward.import.json.input",
+    importWardSubmit: "home.ward.import.submit",
+    claimPending: "home.claim.pending.press",
+    toggleBalanceVisibility: "home.balance.visibility.toggle",
+    quickSend: "home.quick.send.press",
+    quickShield: "home.quick.shield.press",
+    quickUnshield: "home.quick.unshield.press",
+    recentSeeAll: "home.recent.seeall.press",
+  },
+  deploy: {
+    copyAddress: "deploy.address.copy.press",
+    openFaucet: "deploy.faucet.open.press",
+    deployAccount: "deploy.account.deploy.press",
+    checkIfDeployed: "deploy.account.check.press",
+    viewVoyager: "deploy.account.voyager.press",
+  },
+  send: {
+    recipientInput: "send.recipient.address.input",
+    recipientPaste: "send.recipient.paste.press",
+    recipientNext: "send.recipient.next.press",
+    amountInput: "send.amount.value.input",
+    amountBack: "send.amount.back.press",
+    amountNext: "send.amount.next.press",
+    noteInput: "send.confirm.note.input",
+    confirmBack: "send.confirm.back.press",
+    confirmSend: "send.confirm.send.press",
+    successCopyTx: "send.success.tx.copy.press",
+    successViewVoyager: "send.success.voyager.press",
+    successSendAnother: "send.success.sendanother.press",
+    successGoHome: "send.success.gohome.press",
+  },
+  wallet: {
+    claimPending: "wallet.claim.pending.press",
+    modeShield: "wallet.mode.shield.press",
+    modeUnshield: "wallet.mode.unshield.press",
+    amountInput: "wallet.amount.value.input",
+    inputCancel: "wallet.input.cancel.press",
+    inputSubmit: "wallet.input.submit.press",
+    successCopyTx: "wallet.success.tx.copy.press",
+    successViewVoyager: "wallet.success.voyager.press",
+    successDone: "wallet.success.done.press",
+  },
+  settings: {
+    contactsAddToggle: "settings.contacts.add.toggle",
+    contactsAddSubmit: "settings.contacts.add.submit",
+    wardCreate: "settings.ward.create.press",
+    wardPartialResume: "settings.ward.partial.resume.press",
+    wardPartialDismiss: "settings.ward.partial.dismiss.press",
+    wardCreationDone: "settings.ward.creation.done.press",
+    wardCreationRetry: "settings.ward.creation.retry.press",
+    wardCreationDismiss: "settings.ward.creation.dismiss.press",
+    keyBackupReveal: "settings.keys.reveal.press",
+    keyBackupHide: "settings.keys.hide.press",
+    tfaEnable: "settings.twofa.enable.press",
+    tfaDisable: "settings.twofa.disable.press",
+    clearAllData: "settings.data.clearall.press",
+  },
+  activity: {
+    rowPrefix: "activity.row.item",
+  },
+  // Backward-compatible aliases for existing imports while migrating call-sites.
+  navigation: {
+    tabHome: "nav.tab.home.press",
+    tabSend: "nav.tab.send.press",
+    tabWallet: "nav.tab.wallet.press",
+    tabActivity: "nav.tab.activity.press",
+    tabSettings: "nav.tab.settings.press",
+  },
+  approvalModal: {
+    approve: "approval.primary.approve.press",
+    reject: "approval.primary.reject.press",
+  },
+  wardApprovalModal: {
+    approve: "approval.ward.approve.press",
+    reject: "approval.ward.reject.press",
+  },
+  guardianApprovalModal: {
+    approve: "approval.guardian.approve.press",
+    reject: "approval.guardian.reject.press",
+  },
+} as const;
+
+export function testProps(testID: string, accessibilityLabel?: string) {
+  return {
+    testID,
+    accessibilityLabel: accessibilityLabel || testID,
+  };
+}

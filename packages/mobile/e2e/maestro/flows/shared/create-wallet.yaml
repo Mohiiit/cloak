@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+---
+- assertVisible:
+    id: onboarding.wallet.create.press
+- tapOn:
+    id: onboarding.wallet.create.press
+- extendedWaitUntil:
+    visible:
+      id: deploy.account.deploy.press
+    timeout: 120000
+- assertVisible:
+    id: deploy.status
+    text: deploy.status=needs_deploy

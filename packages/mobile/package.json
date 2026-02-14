@@ -5,9 +5,17 @@
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
+    "e2e:android": "yarn test:e2e:android:mock",
+    "e2e:ios": "yarn test:e2e:ios:mock",
+    "e2e:live-smoke": "yarn test:e2e:live-smoke",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "test:unit": "jest --runInBand",
+    "test:e2e:android:mock": "RUNTIME_MODE=e2e-mock NETWORK_MODE=mock bash ./scripts/run-e2e-android.sh",
+    "test:e2e:ios:mock": "RUNTIME_MODE=e2e-mock NETWORK_MODE=mock bash ./scripts/run-e2e-ios.sh",
+    "test:e2e:live-smoke": "bash ./scripts/run-e2e-live-smoke.sh",
+    "test:all:mock": "yarn test:unit && yarn test:e2e:android:mock && yarn test:e2e:ios:mock"
   },
   "dependencies": {
     "@cloak-wallet/sdk": "workspace:*",
@@ -41,6 +49,8 @@
     "@react-native/eslint-config": "0.83.1",
     "@react-native/metro-config": "0.83.1",
     "@react-native/typescript-config": "0.83.1",
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.13",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19.1.0",

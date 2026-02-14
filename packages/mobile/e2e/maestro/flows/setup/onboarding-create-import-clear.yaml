@@ -1,0 +1,27 @@
+appId: ${APP_ID}
+name: setup-onboarding-create-import-clear
+---
+- runFlow:
+    file: ../shared/reset-app.yaml
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: setup-onboarding-initial
+- runFlow:
+    file: ../shared/create-wallet.yaml
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: setup-create-wallet-complete
+- runFlow:
+    file: ../shared/clear-all-data.yaml
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: setup-clear-all-data-complete
+- runFlow:
+    file: ../shared/import-existing-wallet.yaml
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: setup-import-existing-complete
