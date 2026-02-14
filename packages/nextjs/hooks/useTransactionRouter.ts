@@ -18,22 +18,13 @@ import {
   check2FAEnabled,
   request2FAApproval,
 } from "~~/lib/two-factor";
+import { serializeCalls, formatWardAmount } from "@cloak-wallet/sdk";
 
 interface TransactionMeta {
   action: string;
   token?: string;
   amount?: string;
   recipient?: string;
-}
-
-function serializeCalls(calls: any[]): string {
-  return JSON.stringify(
-    calls.map((c: any) => ({
-      contractAddress: c.contractAddress || c.contract_address,
-      entrypoint: c.entrypoint || c.entry_point,
-      calldata: (c.calldata || []).map((d: any) => d.toString()),
-    })),
-  );
 }
 
 export function useTransactionRouter() {
@@ -57,7 +48,7 @@ export function useTransactionRouter() {
           guardianAddress: wardNeeds.guardianAddress,
           action: meta.action,
           token: meta.token || "STRK",
-          amount: meta.amount || null,
+          amount: formatWardAmount(meta.amount || null, meta.token || "STRK", meta.action),
           recipient: meta.recipient || null,
           callsJson,
           wardSigJson: "[]",

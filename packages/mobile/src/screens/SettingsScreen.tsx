@@ -15,12 +15,12 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, Snowflake, Sun, ChevronDown, ChevronUp } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, Snowflake, Sun, ChevronDown, ChevronUp, RefreshCw, X } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
 import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
-import { useWardContext, type WardEntry } from "../lib/wardContext";
+import { useWardContext, type WardEntry, type WardCreationProgress } from "../lib/wardContext";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 
@@ -58,6 +58,138 @@ function TFAStepRow({ step, label, currentStep }: { step: TwoFAStep; label: stri
         {label}
       </Text>
     </View>
+  );
+}
+
+const WARD_STEPS = [
+  { step: 1, label: "Generate ward keys" },
+  { step: 2, label: "Deploy ward contract" },
+  { step: 3, label: "Confirm deployment" },
+  { step: 4, label: "Fund ward (0.5 STRK)" },
+  { step: 5, label: "Add STRK as token" },
+  { step: 6, label: "Register in database" },
+];
+
+function WardStepRow({ step, label, currentStep, totalSteps, failed }: {
+  step: number;
+  label: string;
+  currentStep: number;
+  totalSteps: number;
+  failed: boolean;
+}) {
+  const isActive = currentStep === step && !failed;
+  const isComplete = currentStep > step;
+  const isFailed = currentStep === step && failed;
+
+  return (
+    <View style={styles.stepRow}>
+      <View style={[
+        styles.stepCircle,
+        isComplete && styles.stepCircleComplete,
+        isActive && styles.stepCircleActive,
+        isFailed && styles.stepCircleFailed,
+      ]}>
+        {isComplete ? (
+          <Check size={12} color="#fff" />
+        ) : isFailed ? (
+          <X size={12} color={colors.error} />
+        ) : isActive ? (
+          <ActivityIndicator size="small" color={colors.warning} />
+        ) : (
+          <Circle size={8} color={colors.textMuted} />
+        )}
+      </View>
+      {step < totalSteps && (
+        <View style={[styles.stepLine, isComplete && styles.stepLineComplete, isFailed && styles.stepLineFailed]} />
+      )}
+      <Text style={[
+        styles.stepLabel,
+        isActive && styles.stepLabelWardActive,
+        isComplete && styles.stepLabelComplete,
+        isFailed && styles.stepLabelFailed,
+      ]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMessage, onRetry, onClose }: {
+  visible: boolean;
+  currentStep: number;
+  stepMessage: string;
+  failed: boolean;
+  errorMessage: string | null;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const isDone = currentStep > 6 && !failed;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => { if (isDone || failed) onClose(); }}>
+      <View style={wardModalStyles.overlay}>
+        <View style={wardModalStyles.card}>
+          {/* Header */}
+          <View style={[wardModalStyles.iconCircle, isDone && wardModalStyles.iconCircleDone, failed && wardModalStyles.iconCircleFailed]}>
+            {isDone ? (
+              <Check size={28} color={colors.success} />
+            ) : failed ? (
+              <AlertTriangle size={28} color={colors.error} />
+            ) : (
+              <ShieldAlert size={28} color={colors.warning} />
+            )}
+          </View>
+
+          <Text style={wardModalStyles.title}>
+            {isDone ? "Ward Created!" : failed ? "Creation Failed" : "Creating Ward..."}
+          </Text>
+
+          {!isDone && !failed && (
+            <Text style={wardModalStyles.subtitle}>{stepMessage}</Text>
+          )}
+
+          {/* Stepper */}
+          <View style={wardModalStyles.stepper}>
+            {WARD_STEPS.map((s) => (
+              <WardStepRow
+                key={s.step}
+                step={s.step}
+                label={s.label}
+                currentStep={currentStep}
+                totalSteps={6}
+                failed={failed && currentStep === s.step}
+              />
+            ))}
+          </View>
+
+          {/* Error message */}
+          {failed && errorMessage && (
+            <View style={wardModalStyles.errorBox}>
+              <Text style={wardModalStyles.errorText} numberOfLines={3}>{errorMessage}</Text>
+            </View>
+          )}
+
+          {/* Actions */}
+          {isDone && (
+            <TouchableOpacity style={wardModalStyles.doneBtn} onPress={onClose}>
+              <Text style={wardModalStyles.doneBtnText}>Done</Text>
+            </TouchableOpacity>
+          )}
+
+          {failed && (
+            <View style={wardModalStyles.failedActions}>
+              <TouchableOpacity style={wardModalStyles.retryBtn} onPress={onRetry}>
+                <RefreshCw size={14} color="#fff" />
+                <Text style={wardModalStyles.retryBtnText}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={wardModalStyles.dismissBtn} onPress={onClose}>
+                <Text style={wardModalStyles.dismissBtnText}>Dismiss</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -154,8 +286,58 @@ export default function SettingsScreen() {
 
   // Ward management state
   const [isCreatingWard, setIsCreatingWard] = useState(false);
+  const [wardModalVisible, setWardModalVisible] = useState(false);
+  const [wardStep, setWardStep] = useState(0);
+  const [wardStepMessage, setWardStepMessage] = useState("");
+  const [wardFailed, setWardFailed] = useState(false);
+  const [wardError, setWardError] = useState<string | null>(null);
+  const [wardResult, setWardResult] = useState<{ wardAddress: string; wardPrivateKey: string; qrPayload: string } | null>(null);
   const [expandedWard, setExpandedWard] = useState<string | null>(null);
   const [wardAction, setWardAction] = useState<string | null>(null);
+
+  const wardProgressCallback: WardCreationProgress = (step, _total, message) => {
+    setWardStep(step);
+    setWardStepMessage(message);
+  };
+
+  const startWardCreation = async (isRetry: boolean = false) => {
+    setWardFailed(false);
+    setWardError(null);
+    setWardResult(null);
+    setIsCreatingWard(true);
+    setWardModalVisible(true);
+    if (!isRetry) {
+      setWardStep(1);
+      setWardStepMessage("Generating ward keys...");
+    }
+
+    try {
+      const result = isRetry
+        ? await ward.retryPartialWard(wardProgressCallback)
+        : await ward.createWard(wardProgressCallback);
+      setWardResult(result);
+      setWardStep(7); // Beyond last step = done
+      setWardStepMessage("Done!");
+    } catch (e: any) {
+      setWardFailed(true);
+      setWardError(e.message || "Ward creation failed");
+    } finally {
+      setIsCreatingWard(false);
+    }
+  };
+
+  const handleWardModalClose = () => {
+    setWardModalVisible(false);
+    if (wardResult) {
+      setQrModal({ label: "Ward Invite QR", value: wardResult.qrPayload });
+    }
+    // Reset state
+    setWardStep(0);
+    setWardStepMessage("");
+    setWardFailed(false);
+    setWardError(null);
+    setWardResult(null);
+  };
 
   // Reset scroll on focus
   useFocusEffect(
@@ -307,40 +489,61 @@ export default function SettingsScreen() {
             Create and manage ward accounts. Wards are sub-accounts with spending limits that require your approval.
           </Text>
 
+          {/* Ward Creation Modal */}
+          <WardCreationModal
+            visible={wardModalVisible}
+            currentStep={wardStep}
+            stepMessage={wardStepMessage}
+            failed={wardFailed}
+            errorMessage={wardError}
+            onRetry={() => startWardCreation(true)}
+            onClose={handleWardModalClose}
+          />
+
+          {/* Partial ward recovery banner */}
+          {ward.partialWard && !isCreatingWard && (
+            <View style={styles.partialWardBanner}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.partialWardTitle}>Ward creation incomplete</Text>
+                <Text style={styles.partialWardDesc}>
+                  A ward was deployed but setup didn't finish. Resume to complete it.
+                </Text>
+              </View>
+              <View style={styles.partialWardActions}>
+                <TouchableOpacity
+                  style={styles.partialWardRetryBtn}
+                  onPress={() => startWardCreation(true)}
+                >
+                  <RefreshCw size={14} color="#fff" />
+                  <Text style={styles.partialWardRetryText}>Resume</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.partialWardDismissBtn}
+                  onPress={() => ward.clearPartialWard()}
+                >
+                  <Text style={styles.partialWardDismissText}>Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Create Ward Button */}
           <TouchableOpacity
             style={[styles.wardCreateBtn, (isCreatingWard || !wallet.isDeployed) && { opacity: 0.5 }]}
             disabled={isCreatingWard || !wallet.isDeployed}
-            onPress={async () => {
+            onPress={() => {
               modal.showConfirm(
                 "Create Ward Account",
                 "This will deploy a new ward contract on-chain, fund it with 0.5 STRK for gas, and generate credentials. This may take 1-2 minutes.",
-                async () => {
-                  setIsCreatingWard(true);
-                  try {
-                    const result = await ward.createWard();
-                    setQrModal({ label: "Ward Invite QR", value: result.qrPayload });
-                  } catch (e: any) {
-                    modal.showError("Failed", e.message || "Ward creation failed", e.message);
-                  } finally {
-                    setIsCreatingWard(false);
-                  }
-                },
+                () => startWardCreation(false),
                 { confirmText: "Create Ward" },
               );
             }}
           >
-            {isCreatingWard ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                <ActivityIndicator size="small" color="#fff" />
-                <Text style={styles.wardCreateBtnText}>Deploying Ward...</Text>
-              </View>
-            ) : (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                <Plus size={16} color="#fff" />
-                <Text style={styles.wardCreateBtnText}>Create New Ward</Text>
-              </View>
-            )}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Plus size={16} color="#fff" />
+              <Text style={styles.wardCreateBtnText}>Create New Ward</Text>
+            </View>
           </TouchableOpacity>
 
           {!wallet.isDeployed && (
@@ -1204,6 +1407,186 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
   },
 
+  // Ward step overrides
+  stepCircleFailed: {
+    borderColor: colors.error,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+  },
+  stepLineFailed: {
+    backgroundColor: colors.error,
+  },
+  stepLabelWardActive: {
+    color: colors.warning,
+    fontWeight: "600",
+  },
+  stepLabelFailed: {
+    color: colors.error,
+    fontWeight: "600",
+  },
+
+  // Partial ward recovery banner
+  partialWardBanner: {
+    backgroundColor: "rgba(245, 158, 11, 0.08)",
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.2)",
+  },
+  partialWardTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.warning,
+    marginBottom: 4,
+  },
+  partialWardDesc: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
+  },
+  partialWardActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  partialWardRetryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.warning,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  partialWardRetryText: {
+    color: "#fff",
+    fontSize: fontSize.xs,
+    fontWeight: "600",
+  },
+  partialWardDismissBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  partialWardDismissText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+  },
+
   aboutSection: { alignItems: "center", paddingVertical: spacing.xl },
   aboutText: { fontSize: fontSize.sm, color: colors.textMuted, marginBottom: 4 },
+});
+
+const wardModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.3)",
+  },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 2,
+    borderColor: "rgba(245, 158, 11, 0.3)",
+    marginBottom: spacing.md,
+  },
+  iconCircleDone: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderColor: "rgba(16, 185, 129, 0.3)",
+  },
+  iconCircleFailed: {
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    borderColor: "rgba(239, 68, 68, 0.3)",
+  },
+  title: {
+    fontSize: fontSize.xl,
+    fontWeight: "bold",
+    color: colors.text,
+    marginBottom: spacing.xs,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: spacing.md,
+  },
+  stepper: {
+    width: "100%",
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  errorBox: {
+    width: "100%",
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+  },
+  errorText: {
+    fontSize: fontSize.xs,
+    color: colors.error,
+    lineHeight: 16,
+  },
+  doneBtn: {
+    width: "100%",
+    paddingVertical: 14,
+    borderRadius: borderRadius.md,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    alignItems: "center",
+  },
+  doneBtnText: {
+    color: colors.success,
+    fontSize: fontSize.md,
+    fontWeight: "600",
+  },
+  failedActions: {
+    width: "100%",
+    gap: spacing.sm,
+  },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: 14,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.warning,
+  },
+  retryBtnText: {
+    color: "#fff",
+    fontSize: fontSize.md,
+    fontWeight: "600",
+  },
+  dismissBtn: {
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    alignItems: "center",
+  },
+  dismissBtnText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+  },
 });

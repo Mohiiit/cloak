@@ -14,18 +14,19 @@
 
 import {
   CloakClient,
-  DEFAULT_RPC,
   signHash,
   estimateWardInvokeFee,
   buildResourceBoundsFromEstimate,
   parseInsufficientGasError,
   serializeResourceBounds,
+  serializeCalls,
   SupabaseLite,
   normalizeAddress,
   formatWardAmount,
+  getProvider,
 } from "@cloak-wallet/sdk";
 import type { TokenKey, WardApprovalResult } from "@cloak-wallet/sdk";
-import { Account, RpcProvider, hash, num, transaction } from "starknet";
+import { Account, hash, num, transaction } from "starknet";
 import { check2FAEnabled, request2FAApproval } from "@/shared/two-factor";
 import {
   checkIfWardAccount,
@@ -43,16 +44,6 @@ interface TransactionOpts {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function serializeCalls(calls: any[]): string {
-  return JSON.stringify(
-    calls.map((cl: any) => ({
-      contractAddress: cl.contractAddress || cl.contract_address,
-      entrypoint: cl.entrypoint || cl.entry_point,
-      calldata: (cl.calldata || []).map((d: any) => d.toString()),
-    })),
-  );
-}
 
 function notifyStatus(status: string, onStatusChange?: (s: string) => void) {
   onStatusChange?.(status);
@@ -103,7 +94,7 @@ async function signAndRequestGuardian(
       if (gasInfo && attempt < MAX_GAS_RETRIES) {
         safetyMultiplier = gasInfo.suggestedMultiplier;
         notifyStatus(
-          `Gas too low (needed ${gasInfo.actualUsed}, had ${gasInfo.maxAmount}). Re-estimating...`,
+          `Gas too low (needed ${gasInfo.actualUsed}, had ${gasInfo.maxAmount}). Retrying (${attempt + 1}/${MAX_GAS_RETRIES})...`,
           onStatusChange,
         );
         continue;
@@ -127,7 +118,7 @@ async function signAndSubmitWardRequest(
   safetyMultiplier: number,
   onStatusChange?: (s: string) => void,
 ): Promise<WardApprovalResult> {
-  const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+  const provider = getProvider();
 
   notifyStatus("Estimating gas...", onStatusChange);
 
@@ -442,7 +433,7 @@ export async function routeRawCalls(
   }
 
   // Direct execution
-  const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+  const provider = getProvider();
   const account = new Account({
     provider,
     address: wallet.starkAddress,

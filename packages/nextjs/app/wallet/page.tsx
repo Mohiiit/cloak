@@ -21,12 +21,14 @@ import { useWardApproval } from "~~/hooks/useWardApproval";
 import { useWard } from "~~/hooks/useWard";
 import { check2FAEnabled, fetchWalletNonce } from "~~/lib/two-factor";
 import { TwoFactorWaiting } from "~~/components/TwoFactorWaiting";
+import { FeeRetryModal } from "~~/components/FeeRetryModal";
 import { padAddress } from "~~/lib/address";
 import {
   TOKENS,
   type TokenKey,
   parseTokenAmount,
 } from "~~/lib/tokens";
+import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import toast from "react-hot-toast";
 
 function friendlyError(msg: string): string {
@@ -164,6 +166,10 @@ export default function WalletPage() {
   const [showFundModal, setShowFundModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
+  const [showFeeRetry, setShowFeeRetry] = useState(false);
+  const [gasErrorMsg, setGasErrorMsg] = useState("");
+  const [feeRetryCount, setFeeRetryCount] = useState(0);
+  const [pendingFeeAction, setPendingFeeAction] = useState<{ type: "fund" | "withdraw" | "rollover"; amount?: string } | null>(null);
 
   const isConnected = status === "connected";
   const tokenConfig = TOKENS[selectedToken];
@@ -181,6 +187,7 @@ export default function WalletPage() {
 
   const handleFund = async (amountStr: string) => {
     if (!tongoAccount || !address) return;
+    setFeeRetryCount(0);
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
       const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
@@ -273,12 +280,20 @@ export default function WalletPage() {
         setTimeout(refresh, 3000);
       }
     } catch (err: any) {
-      toast.error(friendlyError(err?.message || "Failed to shield funds"));
+      const gasInfo = parseInsufficientGasError(err?.message || "");
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(err.message);
+        setPendingFeeAction({ type: "fund", amount: amountStr });
+        setShowFeeRetry(true);
+      } else {
+        toast.error(friendlyError(err?.message || "Failed to shield funds"));
+      }
     }
   };
 
   const handleWithdraw = async (amountStr: string) => {
     if (!tongoAccount || !address) return;
+    setFeeRetryCount(0);
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
       const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
@@ -369,19 +384,50 @@ export default function WalletPage() {
         setTimeout(refresh, 3000);
       }
     } catch (err: any) {
-      toast.error(friendlyError(err?.message || "Failed to unshield funds"));
+      const gasInfo = parseInsufficientGasError(err?.message || "");
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(err.message);
+        setPendingFeeAction({ type: "withdraw", amount: amountStr });
+        setShowFeeRetry(true);
+      } else {
+        toast.error(friendlyError(err?.message || "Failed to unshield funds"));
+      }
     }
   };
 
   const handleRollover = async () => {
-    const txHash = await rollover();
-    if (txHash) {
-      setClaimTxHash(txHash);
-      toast.success("Pending funds claimed!");
-      setTimeout(() => {
-        refresh();
-        setClaimTxHash(null);
-      }, 5000);
+    setFeeRetryCount(0);
+    try {
+      const txHash = await rollover();
+      if (txHash) {
+        setClaimTxHash(txHash);
+        toast.success("Pending funds claimed!");
+        setTimeout(() => {
+          refresh();
+          setClaimTxHash(null);
+        }, 5000);
+      }
+    } catch (err: any) {
+      const gasInfo = parseInsufficientGasError(err?.message || "");
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(err.message);
+        setPendingFeeAction({ type: "rollover" });
+        setShowFeeRetry(true);
+      } else {
+        toast.error(friendlyError(err?.message || "Failed to claim pending funds"));
+      }
+    }
+  };
+
+  const handleFeeRetry = () => {
+    setFeeRetryCount(prev => prev + 1);
+    setShowFeeRetry(false);
+    if (pendingFeeAction?.type === "fund" && pendingFeeAction.amount) {
+      handleFund(pendingFeeAction.amount);
+    } else if (pendingFeeAction?.type === "withdraw" && pendingFeeAction.amount) {
+      handleWithdraw(pendingFeeAction.amount);
+    } else if (pendingFeeAction?.type === "rollover") {
+      handleRollover();
     }
   };
 
@@ -540,6 +586,17 @@ export default function WalletPage() {
               : wardStatus
         }
         onCancel={cancelWard}
+      />
+
+      {/* Fee Retry Modal */}
+      <FeeRetryModal
+        isOpen={showFeeRetry}
+        errorMessage={gasErrorMsg}
+        retryCount={feeRetryCount}
+        maxRetries={3}
+        isRetrying={fundPending || withdrawPending || rolloverPending}
+        onRetry={handleFeeRetry}
+        onCancel={() => { setShowFeeRetry(false); setPendingFeeAction(null); }}
       />
     </div>
   );

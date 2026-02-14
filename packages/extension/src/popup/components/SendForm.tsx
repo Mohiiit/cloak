@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { TOKENS, parseTokenAmount, validateTongoAddress } from "@cloak-wallet/sdk";
+import { TOKENS, parseTokenAmount, validateTongoAddress, parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { Header, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote, type TxMetadata } from "../lib/storage";
@@ -7,6 +7,7 @@ import { useContacts } from "../hooks/useContacts";
 import { TxConfirmModal } from "./TxConfirmModal";
 import { TxSuccessModal } from "./TxSuccessModal";
 import { TwoFactorWaiting } from "./TwoFactorWaiting";
+import { FeeRetryModal } from "./FeeRetryModal";
 import { useWard } from "../hooks/useWard";
 
 interface Props {
@@ -26,12 +27,16 @@ export function SendForm({ wallet: w, onBack }: Props) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [show2FAWaiting, setShow2FAWaiting] = useState(false);
   const [twoFAStatus, setTwoFAStatus] = useState("");
+  const [showFeeRetry, setShowFeeRetry] = useState(false);
+  const [gasErrorMsg, setGasErrorMsg] = useState("");
+  const [feeRetryCount, setFeeRetryCount] = useState(0);
   const abortController = useRef<AbortController | null>(null);
 
   const token = TOKENS[w.selectedToken];
 
   const handleRequestConfirm = () => {
     if (!amount || !recipient) return;
+    setFeeRetryCount(0);
     if (!validateTongoAddress(recipient.trim())) {
       setAddressError("Invalid Cloak address. Please check and try again.");
       return;
@@ -85,10 +90,24 @@ export function SendForm({ wallet: w, onBack }: Props) {
         });
         setShowSuccess(true);
       }
+    } catch (e: any) {
+      const gasInfo = parseInsufficientGasError(e?.message || "");
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(e.message);
+        setShowFeeRetry(true);
+      } else {
+        w.setError(e?.message || "Send failed");
+      }
     } finally {
       setLoading(false);
       setShow2FAWaiting(false);
     }
+  };
+
+  const handleFeeRetry = () => {
+    setFeeRetryCount(prev => prev + 1);
+    setShowFeeRetry(false);
+    handleConfirmedSubmit();
   };
 
   const handleDone = () => {
@@ -193,6 +212,14 @@ export function SendForm({ wallet: w, onBack }: Props) {
         }}
         title={isWard ? "Guardian Approval Required" : undefined}
         subtitle={isWard ? "Waiting for guardian to approve this transaction" : undefined}
+      />
+
+      <FeeRetryModal
+        isOpen={showFeeRetry}
+        errorMessage={gasErrorMsg}
+        retryCount={feeRetryCount}
+        onRetry={handleFeeRetry}
+        onCancel={() => { setShowFeeRetry(false); setLoading(false); }}
       />
     </div>
   );

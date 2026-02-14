@@ -356,8 +356,9 @@ export function buildResourceBoundsFromEstimate(
   estimate: FeeEstimate,
   safetyMultiplier = 1.5,
 ): any {
-  const mul = (v: bigint) =>
-    BigInt(Math.ceil(Number(v) * safetyMultiplier));
+  // Use BigInt math to avoid precision loss on large values
+  const multiplierBp = BigInt(Math.round(safetyMultiplier * 10000));
+  const mul = (v: bigint) => (v * multiplierBp + 9999n) / 10000n; // ceiling division
   return {
     l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
     l2_gas: {
@@ -376,7 +377,8 @@ export function buildResourceBoundsFromEstimate(
  * Kept for backward compatibility during migration.
  */
 export function buildWardResourceBounds(gasPrices: BlockGasPrices, multiplier = 1.5): any {
-  const applyMultiplier = (base: bigint) => BigInt(Math.ceil(Number(base) * multiplier));
+  const multiplierBp = BigInt(Math.round(multiplier * 10000));
+  const applyMultiplier = (base: bigint) => (base * multiplierBp + 9999n) / 10000n;
   return {
     l1_gas: { max_amount: 0n, max_price_per_unit: gasPrices.l1GasPrice },
     l2_gas: { max_amount: applyMultiplier(900000n), max_price_per_unit: 100000000000n },
@@ -456,6 +458,89 @@ export function deserializeResourceBounds(json: string): any {
     };
   }
   return result;
+}
+
+// ─── Fee Formatting & Retry Utilities ──────────────────────────────────────────
+
+/**
+ * Format a fee amount in human-readable form (e.g., "0.0012 STRK").
+ * Defaults to STRK (18 decimals) if no symbol provided.
+ */
+export function formatFeeForUser(
+  feeWei: bigint,
+  tokenSymbol = "STRK",
+  decimals = 18,
+): string {
+  const divisor = 10n ** BigInt(decimals);
+  const whole = feeWei / divisor;
+  const remainder = feeWei % divisor;
+  const remainderStr = remainder.toString().padStart(decimals, "0");
+  const trimmed = remainderStr.slice(0, 6).replace(/0+$/, "") || "0";
+  const formatted = remainder === 0n ? whole.toString() : `${whole}.${trimmed}`;
+  return `${formatted} ${tokenSymbol}`;
+}
+
+/**
+ * Information about a fee retry — used to display fee retry modals.
+ */
+export interface FeeRetryInfo {
+  /** The max fee that was set for the failed tx */
+  estimatedFee: string;
+  /** The actual fee needed (parsed from error) */
+  actualNeeded: string;
+  /** The suggested fee with safety margin for retry */
+  suggestedFee: string;
+  /** Suggested safety multiplier for the retry */
+  suggestedMultiplier: number;
+  /** Whether the user's balance is too low even for the suggested fee */
+  insufficientBalance: boolean;
+  /** Balance needed to cover the suggested fee (in wei) */
+  balanceNeededWei: bigint;
+  /** Human-readable balance needed */
+  balanceNeeded: string;
+  /** Human-readable current balance */
+  currentBalance: string;
+}
+
+/**
+ * Build fee retry info from an error message and current balance.
+ * Returns null if the error is not a gas/fee error.
+ */
+export function buildFeeRetryInfo(
+  errorMsg: string,
+  currentBalanceWei: bigint,
+  tokenSymbol = "STRK",
+  decimals = 18,
+): FeeRetryInfo | null {
+  const gasInfo = parseInsufficientGasError(errorMsg);
+  if (!gasInfo) return null;
+
+  // The fee values from parseInsufficientGasError are gas units, not wei.
+  // To get the fee in wei, we'd need the gas price. For UX purposes,
+  // we show the multiplier and let the retry handle exact calculation.
+  const estimatedFee = formatFeeForUser(BigInt(gasInfo.maxAmount), "gas units", 0);
+  const actualNeeded = formatFeeForUser(BigInt(gasInfo.actualUsed), "gas units", 0);
+  const suggestedGas = BigInt(Math.ceil(gasInfo.actualUsed * 1.3));
+  const suggestedFee = formatFeeForUser(suggestedGas, "gas units", 0);
+
+  return {
+    estimatedFee,
+    actualNeeded,
+    suggestedFee,
+    suggestedMultiplier: gasInfo.suggestedMultiplier,
+    insufficientBalance: false, // We can't reliably check without gas price context
+    balanceNeededWei: 0n,
+    balanceNeeded: formatFeeForUser(0n, tokenSymbol, decimals),
+    currentBalance: formatFeeForUser(currentBalanceWei, tokenSymbol, decimals),
+  };
+}
+
+/**
+ * Create an RPC provider for the given network.
+ * Centralizes provider creation to avoid duplication across frontends.
+ */
+export function getProvider(network: "sepolia" | "mainnet" = "sepolia"): RpcProvider {
+  return new RpcProvider({ nodeUrl: DEFAULT_RPC[network] });
 }
 
 // ─── Ward Approval Request + Poll ─────────────────────────────────────────────

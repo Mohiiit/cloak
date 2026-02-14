@@ -4,13 +4,12 @@ import { getSupabaseLite } from "./supabase-config";
 import {
   request2FAApproval as sdkRequest2FAApproval,
   normalizeAddress,
-  DEFAULT_RPC,
+  getProvider,
 } from "@cloak-wallet/sdk";
 import type {
   TwoFAApprovalParams as SdkParams,
   TwoFAApprovalResult,
 } from "@cloak-wallet/sdk";
-import { RpcProvider } from "starknet";
 
 export { normalizeAddress };
 export type { TwoFAApprovalResult };
@@ -40,7 +39,7 @@ export async function check2FAEnabled(walletAddress: string): Promise<boolean> {
  */
 export async function check2FAEnabledOnChain(walletAddress: string): Promise<boolean> {
   try {
-    const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+    const provider = getProvider();
     const result = await provider.callContract({
       contractAddress: walletAddress,
       entrypoint: "is_2fa_enabled",

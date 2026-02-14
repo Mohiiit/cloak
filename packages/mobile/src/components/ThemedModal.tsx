@@ -33,11 +33,17 @@ type ModalConfig = {
 /** Map raw error messages to user-friendly text */
 function friendlyErrorMessage(raw: string): string {
   const lower = raw.toLowerCase();
+  if (lower.includes("frozen")) {
+    return "This ward account is frozen by its guardian. Contact your guardian to unfreeze.";
+  }
   if (lower.includes("invalid point") || lower.includes("expected length of 33")) {
     return "Invalid recipient address. Please check and try again.";
   }
   if (lower.includes("invalid transaction nonce") || lower.includes("nonce too old")) {
     return "Transaction conflict. Please try again.";
+  }
+  if (lower.includes("insufficient max")) {
+    return "Insufficient gas. The transaction will be retried with higher gas.";
   }
   if (lower.includes("insufficient") && lower.includes("fund")) {
     return "Not enough funds for this transaction.";

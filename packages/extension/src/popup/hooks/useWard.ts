@@ -6,11 +6,10 @@
  * - get_guardian_address(), is_frozen(), etc.
  */
 import { useState, useEffect, useCallback } from "react";
-import { RpcProvider } from "starknet";
 import {
-  DEFAULT_RPC,
   checkIfWardAccount as sdkCheckIfWardAccount,
   fetchWardInfo as sdkFetchWardInfo,
+  getProvider,
 } from "@cloak-wallet/sdk";
 import type { WardInfo } from "@cloak-wallet/sdk";
 
@@ -25,8 +24,7 @@ export function useWard(starkAddress: string | undefined) {
     if (!starkAddress) return false;
     setIsCheckingWard(true);
     try {
-      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
-      const isWardAccount = await sdkCheckIfWardAccount(provider, starkAddress);
+      const isWardAccount = await sdkCheckIfWardAccount(getProvider(), starkAddress);
       setIsWard(isWardAccount);
       return isWardAccount;
     } catch {
@@ -40,8 +38,7 @@ export function useWard(starkAddress: string | undefined) {
   const refreshWardInfo = useCallback(async () => {
     if (!starkAddress) return;
     try {
-      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
-      const info = await sdkFetchWardInfo(provider, starkAddress);
+      const info = await sdkFetchWardInfo(getProvider(), starkAddress);
       setWardInfo(info);
     } catch (err) {
       console.warn("[useWard] Failed to read ward info:", err);

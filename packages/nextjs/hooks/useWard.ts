@@ -8,13 +8,13 @@
  * Also loads the guardian's ward list from Supabase (if the wallet is a guardian).
  */
 import { useState, useEffect, useCallback } from "react";
-import { RpcProvider } from "starknet";
 import { useAccount } from "@starknet-react/core";
 import {
-  DEFAULT_RPC,
   checkIfWardAccount,
   fetchWardInfo,
-  padAddress,
+  normalizeAddress,
+  getProvider,
+  SupabaseLite,
 } from "@cloak-wallet/sdk";
 import type { WardInfo } from "@cloak-wallet/sdk";
 import { getSupabaseConfig } from "~~/lib/two-factor";
@@ -44,7 +44,7 @@ export function useWard() {
     if (!address) return false;
     setIsCheckingWard(true);
     try {
-      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+      const provider = getProvider();
       const isWardAccount = await checkIfWardAccount(provider, address);
       setIsWard(isWardAccount);
       return isWardAccount;
@@ -59,7 +59,7 @@ export function useWard() {
   const refreshWardInfo = useCallback(async () => {
     if (!address) return;
     try {
-      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+      const provider = getProvider();
       const info = await fetchWardInfo(provider, address);
       if (info) setWardInfo(info);
     } catch (err) {
@@ -72,28 +72,21 @@ export function useWard() {
     setIsLoadingWards(true);
     try {
       const { url, key } = getSupabaseConfig();
-      const normalizedAddr = padAddress(address);
-      const res = await fetch(
-        `${url}/rest/v1/ward_configs?guardian_address=eq.${normalizedAddr}&status=neq.removed&order=created_at.desc`,
-        {
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`,
-          },
-        },
+      const sb = new SupabaseLite(url, key);
+      const normalizedAddr = normalizeAddress(address);
+      const rows = await sb.select(
+        "ward_configs",
+        `guardian_address=eq.${normalizedAddr}&status=neq.removed&order=created_at.desc`,
       );
-      if (res.ok) {
-        const rows = await res.json();
-        const entries: WardEntry[] = (rows || []).map((r: any) => ({
-          wardAddress: r.ward_address,
-          wardPublicKey: r.ward_public_key,
-          tongoAddress: r.tongo_address || undefined,
-          status: r.status,
-          spendingLimitPerTx: r.spending_limit_per_tx,
-          requireGuardianForAll: r.require_guardian_for_all ?? true,
-        }));
-        setWards(entries);
-      }
+      const entries: WardEntry[] = (rows || []).map((r: any) => ({
+        wardAddress: r.ward_address,
+        wardPublicKey: r.ward_public_key,
+        tongoAddress: r.tongo_address || undefined,
+        status: r.status,
+        spendingLimitPerTx: r.spending_limit_per_tx,
+        requireGuardianForAll: r.require_guardian_for_all ?? true,
+      }));
+      setWards(entries);
     } catch (err) {
       console.warn("[useWard] Failed to load wards:", err);
     } finally {

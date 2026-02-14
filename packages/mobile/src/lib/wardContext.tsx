@@ -58,7 +58,10 @@ import {
 const STORAGE_KEY_IS_WARD = "cloak_is_ward";
 const STORAGE_KEY_GUARDIAN_ADDR = "cloak_guardian_address";
 const STORAGE_KEY_WARD_INFO = "cloak_ward_info_cache";
+const STORAGE_KEY_PARTIAL_WARD = "cloak_partial_ward";
 const MAX_GAS_RETRIES = 2;
+
+const WARD_CREATION_TOTAL_STEPS = 6;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -72,6 +75,17 @@ export interface WardEntry {
   status: string;
   spendingLimitPerTx: string | null;
   requireGuardianForAll: boolean;
+}
+
+export type WardCreationProgress = (step: number, total: number, message: string) => void;
+
+export interface PartialWardState {
+  wardAddress: string;
+  wardPrivateKey: string;
+  wardPublicKey: string;
+  guardianPublicKey: string;
+  /** Which step failed (4 = funding, 5 = add token, 6 = register) */
+  failedAtStep: number;
 }
 
 type WardContextState = {
@@ -92,11 +106,18 @@ type WardContextState = {
   checkIfWard: () => Promise<boolean>;
   refreshWardInfo: () => Promise<void>;
   refreshWards: () => Promise<void>;
-  createWard: () => Promise<{
+  createWard: (onProgress?: WardCreationProgress) => Promise<{
     wardAddress: string;
     wardPrivateKey: string;
     qrPayload: string;
   }>;
+  retryPartialWard: (onProgress?: WardCreationProgress) => Promise<{
+    wardAddress: string;
+    wardPrivateKey: string;
+    qrPayload: string;
+  }>;
+  clearPartialWard: () => Promise<void>;
+  partialWard: PartialWardState | null;
   freezeWard: (wardAddress: string) => Promise<void>;
   unfreezeWard: (wardAddress: string) => Promise<void>;
   setWardSpendingLimit: (
@@ -140,6 +161,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingWards, setIsLoadingWards] = useState(false);
   const [pendingWard2faRequests, setPendingWard2faRequests] = useState<WardApprovalRequest[]>([]);
   const [pendingGuardianRequests, setPendingGuardianRequests] = useState<WardApprovalRequest[]>([]);
+  const [partialWard, setPartialWard] = useState<PartialWardState | null>(null);
 
   const wardPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const guardianPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -214,12 +236,118 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
   // ── Create a new ward (guardian action) ──
 
-  const createWard = useCallback(async () => {
+  /** Complete the post-deploy steps (fund, add token, register) for a ward */
+  const finishWardCreation = useCallback(async (
+    provider: RpcProvider,
+    guardianAccount: Account,
+    paddedWardAddress: string,
+    wardPrivateKey: string,
+    wardPublicKey: string,
+    guardianPublicKey: string,
+    startFromStep: number,
+    onProgress?: WardCreationProgress,
+  ) => {
+    // Step 4: Fund ward with 0.5 STRK for gas
+    if (startFromStep <= 4) {
+      onProgress?.(4, WARD_CREATION_TOTAL_STEPS, "Funding ward with 0.5 STRK...");
+      try {
+        const fundingAmount = "0x" + (5n * 10n ** 17n).toString(16);
+        const fundTx = await guardianAccount.execute([
+          {
+            contractAddress: STRK_ADDRESS,
+            entrypoint: "transfer",
+            calldata: [paddedWardAddress, fundingAmount, "0x0"],
+          },
+        ]);
+        await provider.waitForTransaction(fundTx.transaction_hash);
+      } catch (err) {
+        await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
+          wardAddress: paddedWardAddress,
+          wardPrivateKey,
+          wardPublicKey,
+          guardianPublicKey,
+          failedAtStep: 4,
+        }));
+        setPartialWard({ wardAddress: paddedWardAddress, wardPrivateKey, wardPublicKey, guardianPublicKey, failedAtStep: 4 });
+        throw err;
+      }
+    }
+
+    // Step 5: Add STRK as known token
+    if (startFromStep <= 5) {
+      onProgress?.(5, WARD_CREATION_TOTAL_STEPS, "Adding STRK as known token...");
+      try {
+        const addTokenTx = await guardianAccount.execute([
+          {
+            contractAddress: paddedWardAddress,
+            entrypoint: "add_known_token",
+            calldata: [STRK_ADDRESS],
+          },
+        ]);
+        await provider.waitForTransaction(addTokenTx.transaction_hash);
+      } catch (err) {
+        await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
+          wardAddress: paddedWardAddress,
+          wardPrivateKey,
+          wardPublicKey,
+          guardianPublicKey,
+          failedAtStep: 5,
+        }));
+        setPartialWard({ wardAddress: paddedWardAddress, wardPrivateKey, wardPublicKey, guardianPublicKey, failedAtStep: 5 });
+        throw err;
+      }
+    }
+
+    // Step 6: Register in Supabase
+    if (startFromStep <= 6) {
+      onProgress?.(6, WARD_CREATION_TOTAL_STEPS, "Registering ward in database...");
+      try {
+        const sb = await getSupabaseLite();
+        await sb.insert("ward_configs", {
+          ward_address: normalizeAddress(paddedWardAddress),
+          guardian_address: normalizeAddress(wallet.keys!.starkAddress),
+          ward_public_key: wardPublicKey,
+          guardian_public_key: guardianPublicKey,
+          status: "active",
+          require_guardian_for_all: true,
+        });
+      } catch (err) {
+        await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
+          wardAddress: paddedWardAddress,
+          wardPrivateKey,
+          wardPublicKey,
+          guardianPublicKey,
+          failedAtStep: 6,
+        }));
+        setPartialWard({ wardAddress: paddedWardAddress, wardPrivateKey, wardPublicKey, guardianPublicKey, failedAtStep: 6 });
+        throw err;
+      }
+    }
+
+    // All done — clear partial state
+    await AsyncStorage.removeItem(STORAGE_KEY_PARTIAL_WARD);
+    setPartialWard(null);
+
+    // Generate QR payload
+    const qrPayload = JSON.stringify({
+      type: "cloak_ward_invite",
+      wardAddress: paddedWardAddress,
+      wardPrivateKey,
+      guardianAddress: wallet.keys!.starkAddress,
+      network: "sepolia",
+    });
+
+    await refreshWards();
+    return { wardAddress: paddedWardAddress, wardPrivateKey, qrPayload };
+  }, [wallet.keys, refreshWards]);
+
+  const createWard = useCallback(async (onProgress?: WardCreationProgress) => {
     if (!wallet.keys) throw new Error("No wallet keys");
 
     const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
 
-    // 1. Generate ward keypair
+    // Step 1: Generate ward keypair
+    onProgress?.(1, WARD_CREATION_TOTAL_STEPS, "Generating ward keys...");
     const wardPrivateKeyBytes = ec.starkCurve.utils.randomPrivateKey();
     const wardPrivateKey =
       "0x" +
@@ -229,7 +357,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     const wardPublicKey = ec.starkCurve.getStarkKey(wardPrivateKey);
     const guardianPublicKey = wallet.keys.starkPublicKey;
 
-    // 2. Deploy CloakWard via UDC
+    // Step 2: Deploy CloakWard via UDC
+    onProgress?.(2, WARD_CREATION_TOTAL_STEPS, "Deploying ward contract...");
     const guardianAccount = new Account({
       provider,
       address: wallet.keys.starkAddress,
@@ -249,6 +378,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       unique: true,
     });
 
+    // Step 3: Wait for deployment confirmation
+    onProgress?.(3, WARD_CREATION_TOTAL_STEPS, "Waiting for deployment confirmation...");
     await provider.waitForTransaction(deployResult.transaction_hash);
 
     const wardAddress =
@@ -261,56 +392,45 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     const paddedWardAddress =
       "0x" + wardAddress.replace(/^0x/, "").padStart(64, "0");
 
-    // 3. Fund ward with 0.5 STRK for gas
-    const fundingAmount = "0x" + (5n * 10n ** 17n).toString(16);
-    const fundTx = await guardianAccount.execute([
-      {
-        contractAddress: STRK_ADDRESS,
-        entrypoint: "transfer",
-        calldata: [paddedWardAddress, fundingAmount, "0x0"],
-      },
-    ]);
-    await provider.waitForTransaction(fundTx.transaction_hash);
+    // Steps 4-6: Fund, add token, register (with recovery)
+    return finishWardCreation(
+      provider, guardianAccount, paddedWardAddress,
+      wardPrivateKey, wardPublicKey, guardianPublicKey,
+      4, onProgress,
+    );
+  }, [wallet.keys, finishWardCreation]);
 
-    // 4. Add STRK as known token
-    const addTokenTx = await guardianAccount.execute([
-      {
-        contractAddress: paddedWardAddress,
-        entrypoint: "add_known_token",
-        calldata: [STRK_ADDRESS],
-      },
-    ]);
-    await provider.waitForTransaction(addTokenTx.transaction_hash);
+  /** Retry a partially-created ward from where it left off */
+  const retryPartialWard = useCallback(async (onProgress?: WardCreationProgress) => {
+    if (!wallet.keys) throw new Error("No wallet keys");
+    const raw = await AsyncStorage.getItem(STORAGE_KEY_PARTIAL_WARD);
+    if (!raw) throw new Error("No partial ward state found");
 
-    // 5. Save to Supabase
-    try {
-      const sb = await getSupabaseLite();
-      await sb.insert("ward_configs", {
-        ward_address: normalizeAddress(paddedWardAddress),
-        guardian_address: normalizeAddress(wallet.keys.starkAddress),
-        ward_public_key: wardPublicKey,
-        guardian_public_key: guardianPublicKey,
-        status: "active",
-        require_guardian_for_all: true,
-      });
-    } catch (err) {
-      console.warn("[WardContext] Failed to save ward config to Supabase:", err);
-    }
-
-    // 6. Generate QR payload
-    const qrPayload = JSON.stringify({
-      type: "cloak_ward_invite",
-      wardAddress: paddedWardAddress,
-      wardPrivateKey,
-      guardianAddress: wallet.keys.starkAddress,
-      network: "sepolia",
+    const partial: PartialWardState = JSON.parse(raw);
+    const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+    const guardianAccount = new Account({
+      provider,
+      address: wallet.keys.starkAddress,
+      signer: wallet.keys.starkPrivateKey,
     });
 
-    // 7. Refresh ward list
-    await refreshWards();
+    // Mark steps 1-3 as already done
+    onProgress?.(partial.failedAtStep, WARD_CREATION_TOTAL_STEPS,
+      partial.failedAtStep === 4 ? "Retrying: Funding ward with 0.5 STRK..." :
+      partial.failedAtStep === 5 ? "Retrying: Adding STRK as known token..." :
+      "Retrying: Registering ward in database...");
 
-    return { wardAddress: paddedWardAddress, wardPrivateKey, qrPayload };
-  }, [wallet.keys, refreshWards]);
+    return finishWardCreation(
+      provider, guardianAccount, partial.wardAddress,
+      partial.wardPrivateKey, partial.wardPublicKey, partial.guardianPublicKey,
+      partial.failedAtStep, onProgress,
+    );
+  }, [wallet.keys, finishWardCreation]);
+
+  const clearPartialWard = useCallback(async () => {
+    await AsyncStorage.removeItem(STORAGE_KEY_PARTIAL_WARD);
+    setPartialWard(null);
+  }, []);
 
   // ── Guardian actions on ward contracts ──
 
@@ -819,6 +939,14 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           });
         }
       });
+      // Restore partial ward state if any
+      AsyncStorage.getItem(STORAGE_KEY_PARTIAL_WARD).then((raw) => {
+        if (raw) {
+          try {
+            setPartialWard(JSON.parse(raw));
+          } catch {}
+        }
+      });
       // Then verify on-chain and refresh
       checkIfWard().then(async (result) => {
         if (result) await refreshWardInfo();
@@ -842,6 +970,9 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         refreshWardInfo,
         refreshWards,
         createWard,
+        retryPartialWard,
+        clearPartialWard,
+        partialWard,
         freezeWard,
         unfreezeWard,
         setWardSpendingLimit,

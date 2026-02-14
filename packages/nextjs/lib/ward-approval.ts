@@ -5,14 +5,12 @@
  * Constructs a SupabaseLite from localStorage config and delegates to SDK.
  */
 
-import { RpcProvider } from "starknet";
 import {
-  DEFAULT_RPC,
   SupabaseLite,
-  checkIfWardAccount as sdkCheckIfWardAccount,
   fetchWardApprovalNeeds,
   requestWardApproval as sdkRequestWardApproval,
   normalizeAddress,
+  getProvider,
 } from "@cloak-wallet/sdk";
 import type {
   WardApprovalNeeds,
@@ -31,17 +29,12 @@ function getClient(): SupabaseLite {
   return new SupabaseLite(url, key);
 }
 
-function getProvider(): RpcProvider {
-  return new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
-}
-
 // ─── Ward checks ─────────────────────────────────────────────────────────────
 
 export async function checkWardApprovalNeeds(
   wardAddress: string,
 ): Promise<WardApprovalNeeds | null> {
-  const provider = getProvider();
-  return fetchWardApprovalNeeds(provider, wardAddress);
+  return fetchWardApprovalNeeds(getProvider(), wardAddress);
 }
 
 // ─── Ward approval request + poll ─────────────────────────────────────────────

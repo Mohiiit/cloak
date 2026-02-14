@@ -23,6 +23,8 @@ import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
+import { FeeRetryModal } from "../components/FeeRetryModal";
+import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { triggerMedium } from "../lib/haptics";
 
 const QUICK_EMOJIS = ["🍕", "🍔", "🍺", "🎵", "🏠", "🚗", "🎮", "💰", "🎉", "🎂"];
@@ -44,6 +46,9 @@ export default function SendScreen({ navigation }: any) {
   const [txCopied, setTxCopied] = useState(false);
   const [addressError, setAddressError] = useState("");
   const [isValidating, setIsValidating] = useState(false);
+  const [showFeeRetry, setShowFeeRetry] = useState(false);
+  const [gasErrorMsg, setGasErrorMsg] = useState("");
+  const [feeRetryCount, setFeeRetryCount] = useState(0);
 
   useEffect(() => {
     wallet.refreshTxHistory();
@@ -109,10 +114,22 @@ export default function SendScreen({ navigation }: any) {
       setStep(4);
       await wallet.refreshBalance();
     } catch (e: any) {
-      modal.showError("Error", e.message || "Transfer failed", e.message);
+      const gasInfo = parseInsufficientGasError(e.message || "");
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(e.message);
+        setShowFeeRetry(true);
+      } else {
+        modal.showError("Error", e.message || "Transfer failed", e.message);
+      }
     } finally {
       setIsPending(false);
     }
+  };
+
+  const handleFeeRetry = () => {
+    setFeeRetryCount(prev => prev + 1);
+    setShowFeeRetry(false);
+    handleSend();
   };
 
   const reset = () => {
@@ -139,6 +156,15 @@ export default function SendScreen({ navigation }: any) {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {modal.ModalComponent}
+        <FeeRetryModal
+          visible={showFeeRetry}
+          errorMessage={gasErrorMsg}
+          retryCount={feeRetryCount}
+          maxRetries={3}
+          isRetrying={isPending}
+          onRetry={handleFeeRetry}
+          onCancel={() => { setShowFeeRetry(false); setIsPending(false); }}
+        />
         {/* Progress Bar */}
         {step < 4 && (
           <View style={styles.progressRow}>
@@ -362,7 +388,7 @@ export default function SendScreen({ navigation }: any) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.sendBtn, { flex: 2 }]}
-                onPress={handleSend}
+                onPress={() => { setFeeRetryCount(0); handleSend(); }}
                 disabled={isPending}
               >
                 {isPending ? (

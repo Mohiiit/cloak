@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Smartphone, X } from "lucide-react";
+import { FeeRetryModal } from "./FeeRetryModal";
 
 interface Props {
   isOpen: boolean;
@@ -13,10 +14,15 @@ const TIMEOUT_SECONDS = 5 * 60; // 5 minutes
 
 export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: Props) {
   const [countdown, setCountdown] = useState(TIMEOUT_SECONDS);
+  const [showGasRetry, setShowGasRetry] = useState(false);
+  const [gasErrorMessage, setGasErrorMessage] = useState("");
+  const gasRetryCount = useRef(0);
 
   useEffect(() => {
     if (!isOpen) {
       setCountdown(TIMEOUT_SECONDS);
+      gasRetryCount.current = 0;
+      setShowGasRetry(false);
       return;
     }
 
@@ -32,6 +38,20 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
 
     return () => clearInterval(interval);
   }, [isOpen]);
+
+  // Detect gas errors in status messages
+  useEffect(() => {
+    if (!status) return;
+
+    if (status.toLowerCase().includes("gas too low")) {
+      gasRetryCount.current += 1;
+      setGasErrorMessage(status);
+      setShowGasRetry(true);
+    } else if (showGasRetry && !status.toLowerCase().includes("gas")) {
+      // Status changed to something non-gas-related — background has moved on
+      setShowGasRetry(false);
+    }
+  }, [status]);
 
   if (!isOpen) return null;
 
@@ -106,6 +126,18 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
           Cancel
         </button>
       </div>
+
+      {/* Fee retry overlay — shown on top of the waiting modal */}
+      <FeeRetryModal
+        isOpen={showGasRetry}
+        errorMessage={gasErrorMessage}
+        retryCount={gasRetryCount.current}
+        onRetry={() => {
+          // Background is already auto-retrying — dismiss the overlay
+          setShowGasRetry(false);
+        }}
+        onCancel={onCancel}
+      />
     </div>
   );
 }

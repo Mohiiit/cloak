@@ -7,17 +7,16 @@
 
 import {
   SupabaseLite,
-  DEFAULT_RPC,
   checkIfWardAccount as sdkCheckIfWardAccount,
   fetchWardApprovalNeeds,
   requestWardApproval as sdkRequestWardApproval,
+  getProvider,
 } from "@cloak-wallet/sdk";
 import type {
   WardApprovalNeeds,
   WardApprovalParams,
   WardApprovalResult,
 } from "@cloak-wallet/sdk";
-import { RpcProvider } from "starknet";
 import { getSupabaseConfig } from "./supabase-config";
 
 export type { WardApprovalNeeds, WardApprovalResult };
@@ -32,15 +31,13 @@ async function getSdkClient(): Promise<SupabaseLite> {
 // ─── Ward on-chain checks ─────────────────────────────────────────────────────
 
 export async function checkIfWardAccount(address: string): Promise<boolean> {
-  const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
-  return sdkCheckIfWardAccount(provider, address);
+  return sdkCheckIfWardAccount(getProvider(), address);
 }
 
 export async function getWardApprovalNeeds(
   wardAddress: string,
 ): Promise<WardApprovalNeeds | null> {
-  const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
-  return fetchWardApprovalNeeds(provider, wardAddress);
+  return fetchWardApprovalNeeds(getProvider(), wardAddress);
 }
 
 // ─── Ward approval request + poll ─────────────────────────────────────────────

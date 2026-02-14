@@ -12,10 +12,10 @@
 import {
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_KEY,
-  DEFAULT_RPC,
   SupabaseLite,
   normalizeAddress as sdkNormalizeAddress,
   request2FAApproval as sdkRequest2FAApproval,
+  getProvider,
 } from "@cloak-wallet/sdk";
 import type { TwoFAApprovalResult } from "@cloak-wallet/sdk";
 
@@ -102,8 +102,7 @@ export interface ApprovalResult {
  */
 export async function fetchWalletNonce(walletAddress: string): Promise<string> {
   try {
-    const { RpcProvider } = await import("starknet");
-    const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+    const provider = getProvider();
     const nonce = await provider.getNonceForAddress(normalizeAddress(walletAddress));
     return nonce.toString();
   } catch {

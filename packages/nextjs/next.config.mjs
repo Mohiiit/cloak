@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 import webpack from "webpack";
 import nextPWA from "next-pwa";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const withPWA = nextPWA({
   dest: "public",
@@ -38,6 +42,10 @@ const nextConfig = {
     ignoreDuringBuilds: process.env.NEXT_PUBLIC_IGNORE_BUILD_ERROR === "true",
   },
   webpack: (config, { dev, isServer }) => {
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@cloak-wallet/sdk$": path.resolve(__dirname, "../sdk/dist/index.mjs"),
+    };
     config.resolve.fallback = { fs: false, net: false, tls: false };
     config.resolve.extensionAlias = {
       ".js": [".ts", ".tsx", ".js", ".jsx"],

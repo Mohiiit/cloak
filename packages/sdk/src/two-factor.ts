@@ -78,9 +78,9 @@ export function combinedSignature(
 export function serializeCalls(calls: any[]): string {
   return JSON.stringify(
     calls.map((c) => ({
-      contractAddress: c.contractAddress,
-      entrypoint: c.entrypoint,
-      calldata: c.calldata?.map((d: any) => d.toString()) ?? [],
+      contractAddress: c.contractAddress || c.contract_address,
+      entrypoint: c.entrypoint || c.entry_point,
+      calldata: (c.calldata || []).map((d: any) => d.toString()),
     })),
   );
 }

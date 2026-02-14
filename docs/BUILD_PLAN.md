@@ -601,3 +601,46 @@ Security audit found hardcoded secrets in 15+ source files and DRY analysis foun
 | 2FA polling duplication | 2 copies | 1 (SDK) |
 | **Total lines removed** | — | **~615** |
 | **Total lines added to SDK** | — | **~120** |
+
+---
+
+## Phase 7 — Ward/Guardian E2E + DRY + UX (Feb 15, 2026) ✅
+
+### Task 7.1: SDK Fee Estimation Fixes ✅
+- Fixed `buildResourceBoundsFromEstimate()` to use BigInt math (no Number precision loss)
+- Added `formatFeeForUser()`, `buildFeeRetryInfo()`, `getProvider()` utilities
+- Added `FeeRetryInfo` type export
+
+### Task 7.2: Ward Creation Progress UI (Mobile) ✅
+- Added `onProgress` callback to `createWard()` — 6 steps with messages
+- Added `WardCreationModal` component in SettingsScreen
+- Added error recovery: partial ward state saved to AsyncStorage, resumable via `retryPartialWard()`
+- `PartialWardState` type tracks which step failed (4=funding, 5=add token, 6=register)
+
+### Task 7.3: Fee Retry Modals (All 3 Frontends) ✅
+- Mobile: `FeeRetryModal.tsx` — dark themed, shows gas details
+- Extension: `FeeRetryModal.tsx` — compact Tailwind dark theme for popup
+- Web: `FeeRetryModal.tsx` — Tailwind, consistent with web design
+- Integrated into ALL transaction flows:
+  - Mobile: WalletScreen (shield/unshield/rollover), SendScreen (transfer)
+  - Extension: ShieldForm, SendForm, WithdrawForm
+  - Web: wallet/page (fund/withdraw/rollover), send/page (transfer)
+- Gas error detection via `parseInsufficientGasError()` → shows modal instead of generic error
+- Retry counter resets on new user-initiated actions, persists across retries (max 3)
+
+### Task 7.4: DRY Consolidation ✅
+- Removed duplicate `serializeCalls()` from extension + web (import from SDK)
+- Web `useWard.refreshWards()` now uses SDK `SupabaseLite` instead of raw `fetch()`
+- Fixed address normalization: web used `padAddress()` for Supabase queries, now uses `normalizeAddress()`
+- Extension + web `useWard` hooks use SDK `getProvider()`
+- Removed unused `RpcProvider` and `DEFAULT_RPC` imports from extension
+
+### Task 7.5: Error Message Improvements ✅
+- Added "frozen" account error to both mobile and extension error mappers
+- Added "insufficient gas" friendly message
+
+### Task 7.6: E2E Validation ✅
+- Traced all ward transaction paths (extension→mobile, mobile→mobile, web→mobile)
+- Verified signature chain order matches CloakWard contract `__validate__`
+- Verified `tip: 0` is set everywhere pre-computed signatures are used
+- Verified address normalization is consistent across all Supabase queries

@@ -22,9 +22,11 @@ import { useContacts } from "~~/hooks/useContacts";
 import { use2FA } from "~~/hooks/use2FA";
 import { check2FAEnabled, fetchWalletNonce } from "~~/lib/two-factor";
 import { TwoFactorWaiting } from "~~/components/TwoFactorWaiting";
+import { FeeRetryModal } from "~~/components/FeeRetryModal";
 import { padAddress } from "~~/lib/address";
 import { TOKENS, parseTokenAmount } from "~~/lib/tokens";
 import { saveTxNote } from "~~/lib/storage";
+import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import toast from "react-hot-toast";
 
 type Step = "recipient" | "amount" | "note" | "success";
@@ -49,6 +51,9 @@ export default function SendPage() {
   >("public");
   const [txHash, setTxHash] = useState("");
   const [addressError, setAddressError] = useState("");
+  const [showFeeRetry, setShowFeeRetry] = useState(false);
+  const [gasErrorMsg, setGasErrorMsg] = useState("");
+  const [feeRetryCount, setFeeRetryCount] = useState(0);
 
   if (status !== "connected") {
     return (
@@ -63,6 +68,7 @@ export default function SendPage() {
 
   const handleSend = async () => {
     if (!tongoAccount || !recipientAddress || !amount || !address) return;
+    setFeeRetryCount(0);
 
     try {
       const erc20Amount = parseTokenAmount(amount, tokenConfig.decimals);
@@ -138,19 +144,31 @@ export default function SendPage() {
       }
     } catch (err: any) {
       const msg = err?.message || "Transfer failed";
-      const lower = msg.toLowerCase();
-      if (lower.includes("invalid point") || lower.includes("expected length of 33")) {
-        toast.error("Invalid recipient address. Please check and try again.");
-      } else if (lower.includes("nonce too old") || lower.includes("invalid transaction nonce")) {
-        toast.error("Transaction conflict. Please try again.");
-      } else if (lower.includes("execution reverted")) {
-        toast.error("Transaction was rejected by the network.");
-      } else if (lower.includes("timeout")) {
-        toast.error("Request timed out. Check your connection.");
+      const gasInfo = parseInsufficientGasError(msg);
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(msg);
+        setShowFeeRetry(true);
       } else {
-        toast.error(msg);
+        const lower = msg.toLowerCase();
+        if (lower.includes("invalid point") || lower.includes("expected length of 33")) {
+          toast.error("Invalid recipient address. Please check and try again.");
+        } else if (lower.includes("nonce too old") || lower.includes("invalid transaction nonce")) {
+          toast.error("Transaction conflict. Please try again.");
+        } else if (lower.includes("execution reverted")) {
+          toast.error("Transaction was rejected by the network.");
+        } else if (lower.includes("timeout")) {
+          toast.error("Request timed out. Check your connection.");
+        } else {
+          toast.error(msg);
+        }
       }
     }
+  };
+
+  const handleFeeRetry = () => {
+    setFeeRetryCount(prev => prev + 1);
+    setShowFeeRetry(false);
+    handleSend();
   };
 
   const quickEmojis = ["🍕", "🍔", "🍺", "🎵", "🏠", "🚗", "🎮", "🎬", "💰", "🎉", "🎂", "✈️"];
@@ -522,6 +540,17 @@ export default function SendPage() {
         isOpen={is2FAWaiting}
         status={twoFAStatus}
         onCancel={cancel2FA}
+      />
+
+      {/* Fee Retry Modal */}
+      <FeeRetryModal
+        isOpen={showFeeRetry}
+        errorMessage={gasErrorMsg}
+        retryCount={feeRetryCount}
+        maxRetries={3}
+        isRetrying={isPending}
+        onRetry={handleFeeRetry}
+        onCancel={() => setShowFeeRetry(false)}
       />
     </div>
   );

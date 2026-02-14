@@ -21,6 +21,8 @@ import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoToDisplay, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
+import { FeeRetryModal } from "../components/FeeRetryModal";
+import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { triggerMedium } from "../lib/haptics";
 
 type Mode = "shield" | "unshield" | null;
@@ -35,6 +37,10 @@ export default function WalletScreen({ route }: any) {
   const [isPending, setIsPending] = useState(false);
   const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
   const [copiedTx, setCopiedTx] = useState(false);
+  const [showFeeRetry, setShowFeeRetry] = useState(false);
+  const [gasErrorMsg, setGasErrorMsg] = useState("");
+  const [feeRetryCount, setFeeRetryCount] = useState(0);
+  const [pendingRetryAction, setPendingRetryAction] = useState<"submit" | "rollover">("submit");
 
   // Accept route params to auto-open shield/unshield mode
   useEffect(() => {
@@ -65,9 +71,44 @@ export default function WalletScreen({ route }: any) {
       setAmount("");
       setMode(null);
     } catch (e: any) {
-      modal.showError("Error", e.message || "Transaction failed", e.message);
+      const gasInfo = parseInsufficientGasError(e.message || "");
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(e.message);
+        setPendingRetryAction("submit");
+        setShowFeeRetry(true);
+      } else {
+        modal.showError("Error", e.message || "Transaction failed", e.message);
+      }
     } finally {
       setIsPending(false);
+    }
+  };
+
+  const handleRollover = async () => {
+    try {
+      const pendingAmount = wallet.pending;
+      const result = await execute({ action: "rollover", token: wallet.selectedToken });
+      setSuccessInfo({ txHash: result.txHash, amount: pendingAmount, type: "claim" });
+      wallet.refreshBalance();
+    } catch (e: any) {
+      const gasInfo = parseInsufficientGasError(e.message || "");
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(e.message);
+        setPendingRetryAction("rollover");
+        setShowFeeRetry(true);
+      } else {
+        modal.showError("Error", e.message || "Claim failed", e.message);
+      }
+    }
+  };
+
+  const handleFeeRetry = () => {
+    setFeeRetryCount(prev => prev + 1);
+    setShowFeeRetry(false);
+    if (pendingRetryAction === "rollover") {
+      handleRollover();
+    } else {
+      handleSubmit();
     }
   };
 
@@ -84,6 +125,15 @@ export default function WalletScreen({ route }: any) {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {modal.ModalComponent}
+        <FeeRetryModal
+          visible={showFeeRetry}
+          errorMessage={gasErrorMsg}
+          retryCount={feeRetryCount}
+          maxRetries={3}
+          isRetrying={isPending}
+          onRetry={handleFeeRetry}
+          onCancel={() => { setShowFeeRetry(false); setIsPending(false); }}
+        />
 
         {successInfo && (
           <View style={styles.successCard}>
@@ -160,16 +210,7 @@ export default function WalletScreen({ route }: any) {
               </View>
               <TouchableOpacity
                 style={styles.claimFullButton}
-                onPress={async () => {
-                  try {
-                    const pendingAmount = wallet.pending;
-                    const result = await execute({ action: "rollover", token: wallet.selectedToken });
-                    setSuccessInfo({ txHash: result.txHash, amount: pendingAmount, type: "claim" });
-                    wallet.refreshBalance();
-                  } catch (e: any) {
-                    modal.showError("Error", e.message || "Claim failed", e.message);
-                  }
-                }}
+                onPress={handleRollover}
               >
                 <Text style={styles.claimFullButtonText}>Claim Pending</Text>
               </TouchableOpacity>
@@ -242,7 +283,7 @@ export default function WalletScreen({ route }: any) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.submitBtn, !amount && styles.submitBtnDisabled]}
-                onPress={handleSubmit}
+                onPress={() => { setFeeRetryCount(0); handleSubmit(); }}
                 disabled={!amount || isPending}
               >
                 {isPending ? (

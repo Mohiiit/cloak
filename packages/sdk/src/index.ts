@@ -74,6 +74,9 @@ export {
   requestWardApproval,
   normalizeAddress,
   formatWardAmount,
+  formatFeeForUser,
+  buildFeeRetryInfo,
+  getProvider,
 } from "./ward";
 export type {
   WardApprovalNeeds,
@@ -83,6 +86,7 @@ export type {
   WardApprovalResult,
   BlockGasPrices,
   FeeEstimate,
+  FeeRetryInfo,
 } from "./ward";
 
 // Types
