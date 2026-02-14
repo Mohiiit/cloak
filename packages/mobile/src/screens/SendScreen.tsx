@@ -15,7 +15,7 @@ import {
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { ShieldPlus, ShieldOff, ArrowUpFromLine, Check } from "lucide-react-native";
+import { ShieldPlus, ShieldOff, ArrowUpFromLine, Check, ClipboardPaste } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useDualSigExecutor } from "../hooks/useDualSigExecutor";
 import { tongoToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
@@ -200,15 +200,30 @@ export default function SendScreen({ navigation }: any) {
                 </ScrollView>
               </View>
             )}
-            <TextInput
-              style={styles.textInput}
-              placeholder="Enter recipient's Cloak address"
-              placeholderTextColor={colors.textMuted}
-              value={recipient}
-              onChangeText={(t) => { setRecipient(t); setAddressError(""); }}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <View style={styles.addressInputRow}>
+              <TextInput
+                style={styles.addressInput}
+                placeholder="Enter recipient's Cloak address"
+                placeholderTextColor={colors.textMuted}
+                value={recipient}
+                onChangeText={(t) => { setRecipient(t.replace(/\s/g, "")); setAddressError(""); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+                autoComplete="off"
+                multiline
+                numberOfLines={2}
+              />
+              <TouchableOpacity
+                style={styles.pasteBtn}
+                onPress={async () => {
+                  const text = await Clipboard.getString();
+                  if (text) { setRecipient(text.trim()); setAddressError(""); }
+                }}
+              >
+                <ClipboardPaste size={16} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
             {addressError ? (
               <Text style={styles.errorText}>{addressError}</Text>
             ) : null}
@@ -452,6 +467,26 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.text,
     marginBottom: spacing.lg,
+  },
+  addressInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
+  },
+  addressInput: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  pasteBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    justifyContent: "center",
+    alignItems: "center",
   },
   amountInputRow: {
     flexDirection: "row",

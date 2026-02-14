@@ -2,10 +2,18 @@
  * WalletContext — Global wallet state for the app.
  */
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { hash, CallData, Account, RpcProvider } from "starknet";
 import { useTongoBridge } from "../bridge/useTongoBridge";
 import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet } from "./keys";
 import { TokenKey, TOKENS } from "./tokens";
 import { useToast } from "../components/Toast";
+
+/** CloakAccount class hash (declared on Sepolia) */
+const CLOAK_ACCOUNT_CLASS_HASH =
+  "0x034549a00718c3158349268f26047a311019e8fd328e9819e31187467de71f00";
+
+const RPC_URL =
+  "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8";
 
 const ALL_TOKENS: TokenKey[] = ["STRK", "ETH", "USDC"];
 
@@ -15,6 +23,8 @@ type WalletState = {
   isWalletCreated: boolean;
   isBridgeReady: boolean;
   isInitialized: boolean;
+  isDeployed: boolean;
+  isCheckingDeployment: boolean;
 
   // Keys
   keys: WalletKeys | null;
@@ -37,6 +47,10 @@ type WalletState = {
   // Tx history
   txHistory: any[];
   refreshTxHistory: () => Promise<void>;
+
+  // Deploy
+  checkDeployment: () => Promise<boolean>;
+  deployAccount: () => Promise<string>;
 
   // Actions
   createWallet: () => Promise<WalletKeys>;
@@ -76,6 +90,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isWalletCreated, setIsWalletCreated] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isDeployed, setIsDeployed] = useState(false);
+  const [isCheckingDeployment, setIsCheckingDeployment] = useState(false);
   const [keys, setKeys] = useState<WalletKeys | null>(null);
   const [selectedToken, setSelectedToken] = useState<TokenKey>("STRK");
   const [balance, setBalance] = useState("0");
@@ -221,19 +237,71 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [bridge, isInitialized]);
 
+  // ── Deployment ────────────────────────────────────────────────────────
+
+  const checkDeployment = useCallback(async (): Promise<boolean> => {
+    if (!keys?.starkAddress) return false;
+    setIsCheckingDeployment(true);
+    try {
+      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+      await provider.getNonceForAddress(keys.starkAddress);
+      setIsDeployed(true);
+      return true;
+    } catch {
+      setIsDeployed(false);
+      return false;
+    } finally {
+      setIsCheckingDeployment(false);
+    }
+  }, [keys?.starkAddress]);
+
+  const deployAccount = useCallback(async (): Promise<string> => {
+    if (!keys) throw new Error("No wallet keys");
+    const provider = new RpcProvider({ nodeUrl: RPC_URL });
+    const constructorCalldata = CallData.compile({ publicKey: keys.starkPublicKey });
+    const account = new Account({
+      provider,
+      address: keys.starkAddress,
+      signer: keys.starkPrivateKey,
+    });
+    const { transaction_hash } = await account.deployAccount({
+      classHash: CLOAK_ACCOUNT_CLASS_HASH,
+      constructorCalldata,
+      addressSalt: keys.starkPublicKey,
+    });
+    await provider.waitForTransaction(transaction_hash);
+    setIsDeployed(true);
+    return transaction_hash;
+  }, [keys]);
+
+  // Check deployment status when wallet keys load
+  useEffect(() => {
+    if (keys?.starkAddress && isWalletCreated) {
+      checkDeployment();
+    }
+  }, [keys?.starkAddress, isWalletCreated, checkDeployment]);
+
   const createWallet = useCallback(async (): Promise<WalletKeys> => {
     if (!bridge.isReady) throw new Error("Bridge not ready");
 
     // Generate Stark keypair
     const starkKeypair = await bridge.generateKeypair();
 
+    // Compute counterfactual CloakAccount address from the public key
+    const constructorCalldata = CallData.compile({ publicKey: starkKeypair.publicKey });
+    const starkAddress = hash.calculateContractAddressFromHash(
+      starkKeypair.publicKey, // salt
+      CLOAK_ACCOUNT_CLASS_HASH,
+      constructorCalldata,
+      0, // deployer = 0 (counterfactual)
+    );
+
     // Use the same key as Tongo private key for simplicity
-    // In production, derive separately
     const tongoPrivateKey = starkKeypair.privateKey;
-    const tongoAddr = await bridge.initialize({
+    await bridge.initialize({
       tongoPrivateKey,
       token: "STRK",
-      starkAddress: starkKeypair.publicKey, // placeholder, will compute real address
+      starkAddress,
       starkPrivateKey: starkKeypair.privateKey,
     });
 
@@ -241,7 +309,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     const newKeys: WalletKeys = {
       starkPrivateKey: starkKeypair.privateKey,
-      starkAddress: "0x0", // Will be computed after account deployment
+      starkAddress,
       starkPublicKey: starkKeypair.publicKey,
       tongoPrivateKey,
       tongoAddress,
@@ -357,12 +425,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const validateAddress = useCallback(
     async (base58: string): Promise<boolean> => {
       if (!bridge.isReady) return false;
-      try {
-        await bridge.send("base58ToPubKey", { base58 });
-        return true;
-      } catch {
-        return false;
-      }
+      return bridge.validateBase58(base58);
     },
     [bridge],
   );
@@ -374,6 +437,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         isWalletCreated,
         isBridgeReady: bridge.isReady,
         isInitialized,
+        isDeployed,
+        isCheckingDeployment,
         keys,
         selectedToken,
         setSelectedToken: handleSetToken,
@@ -386,6 +451,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         tongoBalances,
         txHistory,
         refreshTxHistory,
+        checkDeployment,
+        deployAccount,
         createWallet,
         importWallet,
         refreshBalance,

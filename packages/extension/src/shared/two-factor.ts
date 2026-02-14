@@ -175,9 +175,7 @@ export async function request2FAApproval(
         }
 
         // Still pending, continue polling
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const remaining = Math.ceil((TIMEOUT_MS - (Date.now() - startTime)) / 1000);
-        onStatusChange?.(`Waiting for mobile approval... (${formatTime(remaining)} remaining)`);
+        onStatusChange?.("Waiting for mobile approval...");
 
         setTimeout(poll, POLL_INTERVAL_MS);
       } catch (err: any) {

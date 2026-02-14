@@ -12,7 +12,9 @@ import SendScreen from "../screens/SendScreen";
 import WalletScreen from "../screens/WalletScreen";
 import ActivityScreen from "../screens/ActivityScreen";
 import SettingsScreen from "../screens/SettingsScreen";
+import DeployScreen from "../screens/DeployScreen";
 import { CloakIcon } from "../components/CloakIcon";
+import { useWallet } from "../lib/WalletContext";
 import { colors, fontSize, spacing } from "../lib/theme";
 
 const Tab = createBottomTabNavigator();
@@ -44,9 +46,15 @@ function HeaderTitle() {
 }
 
 export default function AppNavigator() {
+  const wallet = useWallet();
   const insets = useSafeAreaInsets();
   // Ensure at least 8px bottom padding, use safe area inset on devices with gesture nav
   const bottomPadding = Math.max(insets.bottom, Platform.OS === "android" ? 8 : 0);
+
+  // Gate: show deploy screen if wallet exists but is not deployed
+  if (wallet.isWalletCreated && !wallet.isDeployed && !wallet.isLoading && !wallet.isCheckingDeployment) {
+    return <DeployScreen />;
+  }
 
   return (
     <NavigationContainer>

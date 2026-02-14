@@ -23,7 +23,7 @@ import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 
-const TFA_STEP_ORDER: TwoFAStep[] = ["auth", "keygen", "register", "onchain"];
+const TFA_STEP_ORDER: TwoFAStep[] = ["auth", "keygen", "onchain", "register"];
 
 function TFAStepRow({ step, label, currentStep }: { step: TwoFAStep; label: string; currentStep: TwoFAStep }) {
   const currentIdx = TFA_STEP_ORDER.indexOf(currentStep);
@@ -238,6 +238,8 @@ export default function SettingsScreen() {
               onChangeText={setNewContactAddr}
               autoCapitalize="none"
               autoCorrect={false}
+              spellCheck={false}
+              autoComplete="off"
             />
             <TouchableOpacity
               style={[styles.addContactBtn, !newContactAddr.trim() && { opacity: 0.4 }]}
@@ -357,8 +359,8 @@ export default function SettingsScreen() {
           <View style={styles.stepperContainer}>
             <TFAStepRow step="auth" label="Authenticate" currentStep={tfaStep} />
             <TFAStepRow step="keygen" label="Generate Keys" currentStep={tfaStep} />
-            <TFAStepRow step="register" label="Register Config" currentStep={tfaStep} />
             <TFAStepRow step="onchain" label="On-Chain Transaction" currentStep={tfaStep} />
+            <TFAStepRow step="register" label="Register Config" currentStep={tfaStep} />
           </View>
         )}
 
@@ -374,29 +376,38 @@ export default function SettingsScreen() {
 
         {/* Enable / Disable buttons */}
         {!twoFactor.isEnabled && tfaStep === "idle" ? (
-          <>
-            {/* Side-effect warning */}
-            <View style={styles.tfaWarning}>
-              <AlertTriangle size={16} color={colors.warning} />
-              <Text style={styles.tfaWarningText}>
-                Enabling 2FA will require this device to approve every transaction from the extension and web app. An on-chain transaction will be submitted to register the secondary key.
+          !wallet.isDeployed ? (
+            <View style={styles.tfaDeployGate}>
+              <AlertTriangle size={16} color={colors.textMuted} />
+              <Text style={styles.tfaDeployGateText}>
+                Deploy your account on-chain before enabling 2FA.
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.tfaEnableBtn}
-              onPress={async () => {
-                setTfaLoading(true);
-                setTfaStep("auth");
-                await twoFactor.enable2FA((step) => setTfaStep(step));
-                setTfaLoading(false);
-                // Reset after done (longer delay on error so user can read it)
-                const delay = twoFactor.isEnabled ? 2000 : 5000;
-                setTimeout(() => setTfaStep("idle"), delay);
-              }}
-            >
-              <Text style={styles.tfaEnableBtnText}>Enable 2FA</Text>
-            </TouchableOpacity>
-          </>
+          ) : (
+            <>
+              {/* Side-effect warning */}
+              <View style={styles.tfaWarning}>
+                <AlertTriangle size={16} color={colors.warning} />
+                <Text style={styles.tfaWarningText}>
+                  Enabling 2FA will require this device to approve every transaction from the extension and web app. An on-chain transaction will be submitted to register the secondary key.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.tfaEnableBtn}
+                onPress={async () => {
+                  setTfaLoading(true);
+                  setTfaStep("auth");
+                  await twoFactor.enable2FA((step) => setTfaStep(step));
+                  setTfaLoading(false);
+                  // Reset after done (longer delay on error so user can read it)
+                  const delay = twoFactor.isEnabled ? 2000 : 5000;
+                  setTimeout(() => setTfaStep("idle"), delay);
+                }}
+              >
+                <Text style={styles.tfaEnableBtnText}>Enable 2FA</Text>
+              </TouchableOpacity>
+            </>
+          )
         ) : twoFactor.isEnabled && tfaStep === "idle" ? (
           <TouchableOpacity
             style={[styles.tfaDisableBtn, tfaLoading && { opacity: 0.5 }]}
@@ -902,6 +913,24 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontWeight: "600",
     fontSize: fontSize.sm,
+  },
+
+  tfaDeployGate: {
+    flexDirection: "row",
+    backgroundColor: "rgba(100, 116, 139, 0.08)",
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(100, 116, 139, 0.15)",
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  tfaDeployGateText: {
+    flex: 1,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    lineHeight: 18,
   },
 
   aboutSection: { alignItems: "center", paddingVertical: spacing.xl },

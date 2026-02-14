@@ -192,6 +192,12 @@ export function TwoFactorProvider({
       return;
     }
 
+    // Gate: account must be deployed on-chain
+    if (!wallet.isDeployed) {
+      showToast("Deploy your account on-chain before enabling 2FA", "error");
+      return;
+    }
+
     // Step 1: Biometric authentication
     onStep?.("auth");
     const authed = await promptBiometric("Authenticate to enable 2FA");
@@ -207,37 +213,32 @@ export function TwoFactorProvider({
       const { privateKey, publicKey } = generateSecondaryKey();
       await saveSecondaryPrivateKey(privateKey);
 
-      // Step 3: Register on Supabase
+      // Step 3: On-chain set_secondary_key — MUST succeed before Supabase
+      onStep?.("onchain");
+      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+      const account = new Account({
+        provider,
+        address: wallet.keys.starkAddress,
+        signer: wallet.keys.starkPrivateKey,
+      });
+      const tx = await account.execute([{
+        contractAddress: wallet.keys.starkAddress,
+        entrypoint: "set_secondary_key",
+        calldata: [publicKey],
+      }]);
+      console.warn("[TwoFactorContext] set_secondary_key tx:", tx.transaction_hash);
+      await provider.waitForTransaction(tx.transaction_hash);
+
+      // Step 4: Register on Supabase (only after on-chain succeeds)
       onStep?.("register");
       const { error } = await enableTwoFactorConfig(
         normalizeAddress(wallet.keys.starkAddress),
         publicKey,
       );
       if (error) {
-        onStep?.("error");
-        showToast(`Failed to enable 2FA: ${error}`, "error");
-        return;
-      }
-
-      // Step 4: Set secondary key on-chain (CloakAccount enforces dual-sig)
-      onStep?.("onchain");
-      try {
-        const provider = new RpcProvider({ nodeUrl: RPC_URL });
-        const account = new Account({
-          provider,
-          address: wallet.keys.starkAddress,
-          signer: wallet.keys.starkPrivateKey,
-        });
-        const tx = await account.execute([{
-          contractAddress: wallet.keys.starkAddress,
-          entrypoint: "set_secondary_key",
-          calldata: [publicKey],
-        }]);
-        console.warn("[TwoFactorContext] set_secondary_key tx:", tx.transaction_hash);
-        await provider.waitForTransaction(tx.transaction_hash);
-      } catch (onChainErr: any) {
-        // Non-fatal: on-chain call may fail if account is OZ (not CloakAccount)
-        console.warn("[TwoFactorContext] On-chain set_secondary_key failed (may be OZ account):", onChainErr.message);
+        // On-chain IS enforcing 2FA, but Supabase failed — warn but still mark enabled locally
+        console.warn("[TwoFactorContext] Supabase registration failed (on-chain is active):", error);
+        showToast("2FA enabled on-chain, but config sync failed. Retrying may help.", "warning");
       }
 
       // Step 5: Done
@@ -247,11 +248,13 @@ export function TwoFactorProvider({
       setIsEnabled(true);
       showToast("Two-Factor Authentication enabled", "success");
     } catch (e: any) {
+      // On-chain failed or other error — clean up saved key material
+      await clearSecondaryKey();
       onStep?.("error");
       console.warn("[TwoFactorContext] enable2FA error:", e);
       showToast(`Error enabling 2FA: ${e.message}`, "error");
     }
-  }, [wallet.keys?.starkAddress, showToast]);
+  }, [wallet.keys?.starkAddress, wallet.isDeployed, showToast]);
 
   const disable2FA = useCallback(async (onStep?: (step: TwoFAStep) => void) => {
     if (!wallet.keys?.starkAddress) {
@@ -267,51 +270,54 @@ export function TwoFactorProvider({
     }
 
     try {
-      // Remove secondary key on-chain first (requires dual-sig if 2FA is active)
-      try {
-        const secondaryPk = await getSecondaryPrivateKey();
-        const provider = new RpcProvider({ nodeUrl: RPC_URL });
-        const calls = [{
-          contractAddress: wallet.keys.starkAddress,
-          entrypoint: "remove_secondary_key",
-          calldata: [],
-        }];
+      // Step 1: On-chain remove_secondary_key — MUST succeed before anything else
+      const secondaryPk = await getSecondaryPrivateKey();
+      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+      const calls = [{
+        contractAddress: wallet.keys.starkAddress,
+        entrypoint: "remove_secondary_key",
+        calldata: [],
+      }];
 
-        if (secondaryPk) {
-          // 2FA is active — use DualKeySigner (starknet.js handles hash + signing)
-          const dualSigner = new DualKeySigner(
-            wallet.keys.starkPrivateKey,
-            secondaryPk,
-          );
-          const dualAccount = new Account({
-            provider,
-            address: wallet.keys.starkAddress,
-            signer: dualSigner,
-          });
-          const tx = await dualAccount.execute(calls, { tip: 0 });
-          console.warn("[TwoFactorContext] remove_secondary_key tx:", tx.transaction_hash);
-        } else {
-          // No secondary key locally — try single-sig (2FA may not be active on-chain)
-          const account = new Account({
-            provider,
-            address: wallet.keys.starkAddress,
-            signer: wallet.keys.starkPrivateKey,
-          });
-          const tx = await account.execute(calls);
-          console.warn("[TwoFactorContext] remove_secondary_key tx:", tx.transaction_hash);
-        }
-      } catch (onChainErr: any) {
-        console.warn("[TwoFactorContext] On-chain remove_secondary_key failed:", onChainErr.message);
+      let txHash: string;
+      if (secondaryPk) {
+        // 2FA is active — use DualKeySigner (starknet.js handles hash + signing)
+        const dualSigner = new DualKeySigner(
+          wallet.keys.starkPrivateKey,
+          secondaryPk,
+        );
+        const dualAccount = new Account({
+          provider,
+          address: wallet.keys.starkAddress,
+          signer: dualSigner,
+        });
+        const tx = await dualAccount.execute(calls, { tip: 0 });
+        txHash = tx.transaction_hash;
+      } else {
+        // No secondary key locally — try single-sig (2FA may not be active on-chain)
+        const account = new Account({
+          provider,
+          address: wallet.keys.starkAddress,
+          signer: wallet.keys.starkPrivateKey,
+        });
+        const tx = await account.execute(calls);
+        txHash = tx.transaction_hash;
       }
 
+      console.warn("[TwoFactorContext] remove_secondary_key tx:", txHash);
+      await provider.waitForTransaction(txHash);
+
+      // Step 2: Supabase delete — only after on-chain succeeds
       const { error } = await disableTwoFactorConfig(
         normalizeAddress(wallet.keys.starkAddress),
       );
       if (error) {
-        showToast(`Failed to disable 2FA: ${error}`, "error");
-        return;
+        // On-chain already removed 2FA, but Supabase failed — warn but proceed with local cleanup
+        console.warn("[TwoFactorContext] Supabase disable failed (on-chain already removed):", error);
+        showToast("2FA removed on-chain, but config sync failed", "warning");
       }
 
+      // Step 3: Clean up local state
       await clearSecondaryKey();
       setSecondaryPublicKey(null);
       setIsConfigured(false);
@@ -319,8 +325,9 @@ export function TwoFactorProvider({
       setPendingRequests([]);
       showToast("Two-Factor Authentication disabled", "success");
     } catch (e: any) {
+      // On-chain failed — abort entirely, do NOT delete Supabase or clear local keys
       console.warn("[TwoFactorContext] disable2FA error:", e);
-      showToast(`Error disabling 2FA: ${e.message}`, "error");
+      showToast(`Failed to disable 2FA: ${e.message}`, "error");
     }
   }, [wallet.keys?.starkAddress, showToast]);
 

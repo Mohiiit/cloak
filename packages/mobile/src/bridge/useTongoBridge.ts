@@ -160,6 +160,19 @@ export function useTongoBridge() {
     [bridge],
   );
 
+  const validateBase58 = useCallback(
+    async (base58: string): Promise<boolean> => {
+      if (!bridge) return false;
+      try {
+        await bridge.send("base58ToPubKey", { base58 });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [bridge],
+  );
+
   return {
     isReady,
     isInitialized,
@@ -180,5 +193,6 @@ export function useTongoBridge() {
     derivePublicKey,
     queryERC20Balance,
     getTxHistory,
+    validateBase58,
   };
 }

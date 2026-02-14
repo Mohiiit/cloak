@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check } from "lucide-react-native";
+import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ClipboardPaste } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
@@ -105,6 +105,8 @@ export default function HomeScreen({ navigation }: any) {
                 onChangeText={setImportPK}
                 autoCapitalize="none"
                 autoCorrect={false}
+                spellCheck={false}
+                autoComplete="off"
               />
               <Text style={styles.importLabel}>Starknet Address</Text>
               <TextInput
@@ -115,6 +117,8 @@ export default function HomeScreen({ navigation }: any) {
                 onChangeText={setImportAddr}
                 autoCapitalize="none"
                 autoCorrect={false}
+                spellCheck={false}
+                autoComplete="off"
               />
               <TouchableOpacity
                 style={[styles.createButton, (!importPK || !importAddr || isImporting) && { opacity: 0.4 }]}
@@ -155,7 +159,8 @@ export default function HomeScreen({ navigation }: any) {
       const pendingAmount = wallet.pending;
       const result = await wallet.rollover();
       setClaimSuccess({ txHash: result.txHash, amount: pendingAmount });
-      wallet.refreshBalance();
+      // Refresh balance — await so pending updates before user dismisses success card
+      await wallet.refreshBalance();
     } catch (e: any) {
       modal.showError("Error", e.message || "Claim failed", e.message);
     } finally {
@@ -222,7 +227,10 @@ export default function HomeScreen({ navigation }: any) {
 
           <TouchableOpacity
             style={styles.claimDoneBtn}
-            onPress={() => setClaimSuccess(null)}
+            onPress={async () => {
+              setClaimSuccess(null);
+              await wallet.refreshBalance();
+            }}
           >
             <Text style={styles.claimDoneBtnText}>Done</Text>
           </TouchableOpacity>
@@ -369,7 +377,11 @@ export default function HomeScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: 100 },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: Platform.OS === "ios" ? spacing.sm : spacing.lg,
+    paddingBottom: 100,
+  },
   center: {
     flex: 1,
     backgroundColor: colors.bg,
