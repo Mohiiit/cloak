@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { TOKENS, parseTokenAmount, validateTongoAddress } from "@cloak/sdk";
+import { TOKENS, parseTokenAmount, validateTongoAddress } from "@cloak-wallet/sdk";
 import { Header, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote, type TxMetadata } from "../lib/storage";

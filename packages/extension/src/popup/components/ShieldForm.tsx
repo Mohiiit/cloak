@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { ArrowLeft } from "lucide-react";
-import { TOKENS, parseTokenAmount } from "@cloak/sdk";
+import { TOKENS, parseTokenAmount } from "@cloak-wallet/sdk";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote } from "../lib/storage";
 import { check2FAEnabled, request2FAApproval } from "@/shared/two-factor";

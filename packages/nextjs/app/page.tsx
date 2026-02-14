@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Shield,
   ShieldPlus,
@@ -11,12 +11,17 @@ import {
   Upload,
   RotateCw,
   AlertTriangle,
+  ShieldAlert,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
 import { useAccount } from "@starknet-react/core";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { useTongoBalance } from "~~/hooks/useTongoBalance";
 import { useTongoHistory, type TongoEvent } from "~~/hooks/useTongoHistory";
+import { useWard } from "~~/hooks/useWard";
 
 function HeroSection() {
   return (
@@ -101,6 +106,70 @@ function getRelativeTime(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString();
 }
 
+function WardBanner() {
+  const { isWard, wardInfo } = useWard();
+  const [expanded, setExpanded] = useState(false);
+
+  if (!isWard) return null;
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:border-amber-500/30 transition-all"
+      >
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-amber-400" />
+          <div className="text-left">
+            <p className="text-sm font-medium text-amber-400">Ward Account</p>
+            <p className="text-[11px] text-slate-500">Managed by guardian</p>
+          </div>
+        </div>
+        {expanded ? (
+          <ChevronUp className="w-4 h-4 text-slate-500" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-slate-500" />
+        )}
+      </button>
+
+      {expanded && wardInfo && (
+        <div className="mt-2 p-3 rounded-xl bg-slate-800/50 border border-amber-500/10 border-l-[3px] border-l-amber-500/50 space-y-2">
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Guardian</span>
+            <span className="text-slate-300 font-mono truncate max-w-[60%]">
+              {wardInfo.guardianAddress.slice(0, 10)}...{wardInfo.guardianAddress.slice(-6)}
+            </span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Status</span>
+            <span className={wardInfo.isFrozen ? "text-red-400 font-medium" : "text-emerald-400 font-medium"}>
+              {wardInfo.isFrozen ? "Frozen" : "Active"}
+            </span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Guardian Approval</span>
+            <span className="text-slate-300">
+              {wardInfo.requireGuardianForAll ? "All transactions" : "Above limit only"}
+            </span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Guardian 2FA</span>
+            <span className={wardInfo.isGuardian2faEnabled ? "text-emerald-400" : "text-slate-500"}>
+              {wardInfo.isGuardian2faEnabled ? "Enabled" : "Disabled"}
+            </span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Ward 2FA</span>
+            <span className={wardInfo.is2faEnabled ? "text-emerald-400" : "text-slate-500"}>
+              {wardInfo.is2faEnabled ? "Enabled" : "Disabled"}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectedHome() {
   const { selectedToken } = useTongo();
   const { shieldedDisplay, pending, nonce } = useTongoBalance();
@@ -108,6 +177,9 @@ function ConnectedHome() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Ward Banner (if ward account) */}
+      <WardBanner />
+
       {/* Balance hero card */}
       <Link
         href="/wallet"

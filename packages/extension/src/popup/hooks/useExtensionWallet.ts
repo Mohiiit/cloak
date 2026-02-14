@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { sendMessage } from "@/shared/messages";
-import type { TokenKey, WalletInfo } from "@cloak/sdk";
+import type { TokenKey, WalletInfo } from "@cloak-wallet/sdk";
 
 export interface ShieldedBalances {
   balance: bigint;

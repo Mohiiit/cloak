@@ -1,4 +1,6 @@
 import { ec, num } from "starknet";
+import type { SupabaseLite } from "./supabase";
+import { normalizeAddress } from "./ward";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,4 +90,135 @@ export function serializeCalls(calls: any[]): string {
  */
 export function deserializeCalls(json: string): any[] {
   return JSON.parse(json);
+}
+
+// ─── 2FA Approval Request + Poll ─────────────────────────────────────────────
+
+const TWOFA_POLL_INTERVAL = 2000;
+const TWOFA_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+export interface TwoFAApprovalParams {
+  walletAddress: string;
+  action: string;
+  token: string;
+  amount: string | null;
+  recipient: string | null;
+  callsJson: string;
+  sig1Json: string;
+  nonce: string;
+  resourceBoundsJson: string;
+  txHash: string;
+}
+
+export interface TwoFAApprovalResult {
+  approved: boolean;
+  txHash?: string;
+  error?: string;
+}
+
+/**
+ * Insert a 2FA approval request into Supabase and poll for completion.
+ * Platform-agnostic — accepts a SupabaseLite instance from the caller.
+ */
+export async function request2FAApproval(
+  sb: SupabaseLite,
+  params: TwoFAApprovalParams,
+  onStatusChange?: (status: string) => void,
+  signal?: AbortSignal,
+): Promise<TwoFAApprovalResult> {
+  const normalizedAddr = normalizeAddress(params.walletAddress);
+
+  onStatusChange?.("Submitting approval request...");
+
+  let rows: any[];
+  try {
+    rows = await sb.insert("approval_requests", {
+      wallet_address: normalizedAddr,
+      action: params.action,
+      token: params.token,
+      amount: params.amount,
+      recipient: params.recipient,
+      calls_json: params.callsJson,
+      sig1_json: params.sig1Json,
+      nonce: params.nonce,
+      resource_bounds_json: params.resourceBoundsJson,
+      tx_hash: params.txHash,
+      status: "pending",
+    });
+  } catch (err: any) {
+    return { approved: false, error: `Failed to submit approval: ${err.message}` };
+  }
+
+  const requestId = Array.isArray(rows) ? rows[0]?.id : (rows as any)?.id;
+  if (!requestId) {
+    return { approved: false, error: "Failed to get approval request ID" };
+  }
+
+  onStatusChange?.("Waiting for mobile approval...");
+  const startTime = Date.now();
+
+  return new Promise<TwoFAApprovalResult>((resolve) => {
+    const poll = async () => {
+      if (signal?.aborted) {
+        resolve({ approved: false, error: "Cancelled by user" });
+        return;
+      }
+
+      if (Date.now() - startTime > TWOFA_TIMEOUT) {
+        onStatusChange?.("Request timed out");
+        resolve({ approved: false, error: "Approval request timed out (5 min)" });
+        return;
+      }
+
+      try {
+        const results = await sb.select("approval_requests", `id=eq.${requestId}`);
+        const row = results[0];
+
+        if (!row) {
+          resolve({ approved: false, error: "Approval request not found" });
+          return;
+        }
+
+        if (row.status === "approved") {
+          onStatusChange?.("Approved!");
+          resolve({
+            approved: true,
+            txHash: row.final_tx_hash || row.tx_hash,
+          });
+          return;
+        }
+
+        if (row.status === "rejected") {
+          onStatusChange?.("Rejected by mobile device");
+          resolve({ approved: false, error: "Transaction rejected on mobile device" });
+          return;
+        }
+
+        if (row.status === "failed") {
+          onStatusChange?.("Failed");
+          resolve({
+            approved: false,
+            error: row.error_message || "Transaction failed on mobile",
+          });
+          return;
+        }
+
+        onStatusChange?.("Waiting for mobile approval...");
+        setTimeout(poll, TWOFA_POLL_INTERVAL);
+      } catch (err) {
+        console.warn("[2FA] Poll error:", err);
+        setTimeout(poll, TWOFA_POLL_INTERVAL);
+      }
+    };
+
+    if (signal) {
+      signal.addEventListener(
+        "abort",
+        () => resolve({ approved: false, error: "Cancelled by user" }),
+        { once: true },
+      );
+    }
+
+    poll();
+  });
 }

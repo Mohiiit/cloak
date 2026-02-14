@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { truncateAddress, truncateTongoAddress } from "@cloak/sdk";
+import { truncateAddress, truncateTongoAddress } from "@cloak-wallet/sdk";
 import { Header } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 

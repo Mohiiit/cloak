@@ -1,5 +1,5 @@
 import React from "react";
-import type { TokenKey } from "@cloak/sdk";
+import type { TokenKey } from "@cloak-wallet/sdk";
 
 const TOKEN_INFO: Record<TokenKey, { color: string; label: string }> = {
   STRK: { color: "bg-purple-500", label: "STRK" },

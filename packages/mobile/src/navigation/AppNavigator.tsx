@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Send, Settings, Clock } from "lucide-react-native";
+import { Home, Send, Settings, Clock, ShieldAlert } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
 import SendScreen from "../screens/SendScreen";
 import WalletScreen from "../screens/WalletScreen";
@@ -15,6 +15,7 @@ import SettingsScreen from "../screens/SettingsScreen";
 import DeployScreen from "../screens/DeployScreen";
 import { CloakIcon } from "../components/CloakIcon";
 import { useWallet } from "../lib/WalletContext";
+import { useWardContext } from "../lib/wardContext";
 import { colors, fontSize, spacing } from "../lib/theme";
 
 const Tab = createBottomTabNavigator();
@@ -37,10 +38,24 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
 }
 
 function HeaderTitle() {
+  let isWard = false;
+  try {
+    const wardCtx = useWardContext();
+    isWard = wardCtx.isWard;
+  } catch {
+    // WardProvider not available yet
+  }
+
   return (
     <View style={styles.headerTitleRow}>
       <CloakIcon size={24} />
       <Text style={styles.headerBrand}>Cloak</Text>
+      {isWard && (
+        <View style={styles.wardHeaderBadge}>
+          <ShieldAlert size={12} color="#F59E0B" />
+          <Text style={styles.wardHeaderBadgeText}>Ward</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -135,5 +150,23 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: "bold",
     color: colors.text,
+  },
+  wardHeaderBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.3)",
+  },
+  wardHeaderBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#F59E0B",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 });

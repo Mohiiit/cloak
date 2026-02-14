@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, RefreshCw, Clock } from "lucide-react";
-import { TOKENS, formatTokenAmount } from "@cloak/sdk";
-import type { TokenKey } from "@cloak/sdk";
+import { TOKENS, formatTokenAmount } from "@cloak-wallet/sdk";
+import type { TokenKey } from "@cloak-wallet/sdk";
 import type { ShieldedBalances } from "../hooks/useExtensionWallet";
 
 interface Props {

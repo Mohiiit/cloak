@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ShieldAlert } from "lucide-react";
 import { CloakIcon } from "./CloakIcon";
 
 interface Props {
@@ -8,8 +9,9 @@ interface Props {
 }
 
 export function Onboarding({ onCreateWallet, onImportWallet, error }: Props) {
-  const [mode, setMode] = useState<"choose" | "import">("choose");
+  const [mode, setMode] = useState<"choose" | "import" | "ward">("choose");
   const [importKey, setImportKey] = useState("");
+  const [wardInvite, setWardInvite] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleCreate = async () => {
@@ -50,6 +52,56 @@ export function Onboarding({ onCreateWallet, onImportWallet, error }: Props) {
             className="w-full py-3 rounded-xl bg-cloak-card border border-cloak-border text-cloak-text hover:border-cloak-primary/50 transition-colors"
           >
             Import Existing Key
+          </button>
+          <button
+            onClick={() => setMode("ward")}
+            className="w-full py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:border-amber-500/50 transition-colors flex items-center justify-center gap-2"
+          >
+            <ShieldAlert className="w-4 h-4" />
+            Import Ward Account
+          </button>
+        </div>
+      ) : mode === "ward" ? (
+        <div className="flex flex-col gap-3 mt-4">
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldAlert className="w-4 h-4 text-amber-400" />
+            <label className="text-sm text-amber-400 font-medium">Ward Invite JSON</label>
+          </div>
+          <p className="text-[11px] text-cloak-text-dim mb-1">
+            Paste the QR invite JSON from your guardian.
+          </p>
+          <textarea
+            value={wardInvite}
+            onChange={(e) => setWardInvite(e.target.value)}
+            placeholder='{"type":"cloak_ward_invite","wardAddress":"0x...","wardPrivateKey":"0x..."}'
+            rows={4}
+            className="w-full px-4 py-3 rounded-xl bg-cloak-card border border-amber-500/20 text-cloak-text text-xs placeholder:text-cloak-muted focus:outline-none focus:border-amber-500/40 font-mono resize-none"
+          />
+          <button
+            onClick={async () => {
+              if (!wardInvite.trim()) return;
+              setLoading(true);
+              try {
+                const invite = JSON.parse(wardInvite.trim());
+                if (invite.type !== "cloak_ward_invite" || !invite.wardPrivateKey) {
+                  throw new Error("Invalid ward invite format");
+                }
+                await onImportWallet(invite.wardPrivateKey);
+              } catch {
+                // Error handled by parent
+              }
+              setLoading(false);
+            }}
+            disabled={loading || !wardInvite.trim()}
+            className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-medium transition-colors disabled:opacity-50 mt-1"
+          >
+            {loading ? "Importing..." : "Import Ward"}
+          </button>
+          <button
+            onClick={() => setMode("choose")}
+            className="text-cloak-text-dim text-sm hover:text-cloak-text transition-colors"
+          >
+            Back
           </button>
         </div>
       ) : (

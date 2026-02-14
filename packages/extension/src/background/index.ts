@@ -1,6 +1,7 @@
-import { CloakClient } from "@cloak/sdk";
+import { CloakClient } from "@cloak-wallet/sdk";
 import type { MessageRequest, MessageResponse } from "@/shared/messages";
 import { check2FAEnabled, request2FAApproval, normalizeAddress } from "@/shared/two-factor";
+import { checkIfWardAccount, getWardApprovalNeeds, requestWardApproval } from "@/shared/ward-approval";
 
 // ─── Chrome Storage Adapter ─────────────────────────────────────────
 
@@ -338,6 +339,47 @@ async function handleWalletRpc(
       const { calls } = params;
       if (!calls?.length) throw new Error("No calls provided");
 
+      // Ward approval check (takes priority over 2FA)
+      const isWardInvoke = await checkIfWardAccount(wallet.starkAddress);
+      if (isWardInvoke) {
+        const wardNeedsInvoke = await getWardApprovalNeeds(wallet.starkAddress);
+        if (wardNeedsInvoke && (wardNeedsInvoke.wardHas2fa || wardNeedsInvoke.needsGuardian)) {
+          const serializedCallsInvoke = calls.map((cl: any) => ({
+            contractAddress: cl.contractAddress || cl.contract_address,
+            entrypoint: cl.entrypoint || cl.entry_point,
+            calldata: (cl.calldata || []).map((d: any) => d.toString()),
+          }));
+          const wardResult = await requestWardApproval({
+            wardAddress: wallet.starkAddress,
+            guardianAddress: wardNeedsInvoke.guardianAddress,
+            action: "invoke",
+            token: "STRK",
+            amount: null,
+            recipient: null,
+            callsJson: JSON.stringify(serializedCallsInvoke),
+            wardSigJson: "[]",
+            nonce: "",
+            resourceBoundsJson: "{}",
+            txHash: "",
+            needsWard2fa: wardNeedsInvoke.wardHas2fa,
+            needsGuardian: wardNeedsInvoke.needsGuardian,
+            needsGuardian2fa: wardNeedsInvoke.guardianHas2fa,
+            onStatusChange: (status) => {
+              chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+            },
+          });
+          chrome.runtime.sendMessage({
+            type: "2FA_COMPLETE",
+            approved: wardResult.approved,
+            txHash: wardResult.txHash,
+          }).catch(() => {});
+          if (wardResult.approved && wardResult.txHash) {
+            return { transaction_hash: wardResult.txHash };
+          }
+          throw new Error(wardResult.error || "Ward approval failed");
+        }
+      }
+
       // Check if 2FA is enabled — if so, route through mobile approval
       const is2FA = await check2FAEnabled(wallet.starkAddress);
       if (is2FA) {
@@ -418,6 +460,51 @@ async function handleWalletRpc(
       const tokenKey = token || "STRK";
       const acct = c.account(tokenKey);
 
+      // Ward approval check (takes priority over 2FA)
+      const walletFund = await c.getWallet();
+      if (walletFund) {
+        const isWardFund = await checkIfWardAccount(walletFund.starkAddress);
+        if (isWardFund) {
+          const wardNeedsFund = await getWardApprovalNeeds(walletFund.starkAddress);
+          if (wardNeedsFund && (wardNeedsFund.wardHas2fa || wardNeedsFund.needsGuardian)) {
+            const prepResultFund = (await acct.prepareFund(BigInt(amount))).calls;
+            const serializedCallsFund = prepResultFund.map((cl: any) => ({
+              contractAddress: cl.contractAddress,
+              entrypoint: cl.entrypoint,
+              calldata: cl.calldata?.map((d: any) => d.toString()),
+            }));
+            const wardResult = await requestWardApproval({
+              wardAddress: walletFund.starkAddress,
+              guardianAddress: wardNeedsFund.guardianAddress,
+              action: "fund",
+              token: tokenKey,
+              amount: amount?.toString() || null,
+              recipient: null,
+              callsJson: JSON.stringify(serializedCallsFund),
+              wardSigJson: "[]",
+              nonce: "",
+              resourceBoundsJson: "{}",
+              txHash: "",
+              needsWard2fa: wardNeedsFund.wardHas2fa,
+              needsGuardian: wardNeedsFund.needsGuardian,
+              needsGuardian2fa: wardNeedsFund.guardianHas2fa,
+              onStatusChange: (status) => {
+                chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+              },
+            });
+            chrome.runtime.sendMessage({
+              type: "2FA_COMPLETE",
+              approved: wardResult.approved,
+              txHash: wardResult.txHash,
+            }).catch(() => {});
+            if (wardResult.approved && wardResult.txHash) {
+              return { txHash: wardResult.txHash };
+            }
+            throw new Error(wardResult.error || "Ward approval failed");
+          }
+        }
+      }
+
       // Check 2FA — if enabled, build calls + route through mobile approval
       const wallet = await c.getWallet();
       if (wallet && await check2FAEnabled(wallet.starkAddress)) {
@@ -461,6 +548,51 @@ async function handleWalletRpc(
       const tokenKey = token || "STRK";
       const acct = c.account(tokenKey);
 
+      // Ward approval check (takes priority over 2FA)
+      const walletTransfer = await c.getWallet();
+      if (walletTransfer) {
+        const isWardTransfer = await checkIfWardAccount(walletTransfer.starkAddress);
+        if (isWardTransfer) {
+          const wardNeedsTransfer = await getWardApprovalNeeds(walletTransfer.starkAddress);
+          if (wardNeedsTransfer && (wardNeedsTransfer.wardHas2fa || wardNeedsTransfer.needsGuardian)) {
+            const prepResultTransfer = (await acct.prepareTransfer(to, BigInt(amount))).calls;
+            const serializedCallsTransfer = prepResultTransfer.map((cl: any) => ({
+              contractAddress: cl.contractAddress,
+              entrypoint: cl.entrypoint,
+              calldata: cl.calldata?.map((d: any) => d.toString()),
+            }));
+            const wardResult = await requestWardApproval({
+              wardAddress: walletTransfer.starkAddress,
+              guardianAddress: wardNeedsTransfer.guardianAddress,
+              action: "transfer",
+              token: tokenKey,
+              amount: amount?.toString() || null,
+              recipient: to,
+              callsJson: JSON.stringify(serializedCallsTransfer),
+              wardSigJson: "[]",
+              nonce: "",
+              resourceBoundsJson: "{}",
+              txHash: "",
+              needsWard2fa: wardNeedsTransfer.wardHas2fa,
+              needsGuardian: wardNeedsTransfer.needsGuardian,
+              needsGuardian2fa: wardNeedsTransfer.guardianHas2fa,
+              onStatusChange: (status) => {
+                chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+              },
+            });
+            chrome.runtime.sendMessage({
+              type: "2FA_COMPLETE",
+              approved: wardResult.approved,
+              txHash: wardResult.txHash,
+            }).catch(() => {});
+            if (wardResult.approved && wardResult.txHash) {
+              return { txHash: wardResult.txHash };
+            }
+            throw new Error(wardResult.error || "Ward approval failed");
+          }
+        }
+      }
+
       const wallet = await c.getWallet();
       if (wallet && await check2FAEnabled(wallet.starkAddress)) {
         const prepResult = (await acct.prepareTransfer(to, BigInt(amount))).calls;
@@ -503,6 +635,51 @@ async function handleWalletRpc(
       const tokenKey = token || "STRK";
       const acct = c.account(tokenKey);
 
+      // Ward approval check (takes priority over 2FA)
+      const walletWithdraw = await c.getWallet();
+      if (walletWithdraw) {
+        const isWardWithdraw = await checkIfWardAccount(walletWithdraw.starkAddress);
+        if (isWardWithdraw) {
+          const wardNeedsWithdraw = await getWardApprovalNeeds(walletWithdraw.starkAddress);
+          if (wardNeedsWithdraw && (wardNeedsWithdraw.wardHas2fa || wardNeedsWithdraw.needsGuardian)) {
+            const prepResultWithdraw = (await acct.prepareWithdraw(BigInt(amount))).calls;
+            const serializedCallsWithdraw = prepResultWithdraw.map((cl: any) => ({
+              contractAddress: cl.contractAddress,
+              entrypoint: cl.entrypoint,
+              calldata: cl.calldata?.map((d: any) => d.toString()),
+            }));
+            const wardResult = await requestWardApproval({
+              wardAddress: walletWithdraw.starkAddress,
+              guardianAddress: wardNeedsWithdraw.guardianAddress,
+              action: "withdraw",
+              token: tokenKey,
+              amount: amount?.toString() || null,
+              recipient: null,
+              callsJson: JSON.stringify(serializedCallsWithdraw),
+              wardSigJson: "[]",
+              nonce: "",
+              resourceBoundsJson: "{}",
+              txHash: "",
+              needsWard2fa: wardNeedsWithdraw.wardHas2fa,
+              needsGuardian: wardNeedsWithdraw.needsGuardian,
+              needsGuardian2fa: wardNeedsWithdraw.guardianHas2fa,
+              onStatusChange: (status) => {
+                chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+              },
+            });
+            chrome.runtime.sendMessage({
+              type: "2FA_COMPLETE",
+              approved: wardResult.approved,
+              txHash: wardResult.txHash,
+            }).catch(() => {});
+            if (wardResult.approved && wardResult.txHash) {
+              return { txHash: wardResult.txHash };
+            }
+            throw new Error(wardResult.error || "Ward approval failed");
+          }
+        }
+      }
+
       const wallet = await c.getWallet();
       if (wallet && await check2FAEnabled(wallet.starkAddress)) {
         const prepResult = (await acct.prepareWithdraw(BigInt(amount))).calls;
@@ -544,6 +721,51 @@ async function handleWalletRpc(
       const { token } = params;
       const tokenKey = token || "STRK";
       const acct = c.account(tokenKey);
+
+      // Ward approval check (takes priority over 2FA)
+      const walletRollover = await c.getWallet();
+      if (walletRollover) {
+        const isWardRollover = await checkIfWardAccount(walletRollover.starkAddress);
+        if (isWardRollover) {
+          const wardNeedsRollover = await getWardApprovalNeeds(walletRollover.starkAddress);
+          if (wardNeedsRollover && (wardNeedsRollover.wardHas2fa || wardNeedsRollover.needsGuardian)) {
+            const prepResultRollover = (await acct.prepareRollover()).calls;
+            const serializedCallsRollover = prepResultRollover.map((cl: any) => ({
+              contractAddress: cl.contractAddress,
+              entrypoint: cl.entrypoint,
+              calldata: cl.calldata?.map((d: any) => d.toString()),
+            }));
+            const wardResult = await requestWardApproval({
+              wardAddress: walletRollover.starkAddress,
+              guardianAddress: wardNeedsRollover.guardianAddress,
+              action: "rollover",
+              token: tokenKey,
+              amount: null,
+              recipient: null,
+              callsJson: JSON.stringify(serializedCallsRollover),
+              wardSigJson: "[]",
+              nonce: "",
+              resourceBoundsJson: "{}",
+              txHash: "",
+              needsWard2fa: wardNeedsRollover.wardHas2fa,
+              needsGuardian: wardNeedsRollover.needsGuardian,
+              needsGuardian2fa: wardNeedsRollover.guardianHas2fa,
+              onStatusChange: (status) => {
+                chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
+              },
+            });
+            chrome.runtime.sendMessage({
+              type: "2FA_COMPLETE",
+              approved: wardResult.approved,
+              txHash: wardResult.txHash,
+            }).catch(() => {});
+            if (wardResult.approved && wardResult.txHash) {
+              return { txHash: wardResult.txHash };
+            }
+            throw new Error(wardResult.error || "Ward approval failed");
+          }
+        }
+      }
 
       const wallet = await c.getWallet();
       if (wallet && await check2FAEnabled(wallet.starkAddress)) {

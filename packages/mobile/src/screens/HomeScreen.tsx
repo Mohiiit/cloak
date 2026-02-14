@@ -17,8 +17,9 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ClipboardPaste } from "lucide-react-native";
+import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ClipboardPaste, ShieldAlert, Info } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
+import { useWardContext } from "../lib/wardContext";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
@@ -26,13 +27,17 @@ import { CloakIcon } from "../components/CloakIcon";
 
 export default function HomeScreen({ navigation }: any) {
   const wallet = useWallet();
+  const ward = useWardContext();
   const modal = useThemedModal();
   const [showImport, setShowImport] = useState(false);
+  const [showWardImport, setShowWardImport] = useState(false);
   const [importPK, setImportPK] = useState("");
   const [importAddr, setImportAddr] = useState("");
+  const [wardInviteJson, setWardInviteJson] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [balanceHidden, setBalanceHidden] = useState(false);
+  const [showWardInfo, setShowWardInfo] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState<{ txHash: string; amount: string } | null>(null);
 
   useEffect(() => {
@@ -87,7 +92,7 @@ export default function HomeScreen({ navigation }: any) {
 
           <TouchableOpacity
             style={styles.importToggle}
-            onPress={() => setShowImport(!showImport)}
+            onPress={() => { setShowImport(!showImport); setShowWardImport(false); }}
           >
             <Text style={styles.importToggleText}>
               {showImport ? "Hide Import" : "Import Existing Account"}
@@ -139,6 +144,67 @@ export default function HomeScreen({ navigation }: any) {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.createButtonText}>Import Wallet</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.importToggle}
+            onPress={() => { setShowWardImport(!showWardImport); setShowImport(false); }}
+          >
+            <Text style={[styles.importToggleText, { color: colors.warning }]}>
+              {showWardImport ? "Hide Ward Import" : "Import Ward Account"}
+            </Text>
+          </TouchableOpacity>
+
+          {showWardImport && (
+            <View style={[styles.importCard, { borderColor: "rgba(245, 158, 11, 0.3)" }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
+                <ShieldAlert size={18} color={colors.warning} />
+                <Text style={{ color: colors.text, fontSize: fontSize.sm, fontWeight: "600" }}>Ward Account</Text>
+              </View>
+              <Text style={{ color: colors.textSecondary, fontSize: fontSize.xs, marginBottom: spacing.md, lineHeight: 18 }}>
+                Paste the QR invite JSON from your guardian to import a ward account. This account will be managed by the guardian.
+              </Text>
+              <Text style={styles.importLabel}>Ward Invite JSON</Text>
+              <TextInput
+                style={[styles.importInput, { minHeight: 80, textAlignVertical: "top" }]}
+                placeholder='{"type":"cloak_ward_invite","wardAddress":"0x...","wardPrivateKey":"0x...","guardianAddress":"0x..."}'
+                placeholderTextColor={colors.textMuted}
+                value={wardInviteJson}
+                onChangeText={setWardInviteJson}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+                autoComplete="off"
+                multiline
+                numberOfLines={4}
+              />
+              <TouchableOpacity
+                style={[styles.createButton, { backgroundColor: colors.warning }, (!wardInviteJson.trim() || isImporting) && { opacity: 0.4 }]}
+                disabled={!wardInviteJson.trim() || isImporting}
+                onPress={async () => {
+                  setIsImporting(true);
+                  try {
+                    const invite = JSON.parse(wardInviteJson.trim());
+                    if (invite.type !== "cloak_ward_invite" || !invite.wardAddress || !invite.wardPrivateKey) {
+                      throw new Error("Invalid ward invite format");
+                    }
+                    await wallet.importWallet(invite.wardPrivateKey, invite.wardAddress);
+                    modal.showSuccess("Ward Imported", "This account is managed by a guardian.");
+                    setWardInviteJson("");
+                  } catch (e: any) {
+                    modal.showError("Import Failed", e.message || "Invalid invite JSON", e.message);
+                  } finally {
+                    setIsImporting(false);
+                  }
+                }}
+              >
+                {isImporting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.createButtonText}>Import Ward Account</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -239,6 +305,62 @@ export default function HomeScreen({ navigation }: any) {
 
       {!claimSuccess && (
         <>
+          {/* Ward Badge Banner */}
+          {ward.isWard && (
+            <TouchableOpacity
+              style={styles.wardBanner}
+              onPress={() => setShowWardInfo(!showWardInfo)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.wardBannerLeft}>
+                <ShieldAlert size={18} color={colors.warning} />
+                <View>
+                  <Text style={styles.wardBannerTitle}>Ward Account</Text>
+                  <Text style={styles.wardBannerSub}>Managed by guardian</Text>
+                </View>
+              </View>
+              <Info size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+
+          {/* Ward Info Panel */}
+          {ward.isWard && showWardInfo && ward.wardInfo && (
+            <View style={styles.wardInfoPanel}>
+              <View style={styles.wardInfoRow}>
+                <Text style={styles.wardInfoLabel}>Guardian</Text>
+                <Text style={styles.wardInfoValue} numberOfLines={1}>
+                  {ward.wardInfo.guardianAddress.slice(0, 10)}...{ward.wardInfo.guardianAddress.slice(-6)}
+                </Text>
+              </View>
+              <View style={styles.wardInfoRow}>
+                <Text style={styles.wardInfoLabel}>Status</Text>
+                <View style={[styles.wardStatusBadge, ward.wardInfo.isFrozen ? styles.wardStatusFrozen : styles.wardStatusActive]}>
+                  <Text style={[styles.wardStatusText, ward.wardInfo.isFrozen ? styles.wardStatusTextFrozen : styles.wardStatusTextActive]}>
+                    {ward.wardInfo.isFrozen ? "Frozen" : "Active"}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.wardInfoRow}>
+                <Text style={styles.wardInfoLabel}>Guardian Approval</Text>
+                <Text style={styles.wardInfoValue}>
+                  {ward.wardInfo.requireGuardianForAll ? "All transactions" : "Above limit only"}
+                </Text>
+              </View>
+              <View style={styles.wardInfoRow}>
+                <Text style={styles.wardInfoLabel}>Guardian 2FA</Text>
+                <Text style={[styles.wardInfoValue, { color: ward.wardInfo.isGuardian2faEnabled ? colors.success : colors.textMuted }]}>
+                  {ward.wardInfo.isGuardian2faEnabled ? "Enabled" : "Disabled"}
+                </Text>
+              </View>
+              <View style={styles.wardInfoRow}>
+                <Text style={styles.wardInfoLabel}>Ward 2FA</Text>
+                <Text style={[styles.wardInfoValue, { color: ward.wardInfo.is2faEnabled ? colors.success : colors.textMuted }]}>
+                  {ward.wardInfo.is2faEnabled ? "Enabled" : "Disabled"}
+                </Text>
+              </View>
+            </View>
+          )}
+
           {/* Claim Banner */}
           {hasPending && (
         <View style={styles.claimBanner}>
@@ -680,4 +802,54 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
   },
   claimDoneBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
+
+  // Ward Badge & Info
+  wardBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(245, 158, 11, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.2)",
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  wardBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  wardBannerTitle: { fontSize: fontSize.sm, color: colors.warning, fontWeight: "600" },
+  wardBannerSub: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 1 },
+  wardInfoPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.15)",
+    borderLeftWidth: 3,
+    borderLeftColor: colors.warning,
+  },
+  wardInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  wardInfoLabel: { fontSize: fontSize.sm, color: colors.textSecondary },
+  wardInfoValue: { fontSize: fontSize.sm, color: colors.text, maxWidth: "55%" },
+  wardStatusBadge: {
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  wardStatusActive: { backgroundColor: "rgba(16, 185, 129, 0.15)" },
+  wardStatusFrozen: { backgroundColor: "rgba(239, 68, 68, 0.15)" },
+  wardStatusText: { fontSize: fontSize.xs, fontWeight: "600" },
+  wardStatusTextActive: { color: colors.success },
+  wardStatusTextFrozen: { color: colors.error },
 });

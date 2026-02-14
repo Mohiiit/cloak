@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { CloakIcon } from "./CloakIcon";
-import { truncateAddress } from "@cloak/sdk";
-import type { WalletInfo } from "@cloak/sdk";
+import { truncateAddress } from "@cloak-wallet/sdk";
+import type { WalletInfo } from "@cloak-wallet/sdk";
 
 interface Props {
   wallet: WalletInfo;

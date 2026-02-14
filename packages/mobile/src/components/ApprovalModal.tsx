@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Account, RpcProvider } from "starknet";
+import { DEFAULT_RPC } from "@cloak-wallet/sdk";
 import { useTwoFactor } from "../lib/TwoFactorContext";
 import { useWallet } from "../lib/WalletContext";
 import { useToast } from "./Toast";
@@ -25,11 +26,6 @@ import {
   getSecondaryPrivateKey,
   DualKeySigner,
 } from "../lib/twoFactor";
-
-// ─── RPC Config ──────────────────────────────────────────────────────────────
-
-const RPC_URL =
-  "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -122,7 +118,7 @@ function ApprovalCard({
         wallet.keys!.starkPrivateKey,
         secondaryPk,
       );
-      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const account = new Account({
         provider,
         address: wallet.keys!.starkAddress,

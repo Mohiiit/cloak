@@ -1,4 +1,4 @@
-import type { TokenKey, WalletInfo, ShieldedState } from "@cloak/sdk";
+import type { TokenKey, WalletInfo, ShieldedState } from "@cloak-wallet/sdk";
 
 // ─── Request types (popup → background) ────────────────────────────
 

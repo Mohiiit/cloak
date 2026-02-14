@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { Account, RpcProvider } from "starknet";
+import { DEFAULT_RPC } from "@cloak-wallet/sdk";
 import { useWallet } from "./WalletContext";
 import { useToast } from "../components/Toast";
 import {
@@ -31,9 +32,6 @@ import {
   normalizeAddress,
   DualKeySigner,
 } from "./twoFactor";
-
-const RPC_URL =
-  "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -215,7 +213,7 @@ export function TwoFactorProvider({
 
       // Step 3: On-chain set_secondary_key — MUST succeed before Supabase
       onStep?.("onchain");
-      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const account = new Account({
         provider,
         address: wallet.keys.starkAddress,
@@ -272,7 +270,7 @@ export function TwoFactorProvider({
     try {
       // Step 1: On-chain remove_secondary_key — MUST succeed before anything else
       const secondaryPk = await getSecondaryPrivateKey();
-      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const calls = [{
         contractAddress: wallet.keys.starkAddress,
         entrypoint: "remove_secondary_key",

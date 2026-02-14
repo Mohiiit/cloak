@@ -13,13 +13,19 @@ LogBox.ignoreLogs([
   "[TwoFactorContext]",
   "[twoFactor]",
   "[ApprovalModal]",
+  "[WardContext]",
+  "[WardApprovalModal]",
+  "[GuardianApprovalModal]",
 ]);
 import { TongoBridgeProvider } from "./src/bridge/TongoBridge";
 import { WalletProvider } from "./src/lib/WalletContext";
 import { TwoFactorProvider } from "./src/lib/TwoFactorContext";
 import { ToastProvider } from "./src/components/Toast";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
+import { WardProvider } from "./src/lib/wardContext";
 import ApprovalModal from "./src/components/ApprovalModal";
+import WardApprovalModal from "./src/components/WardApprovalModal";
+import GuardianApprovalModal from "./src/components/GuardianApprovalModal";
 import AppNavigator from "./src/navigation/AppNavigator";
 
 function App() {
@@ -30,10 +36,14 @@ function App() {
         <TongoBridgeProvider>
           <WalletProvider>
             <TwoFactorProvider>
-              <ErrorBoundary>
-                <AppNavigator />
-              </ErrorBoundary>
-              <ApprovalModal />
+              <WardProvider>
+                <ErrorBoundary>
+                  <AppNavigator />
+                </ErrorBoundary>
+                <ApprovalModal />
+                <WardApprovalModal />
+                <GuardianApprovalModal />
+              </WardProvider>
             </TwoFactorProvider>
           </WalletProvider>
         </TongoBridgeProvider>

@@ -7,13 +7,7 @@ import { useTongoBridge } from "../bridge/useTongoBridge";
 import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet } from "./keys";
 import { TokenKey, TOKENS } from "./tokens";
 import { useToast } from "../components/Toast";
-
-/** CloakAccount class hash (declared on Sepolia) */
-const CLOAK_ACCOUNT_CLASS_HASH =
-  "0x034549a00718c3158349268f26047a311019e8fd328e9819e31187467de71f00";
-
-const RPC_URL =
-  "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8";
+import { DEFAULT_RPC, CLOAK_ACCOUNT_CLASS_HASH } from "@cloak-wallet/sdk";
 
 const ALL_TOKENS: TokenKey[] = ["STRK", "ETH", "USDC"];
 
@@ -243,7 +237,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (!keys?.starkAddress) return false;
     setIsCheckingDeployment(true);
     try {
-      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       await provider.getNonceForAddress(keys.starkAddress);
       setIsDeployed(true);
       return true;
@@ -257,7 +251,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const deployAccount = useCallback(async (): Promise<string> => {
     if (!keys) throw new Error("No wallet keys");
-    const provider = new RpcProvider({ nodeUrl: RPC_URL });
+    const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
     const constructorCalldata = CallData.compile({ publicKey: keys.starkPublicKey });
     const account = new Account({
       provider,

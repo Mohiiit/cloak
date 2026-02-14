@@ -17,6 +17,8 @@ import { useTongoFund } from "~~/hooks/useTongoFund";
 import { useTongoWithdraw } from "~~/hooks/useTongoWithdraw";
 import { useTongoRollover } from "~~/hooks/useTongoRollover";
 import { use2FA } from "~~/hooks/use2FA";
+import { useWardApproval } from "~~/hooks/useWardApproval";
+import { useWard } from "~~/hooks/useWard";
 import { check2FAEnabled, fetchWalletNonce } from "~~/lib/two-factor";
 import { TwoFactorWaiting } from "~~/components/TwoFactorWaiting";
 import { padAddress } from "~~/lib/address";
@@ -155,6 +157,8 @@ export default function WalletPage() {
   const { withdraw, isPending: withdrawPending } = useTongoWithdraw();
   const { rollover, isPending: rolloverPending } = useTongoRollover();
   const { gate, isWaiting: is2FAWaiting, status: twoFAStatus, cancel: cancel2FA } = use2FA();
+  const ward = useWard();
+  const { checkNeeds, gate: wardGate, isWaiting: isWardWaiting, status: wardStatus, cancel: cancelWard } = useWardApproval();
 
   const [showBalance, setShowBalance] = useState(false);
   const [showFundModal, setShowFundModal] = useState(false);
@@ -180,6 +184,49 @@ export default function WalletPage() {
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
       const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
+
+      // Ward approval check (takes priority over regular 2FA)
+      if (ward.isWard && ward.wardInfo) {
+        const needs = await checkNeeds(address!);
+        if (needs) {
+          const fundOp = await tongoAccount.fund({
+            amount: tongoAmount,
+            sender: padAddress(address!),
+          });
+          const calls: any[] = [];
+          if (fundOp.approve) calls.push(fundOp.approve);
+          calls.push(fundOp.toCalldata());
+          const callsJson = JSON.stringify(calls, (_k, v) =>
+            typeof v === "bigint" ? v.toString() : v,
+          );
+
+          setShowFundModal(false);
+
+          const result = await wardGate({
+            wardAddress: address!,
+            guardianAddress: needs.guardianAddress,
+            action: "shield",
+            token: selectedToken,
+            amount: amountStr,
+            callsJson,
+            wardSigJson: "[]",
+            nonce: "",
+            resourceBoundsJson: "{}",
+            txHash: "",
+            needsWard2fa: needs.wardHas2fa,
+            needsGuardian: needs.needsGuardian,
+            needsGuardian2fa: needs.guardianHas2fa,
+          });
+
+          if (result.approved) {
+            toast.success("Funds shielded (guardian approved)!");
+            setTimeout(refresh, 3000);
+          } else {
+            toast.error(result.error || "Ward approval failed");
+          }
+          return;
+        }
+      }
 
       // Check if 2FA is enabled for this wallet
       const is2FA = await check2FAEnabled(address);
@@ -235,6 +282,48 @@ export default function WalletPage() {
     try {
       const erc20Amount = parseTokenAmount(amountStr, tokenConfig.decimals);
       const tongoAmount = await tongoAccount.erc20ToTongo(erc20Amount);
+
+      // Ward approval check (takes priority over regular 2FA)
+      if (ward.isWard && ward.wardInfo) {
+        const needs = await checkNeeds(address!);
+        if (needs) {
+          const withdrawOp = await tongoAccount.withdraw({
+            amount: tongoAmount,
+            to: padAddress(address!),
+            sender: padAddress(address!),
+          });
+          const calls = [withdrawOp.toCalldata()];
+          const callsJson = JSON.stringify(calls, (_k, v) =>
+            typeof v === "bigint" ? v.toString() : v,
+          );
+
+          setShowWithdrawModal(false);
+
+          const result = await wardGate({
+            wardAddress: address!,
+            guardianAddress: needs.guardianAddress,
+            action: "unshield",
+            token: selectedToken,
+            amount: amountStr,
+            callsJson,
+            wardSigJson: "[]",
+            nonce: "",
+            resourceBoundsJson: "{}",
+            txHash: "",
+            needsWard2fa: needs.wardHas2fa,
+            needsGuardian: needs.needsGuardian,
+            needsGuardian2fa: needs.guardianHas2fa,
+          });
+
+          if (result.approved) {
+            toast.success("Funds unshielded (guardian approved)!");
+            setTimeout(refresh, 3000);
+          } else {
+            toast.error(result.error || "Ward approval failed");
+          }
+          return;
+        }
+      }
 
       // Check if 2FA is enabled for this wallet
       const is2FA = await check2FAEnabled(address);
@@ -438,6 +527,19 @@ export default function WalletPage() {
         isOpen={is2FAWaiting}
         status={twoFAStatus}
         onCancel={cancel2FA}
+      />
+
+      {/* Ward Approval Waiting */}
+      <TwoFactorWaiting
+        isOpen={isWardWaiting}
+        status={
+          wardStatus === "pending_ward_sig"
+            ? "Waiting for ward mobile signing..."
+            : wardStatus === "pending_guardian"
+              ? "Waiting for guardian approval..."
+              : wardStatus
+        }
+        onCancel={cancelWard}
       />
     </div>
   );

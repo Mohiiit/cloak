@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Shield } from "lucide-react";
-import { truncateTongoAddress, truncateAddress } from "@cloak/sdk";
-import type { WalletInfo } from "@cloak/sdk";
+import { truncateTongoAddress, truncateAddress } from "@cloak-wallet/sdk";
+import type { WalletInfo } from "@cloak-wallet/sdk";
 import { Header } from "./ShieldForm";
 
 interface Props {

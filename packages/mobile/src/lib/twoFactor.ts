@@ -14,6 +14,18 @@ import {
   type DeployAccountSignerDetails,
   type TypedData,
 } from "starknet";
+import {
+  normalizeAddress,
+  signTransactionHash,
+  combinedSignature,
+  deserializeCalls,
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_KEY,
+  SupabaseLite as SdkSupabaseLite,
+} from "@cloak-wallet/sdk";
+
+// Re-export SDK utilities so existing callers don't break
+export { normalizeAddress, signTransactionHash, combinedSignature, deserializeCalls };
 
 // ─── DualKeySigner ──────────────────────────────────────────────────────────
 // Extends starknet.js Signer to sign with TWO private keys.
@@ -78,15 +90,6 @@ export class DualSignSigner implements SignerInterface {
   }
 }
 
-// ─── Address Normalization ──────────────────────────────────────────────────
-
-export function normalizeAddress(addr: string): string {
-  const lower = addr.toLowerCase();
-  if (!lower.startsWith("0x")) return lower;
-  const stripped = lower.slice(2).replace(/^0+/, "");
-  return "0x" + (stripped || "0");
-}
-
 // ─── Storage Keys ────────────────────────────────────────────────────────────
 
 const STORAGE_KEYS = {
@@ -94,11 +97,6 @@ const STORAGE_KEYS = {
   SUPABASE_KEY: "cloak_2fa_supabase_key",
   SECONDARY_PK: "cloak_2fa_secondary_pk",
 };
-
-// ─── Default Supabase Credentials ────────────────────────────────────────────
-
-const DEFAULT_SUPABASE_URL = "https://inrrwwpzglyywrrumxfr.supabase.co";
-const DEFAULT_SUPABASE_KEY = "sb_publishable_TPLbWlk9ucpb6zLduRShvg_pq4K4cad";
 
 // ─── Types (matching SDK two-factor.ts) ──────────────────────────────────────
 
@@ -189,6 +187,12 @@ export async function promptBiometric(message: string): Promise<boolean> {
       require("react-native-biometrics").default ||
       require("react-native-biometrics");
     const rnBiometrics = new ReactNativeBiometrics();
+    // Check if biometrics are available first
+    const { available } = await rnBiometrics.isSensorAvailable();
+    if (!available) {
+      console.warn("[twoFactor] Biometrics not available (simulator?), auto-approving");
+      return true;
+    }
     const { success } = await rnBiometrics.simplePrompt({
       promptMessage: message,
     });
@@ -249,134 +253,11 @@ export async function getSecondaryPublicKey(): Promise<string | null> {
   }
 }
 
-// ─── Signing Utilities (mirrors SDK) ─────────────────────────────────────────
+// ─── Supabase REST Client (uses SDK SupabaseLite) ───────────────────────────
 
-export function signTransactionHash(
-  txHash: string,
-  privateKey: string,
-): [string, string] {
-  const sig = ec.starkCurve.sign(num.toHex(BigInt(txHash)), privateKey);
-  return ["0x" + sig.r.toString(16), "0x" + sig.s.toString(16)];
-}
-
-export function combinedSignature(
-  sig1: [string, string],
-  sig2: [string, string],
-): string[] {
-  return [...sig1, ...sig2];
-}
-
-export function deserializeCalls(json: string): any[] {
-  return JSON.parse(json);
-}
-
-// ─── Supabase REST Client ────────────────────────────────────────────────────
-
-interface SupabaseLite {
-  url: string;
-  key: string;
-  get: (
-    table: string,
-    query: string,
-  ) => Promise<{ data: any[]; error: string | null }>;
-  post: (
-    table: string,
-    body: any,
-  ) => Promise<{ data: any; error: string | null }>;
-  patch: (
-    table: string,
-    query: string,
-    body: any,
-  ) => Promise<{ data: any; error: string | null }>;
-  del: (
-    table: string,
-    query: string,
-  ) => Promise<{ data: any; error: string | null }>;
-}
-
-export async function getSupabaseLite(): Promise<SupabaseLite> {
+export async function getSupabaseLite(): Promise<SdkSupabaseLite> {
   const { url, key } = await getSupabaseConfig();
-
-  const headers = {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-    Prefer: "return=representation",
-  };
-
-  async function get(table: string, query: string) {
-    try {
-      const res = await fetch(`${url}/rest/v1/${table}?${query}`, {
-        method: "GET",
-        headers,
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        return { data: [], error: text };
-      }
-      const data = await res.json();
-      return { data, error: null };
-    } catch (e: any) {
-      return { data: [], error: e.message };
-    }
-  }
-
-  async function post(table: string, body: any) {
-    try {
-      const res = await fetch(`${url}/rest/v1/${table}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        return { data: null, error: text };
-      }
-      const data = await res.json();
-      return { data, error: null };
-    } catch (e: any) {
-      return { data: null, error: e.message };
-    }
-  }
-
-  async function patch(table: string, query: string, body: any) {
-    try {
-      const res = await fetch(`${url}/rest/v1/${table}?${query}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        return { data: null, error: text };
-      }
-      const data = await res.json();
-      return { data, error: null };
-    } catch (e: any) {
-      return { data: null, error: e.message };
-    }
-  }
-
-  async function del(table: string, query: string) {
-    try {
-      const res = await fetch(`${url}/rest/v1/${table}?${query}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        return { data: null, error: text };
-      }
-      // DELETE may return empty body
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : null;
-      return { data, error: null };
-    } catch (e: any) {
-      return { data: null, error: e.message };
-    }
-  }
-
-  return { url, key, get, post, patch, del };
+  return new SdkSupabaseLite(url, key);
 }
 
 // ─── Supabase CRUD Operations ────────────────────────────────────────────────
@@ -384,11 +265,16 @@ export async function getSupabaseLite(): Promise<SupabaseLite> {
 export async function fetchPendingRequests(
   walletAddress: string,
 ): Promise<{ data: ApprovalRequest[]; error: string | null }> {
-  const sb = await getSupabaseLite();
-  return sb.get(
-    "approval_requests",
-    `status=eq.pending&wallet_address=eq.${walletAddress}&order=created_at.desc`,
-  );
+  try {
+    const sb = await getSupabaseLite();
+    const data = await sb.select<ApprovalRequest>(
+      "approval_requests",
+      `status=eq.pending&wallet_address=eq.${walletAddress}&order=created_at.desc`,
+    );
+    return { data, error: null };
+  } catch (e: any) {
+    return { data: [], error: e.message };
+  }
 }
 
 export async function updateRequestStatus(
@@ -397,32 +283,38 @@ export async function updateRequestStatus(
   finalTxHash?: string,
   errorMessage?: string,
 ): Promise<{ data: any; error: string | null }> {
-  const sb = await getSupabaseLite();
-  const body: any = {
-    status,
-    responded_at: new Date().toISOString(),
-  };
-  if (finalTxHash) body.final_tx_hash = finalTxHash;
-  if (errorMessage) body.error_message = errorMessage;
-  return sb.patch("approval_requests", `id=eq.${id}`, body);
+  try {
+    const sb = await getSupabaseLite();
+    const body: any = {
+      status,
+      responded_at: new Date().toISOString(),
+    };
+    if (finalTxHash) body.final_tx_hash = finalTxHash;
+    if (errorMessage) body.error_message = errorMessage;
+    const data = await sb.update("approval_requests", `id=eq.${id}`, body);
+    return { data, error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
 }
 
 export async function enableTwoFactorConfig(
   walletAddress: string,
   secondaryPubKey: string,
 ): Promise<{ data: any; error: string | null }> {
-  const sb = await getSupabaseLite();
   // Use upsert with on_conflict so re-enabling doesn't fail
   // if a row already exists for this wallet address.
+  // SDK's SupabaseLite doesn't expose upsert, so use raw fetch with config from storage.
+  const { url, key } = await getSupabaseConfig();
   const upsertHeaders = {
-    apikey: sb.key,
-    Authorization: `Bearer ${sb.key}`,
+    apikey: key,
+    Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
     Prefer: "return=representation,resolution=merge-duplicates",
   };
   try {
     const res = await fetch(
-      `${sb.url}/rest/v1/two_factor_configs?on_conflict=wallet_address`,
+      `${url}/rest/v1/two_factor_configs?on_conflict=wallet_address`,
       {
         method: "POST",
         headers: upsertHeaders,
@@ -447,23 +339,32 @@ export async function enableTwoFactorConfig(
 export async function disableTwoFactorConfig(
   walletAddress: string,
 ): Promise<{ data: any; error: string | null }> {
-  const sb = await getSupabaseLite();
-  return sb.del(
-    "two_factor_configs",
-    `wallet_address=eq.${walletAddress}`,
-  );
+  try {
+    const sb = await getSupabaseLite();
+    await sb.delete(
+      "two_factor_configs",
+      `wallet_address=eq.${walletAddress}`,
+    );
+    return { data: null, error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
 }
 
 export async function isTwoFactorConfigured(
   walletAddress: string,
 ): Promise<{ configured: boolean; config: TwoFactorConfig | null }> {
-  const sb = await getSupabaseLite();
-  const { data, error } = await sb.get(
-    "two_factor_configs",
-    `wallet_address=eq.${walletAddress}&limit=1`,
-  );
-  if (error || !data || data.length === 0) {
+  try {
+    const sb = await getSupabaseLite();
+    const data = await sb.select<TwoFactorConfig>(
+      "two_factor_configs",
+      `wallet_address=eq.${walletAddress}&limit=1`,
+    );
+    if (!data || data.length === 0) {
+      return { configured: false, config: null };
+    }
+    return { configured: true, config: data[0] };
+  } catch {
     return { configured: false, config: null };
   }
-  return { configured: true, config: data[0] };
 }

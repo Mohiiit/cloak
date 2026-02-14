@@ -9,7 +9,8 @@
       "packages/snfoundry",
       "packages/nextjs",
       "packages/sdk",
-      "packages/extension"
+      "packages/extension",
+      "packages/mobile"
     ]
   },
   "scripts": {

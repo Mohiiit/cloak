@@ -16,11 +16,14 @@ import {
   Lock,
   Smartphone,
   Save,
+  ShieldAlert,
+  Snowflake,
 } from "lucide-react";
 import { useAccount } from "@starknet-react/core";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { getSettings, saveSettings, clearAllData } from "~~/lib/storage";
 import { getSupabaseConfig, saveSupabaseConfig, check2FAEnabled } from "~~/lib/two-factor";
+import { useWard, type WardEntry } from "~~/hooks/useWard";
 import toast from "react-hot-toast";
 
 export default function SettingsPage() {
@@ -36,6 +39,7 @@ export default function SettingsPage() {
   const [supabaseKey, setSupabaseKey] = useState(supabaseConfig.key);
   const [twoFAEnabled, setTwoFAEnabled] = useState<boolean | null>(null);
   const [checking2FA, setChecking2FA] = useState(false);
+  const ward = useWard();
 
   // Check 2FA status on mount / address change
   useEffect(() => {
@@ -114,6 +118,93 @@ export default function SettingsPage() {
                 <Copy className="w-4 h-4" />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ward Account Info (if ward) */}
+      {ward.isWard && ward.wardInfo && (
+        <div className="relative overflow-hidden bg-slate-800/50 rounded-xl p-4 border border-amber-700/30 border-l-4 border-l-amber-500/50">
+          <div className="absolute -top-8 -right-8 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-3">
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span className="text-sm font-medium text-amber-400">Ward Account</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+                <span className="text-xs text-slate-500">Guardian</span>
+                <span className="text-xs text-slate-300 font-mono truncate max-w-[60%]">
+                  {ward.wardInfo.guardianAddress.slice(0, 14)}...{ward.wardInfo.guardianAddress.slice(-6)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+                <span className="text-xs text-slate-500">Status</span>
+                <span className={`text-xs font-medium ${ward.wardInfo.isFrozen ? "text-red-400" : "text-emerald-400"}`}>
+                  {ward.wardInfo.isFrozen ? "Frozen" : "Active"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+                <span className="text-xs text-slate-500">Guardian Required</span>
+                <span className="text-xs text-slate-300">
+                  {ward.wardInfo.requireGuardianForAll ? "All transactions" : "Above limit only"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+                <span className="text-xs text-slate-500">Guardian 2FA</span>
+                <span className={`text-xs font-medium ${ward.wardInfo.isGuardian2faEnabled ? "text-emerald-400" : "text-slate-500"}`}>
+                  {ward.wardInfo.isGuardian2faEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ward List (if guardian) */}
+      {!ward.isWard && ward.wards.length > 0 && (
+        <div className="relative overflow-hidden bg-slate-800/50 rounded-xl p-4 border border-amber-700/30 border-l-4 border-l-amber-500/50">
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-3">
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span className="text-sm font-medium text-slate-200">Your Wards</span>
+              {ward.isLoadingWards && (
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-400" />
+              )}
+            </div>
+            <div className="space-y-2">
+              {ward.wards.map((w: WardEntry) => (
+                <div key={w.wardAddress} className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`w-2 h-2 rounded-full ${w.status === "frozen" ? "bg-red-400" : "bg-emerald-400"}`} />
+                    <span className="text-xs text-slate-300 font-mono truncate">
+                      {w.wardAddress.slice(0, 10)}...{w.wardAddress.slice(-6)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                      w.status === "frozen"
+                        ? "bg-red-600/20 text-red-400"
+                        : "bg-emerald-600/20 text-emerald-400"
+                    }`}>
+                      {w.status === "frozen" ? "Frozen" : "Active"}
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(w.wardAddress);
+                        toast.success("Copied ward address!");
+                      }}
+                      className="text-slate-500 hover:text-blue-400 transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2">
+              Manage wards from the Cloak mobile app (guardian device).
+            </p>
           </div>
         </div>
       )}

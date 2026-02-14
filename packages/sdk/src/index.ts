@@ -2,6 +2,15 @@
 export { CloakClient } from "./client";
 export { CloakAccount } from "./account";
 
+// Centralized config constants
+export {
+  DEFAULT_RPC,
+  CLOAK_WARD_CLASS_HASH,
+  STRK_ADDRESS,
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_KEY,
+} from "./config";
+
 // Wallet utilities
 export { computeAddress, computeMultiSigAddress, createWalletInfo, OZ_ACCOUNT_CLASS_HASH, CLOAK_ACCOUNT_CLASS_HASH } from "./wallet";
 
@@ -34,16 +43,42 @@ export {
   combinedSignature,
   serializeCalls,
   deserializeCalls,
+  request2FAApproval,
 } from "./two-factor";
 export type {
   TwoFactorAction,
   ApprovalStatus,
   TwoFactorConfig,
   ApprovalRequest,
+  TwoFAApprovalParams,
+  TwoFAApprovalResult,
 } from "./two-factor";
 
 // Supabase client
 export { SupabaseLite } from "./supabase";
+
+// Ward utilities
+export {
+  checkIfWardAccount,
+  fetchWardApprovalNeeds,
+  fetchWardInfo,
+  signHash,
+  assembleWardSignature,
+  getBlockGasPrices,
+  buildWardResourceBounds,
+  serializeResourceBounds,
+  deserializeResourceBounds,
+  requestWardApproval,
+  normalizeAddress,
+} from "./ward";
+export type {
+  WardApprovalNeeds,
+  WardInfo,
+  WardApprovalRequest,
+  WardApprovalParams,
+  WardApprovalResult,
+  BlockGasPrices,
+} from "./ward";
 
 // Types
 export type {

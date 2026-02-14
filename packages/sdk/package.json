@@ -1,6 +1,6 @@
 {
-  "name": "@cloak/sdk",
-  "version": "0.1.0",
+  "name": "@cloak-wallet/sdk",
+  "version": "0.2.0",
   "description": "Cloak SDK — privacy-preserving wallet operations on Starknet via Tongo",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -15,6 +15,14 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mohiiit/cloak.git",
+    "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -27,6 +35,7 @@
     "starknet": "8.5.3"
   },
   "devDependencies": {
+    "dotenv": "^17.3.1",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"

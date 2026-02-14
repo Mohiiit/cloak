@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff, Clock, Users } from "lucide-react";
+import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff, Clock, Users, ShieldAlert, ChevronDown, ChevronUp } from "lucide-react";
 import { useExtensionWallet } from "./hooks/useExtensionWallet";
+import { useWard } from "./hooks/useWard";
 import { CloakIcon } from "./components/CloakIcon";
 import { Onboarding } from "./components/Onboarding";
 import { DeployScreen } from "./components/DeployScreen";
@@ -18,8 +19,10 @@ type Screen = "main" | "shield" | "send" | "withdraw" | "receive" | "settings" |
 
 export default function App() {
   const w = useExtensionWallet();
+  const ward = useWard(w.wallet?.starkAddress);
   const [screen, setScreen] = useState<Screen>("main");
   const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
+  const [wardExpanded, setWardExpanded] = useState(false);
 
   // Loading state
   if (w.loading) {
@@ -87,6 +90,12 @@ export default function App() {
         <div className="flex items-center gap-2">
           <CloakIcon size={20} />
           <span className="text-cloak-text font-semibold text-sm">Cloak</span>
+          {ward.isWard && (
+            <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-full">
+              <ShieldAlert className="w-3 h-3 text-amber-400" />
+              <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider">Ward</span>
+            </span>
+          )}
         </div>
         <button
           onClick={() => setScreen("settings")}
@@ -95,6 +104,48 @@ export default function App() {
           <SettingsIcon className="w-[18px] h-[18px]" />
         </button>
       </div>
+
+      {/* Ward info banner */}
+      {ward.isWard && (
+        <div className="px-4 pb-2">
+          <button
+            onClick={() => setWardExpanded(!wardExpanded)}
+            className="w-full flex items-center justify-between p-2.5 rounded-lg bg-amber-500/8 border border-amber-500/15 hover:border-amber-500/25 transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[11px] text-amber-400 font-medium">Managed by guardian</span>
+            </div>
+            {wardExpanded ? (
+              <ChevronUp className="w-3.5 h-3.5 text-cloak-muted" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-cloak-muted" />
+            )}
+          </button>
+          {wardExpanded && ward.wardInfo && (
+            <div className="mt-1.5 p-2.5 rounded-lg bg-cloak-card border border-amber-500/10 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-[10px] text-cloak-muted">Guardian</span>
+                <span className="text-[10px] text-cloak-text-dim font-mono">
+                  {ward.wardInfo.guardianAddress.slice(0, 8)}...{ward.wardInfo.guardianAddress.slice(-4)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[10px] text-cloak-muted">Status</span>
+                <span className={`text-[10px] font-medium ${ward.wardInfo.isFrozen ? "text-red-400" : "text-cloak-success"}`}>
+                  {ward.wardInfo.isFrozen ? "Frozen" : "Active"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[10px] text-cloak-muted">Guardian 2FA</span>
+                <span className={`text-[10px] ${ward.wardInfo.isGuardian2faEnabled ? "text-cloak-success" : "text-cloak-muted"}`}>
+                  {ward.wardInfo.isGuardian2faEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Balance card */}
       <div className="px-4 pb-4">

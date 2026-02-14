@@ -487,3 +487,117 @@ Phase 3 (polish, test, deploy, video)
 - Root package.json updated with workspaces for `packages/sdk` and `packages/extension`
 - Root scripts: `sdk:build`, `sdk:test`, `extension:build`, `extension:dev`
 - README updated with SDK usage examples and extension installation instructions
+
+---
+
+## Phase 5 — Production-Grade Account Lifecycle & 2FA Consistency (Feb 14, 2026) ✅
+
+### Task 5.1: Mobile Deploy Flow ✅
+
+**Problem**: `createWallet` computed a counterfactual CloakAccount address but never deployed it on-chain. Users had an address they couldn't use.
+
+**Changes**:
+
+- **`packages/mobile/src/lib/keys.ts`** — Persist `starkPublicKey` in AsyncStorage (needed for deploy constructor calldata). Added fallback derivation via `ec.starkCurve.getStarkKey()` for backwards compatibility.
+- **`packages/mobile/src/lib/WalletContext.tsx`** — Added `isDeployed`, `isCheckingDeployment` state, `checkDeployment()` (uses `getNonceForAddress`), `deployAccount()` (calls `account.deployAccount()` with CloakAccount class hash). Auto-checks deployment when wallet keys load.
+- **`packages/mobile/src/screens/DeployScreen.tsx`** (**NEW**) — Full-screen gated view with QR code, address display, Sepolia faucet link, Deploy button with spinner, success card with Voyager link.
+- **`packages/mobile/src/navigation/AppNavigator.tsx`** — Gates tab navigator behind deployment check: if `wallet.isWalletCreated && !wallet.isDeployed`, renders DeployScreen instead.
+
+### Task 5.2: Fix 2FA On-Chain Consistency ✅
+
+**Problem**: `enable2FA` silently caught on-chain `set_secondary_key` failures and marked 2FA as "Active" in Supabase/UI. `disable2FA` could delete local key material while the contract still enforced dual-sig.
+
+**Changes**:
+
+- **`packages/mobile/src/lib/TwoFactorContext.tsx`** — Rewrote `enable2FA`: gates behind `wallet.isDeployed`, on-chain tx MUST succeed before Supabase update, cleans up secondary key on any failure. Rewrote `disable2FA`: on-chain `remove_secondary_key` must succeed before Supabase delete — aborts entirely on failure, preserving key material.
+- **`packages/mobile/src/screens/SettingsScreen.tsx`** — Reordered stepper from `["auth", "keygen", "register", "onchain"]` to `["auth", "keygen", "onchain", "register"]`. Added deployment gate: disabled Enable 2FA button with message when account not deployed.
+
+### Task 5.3: Bug Fixes (Feb 14, 2026) ✅
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| Address validation always fails | `useTongoBridge` doesn't expose raw `send()` method | Added `validateBase58()` to `useTongoBridge.ts`, updated `WalletContext.tsx` |
+| Pasted address truncated in input | Single-line TextInput only shows tail | Made input `multiline` with `numberOfLines={2}`, added paste button |
+| iOS excessive top gap | Uniform `spacing.lg` padding on iOS where Dynamic Island already creates space | Platform-specific `paddingTop: Platform.OS === "ios" ? spacing.sm : spacing.lg` |
+| Extension two countdowns | `two-factor.ts` status string had countdown AND `TwoFactorWaiting.tsx` had its own timer | Removed countdown from status string in `two-factor.ts` |
+| Claim banner persists after rollover | `refreshBalance()` not awaited after rollover | `await wallet.refreshBalance()` in `handleClaim` and on success dismiss |
+
+### Files Modified (Phase 5)
+
+| File | Change |
+|------|--------|
+| `packages/mobile/src/lib/keys.ts` | Persist `starkPublicKey` in AsyncStorage |
+| `packages/mobile/src/lib/WalletContext.tsx` | Add deploy state/functions, fix `validateAddress` |
+| `packages/mobile/src/screens/DeployScreen.tsx` | **NEW** — deploy gate screen |
+| `packages/mobile/src/navigation/AppNavigator.tsx` | Gate behind deployment check |
+| `packages/mobile/src/lib/TwoFactorContext.tsx` | Fix enable/disable 2FA ordering |
+| `packages/mobile/src/screens/SettingsScreen.tsx` | Update stepper, deployment gate |
+| `packages/mobile/src/bridge/useTongoBridge.ts` | Add `validateBase58()` method |
+| `packages/mobile/src/screens/SendScreen.tsx` | Multiline address input + paste button |
+| `packages/mobile/src/screens/HomeScreen.tsx` | iOS padding fix, claim banner fix |
+| `packages/extension/src/shared/two-factor.ts` | Remove duplicate countdown from status |
+
+---
+
+## Phase 6 — Security Audit + DRY Consolidation (Feb 14, 2026) ✅
+
+Security audit found hardcoded secrets in 15+ source files and DRY analysis found ~800 lines of duplicated code across the three frontends. Consolidated everything to use SDK as single source of truth.
+
+### Task 6.1: SDK Centralized Config ✅
+- **`packages/sdk/src/config.ts`** (**NEW**) — Single source of truth for `DEFAULT_RPC`, `CLOAK_WARD_CLASS_HASH`, `STRK_ADDRESS`, `DEFAULT_SUPABASE_URL`, `DEFAULT_SUPABASE_KEY`
+- **`packages/sdk/src/client.ts`** — Replaced local `DEFAULT_RPC` with import from `config.ts`
+- **`packages/sdk/src/two-factor.ts`** — Added `request2FAApproval()` (insert + poll pattern extracted from web/extension)
+- **`packages/sdk/src/index.ts`** — Added 8 new exports: `DEFAULT_RPC`, `CLOAK_WARD_CLASS_HASH`, `STRK_ADDRESS`, `DEFAULT_SUPABASE_URL`, `DEFAULT_SUPABASE_KEY`, `request2FAApproval`, `TwoFAApprovalParams`, `TwoFAApprovalResult`
+- **Version bumped** to `0.2.0`
+
+### Task 6.2: Test Script Security ✅
+- **`packages/sdk/.env.example`** (**NEW**) — Template with `FUNDER_PK`, `GUARDIAN_PK`, `RPC_URL`, `SUPABASE_URL`, etc.
+- **8 test scripts updated** — All hardcoded private keys, Supabase creds, and addresses replaced with `process.env.*` + fail-fast validation
+- **`dotenv`** added as devDependency
+
+| Script | Secrets Removed |
+|--------|----------------|
+| `e2e-test.cjs` | FUNDER_PK, FUNDER_ADDRESS |
+| `e2e-full-flow.cjs` | FUNDER_PK, FUNDER_ADDRESS, SUPABASE_URL, SUPABASE_KEY |
+| `deploy-cloak-account.cjs` | FUNDER_PK, FUNDER_ADDRESS |
+| `deploy-ward.cjs` | GUARDIAN_PK, GUARDIAN_ADDRESS |
+| `declare-cloak-ward.cjs` | FUNDER_PK, FUNDER_ADDRESS |
+| `test-ward-setup.cjs` | GUARDIAN_PK, GUARDIAN_ADDRESS, SUPABASE_URL, SUPABASE_KEY |
+| `test-ward-approval.cjs` | WARD_ADDRESS, GUARDIAN_ADDRESS, SUPABASE_URL, SUPABASE_KEY |
+| `scripts/e2e-cloak-account.mjs` | FUNDER_PK, FUNDER_ADDRESS |
+
+### Task 6.3: Mobile Consolidation ✅
+- **`packages/mobile/src/lib/twoFactor.ts`** — Removed `normalizeAddress()`, `signTransactionHash()`, `combinedSignature()`, `deserializeCalls()`, local `SupabaseLite` class (~150 lines). All replaced with SDK imports.
+- **`packages/mobile/src/lib/wardContext.tsx`** — Removed `RPC_URL`, `CLOAK_WARD_CLASS_HASH`, `STRK_ADDRESS`, local `WardInfo`/`WardApprovalRequest` types. All replaced with SDK imports.
+- **4 additional files** — Replaced `RPC_URL` with `DEFAULT_RPC.sepolia` in `WalletContext.tsx`, `TwoFactorContext.tsx`, `ApprovalModal.tsx`, `useDualSigExecutor.ts`. Also replaced `CLOAK_ACCOUNT_CLASS_HASH` in `WalletContext.tsx`.
+
+### Task 6.4: Extension Consolidation ✅
+- **`packages/extension/src/shared/supabase-config.ts`** — Deleted local `SupabaseLite` class (~90 lines), replaced with SDK import. Updated `getSupabaseLite()` to return SDK's `SupabaseLite`.
+- **`packages/extension/src/shared/two-factor.ts`** — Removed `normalizeAddress()`, `RPC_URL`, `request2FAApproval()` (~115 lines). Replaced with SDK imports + thin wrapper.
+- **`packages/extension/src/popup/hooks/useWard.ts`** — Removed `RPC_URL`, local `WardInfo`, 7 parallel RPC calls (~35 lines). Replaced with `checkIfWardAccount()` and `fetchWardInfo()` from SDK.
+- **`packages/extension/src/shared/ward-approval.ts`** — Replaced `RPC_URL` with `DEFAULT_RPC.sepolia`.
+
+### Task 6.5: Next.js Consolidation ✅
+- **`packages/nextjs/lib/two-factor.ts`** — Removed local `SupabaseLite` class, `normalizeAddress()`, `request2FAApproval()` (~175 lines). Replaced with SDK imports + wrappers.
+- **`packages/nextjs/hooks/useWard.ts`** — Removed `RPC_URL`, local `WardInfo`, `normalizeAddress()`, 7 parallel RPC calls (~40 lines). Replaced with SDK functions.
+- **`packages/nextjs/lib/ward-approval.ts`** — Replaced `RPC_URL` with `DEFAULT_RPC.sepolia`.
+
+### Task 6.6: Workspace Alignment ✅
+- **`package.json`** (root) — Added `packages/mobile` to workspaces
+- **`packages/mobile/package.json`** — Changed SDK dep to `workspace:*`
+- **`packages/extension/package.json`** — Changed SDK dep to `workspace:*`
+- **`packages/nextjs/package.json`** — Changed SDK dep to `workspace:*`
+
+### Results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Hardcoded Alchemy RPC URL | 12 locations | 1 (SDK config.ts) |
+| Hardcoded Supabase creds | 6 locations | 1 (SDK config.ts) |
+| Hardcoded private keys | 8 scripts | 0 (all .env) |
+| Local SupabaseLite classes | 3 frontends | 0 (use SDK) |
+| normalizeAddress() copies | 5 | 1 (SDK) |
+| Ward on-chain read duplication | 3 copies | 1 (SDK) |
+| 2FA polling duplication | 2 copies | 1 (SDK) |
+| **Total lines removed** | — | **~615** |
+| **Total lines added to SDK** | — | **~120** |

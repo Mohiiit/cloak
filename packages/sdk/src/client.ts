@@ -15,14 +15,10 @@ import {
 import { MemoryStorage } from "./storage/memory";
 import { WalletNotFoundError, InvalidKeyError } from "./errors";
 import type { CloakClientConfig, StorageAdapter, TokenKey, WalletInfo, Network } from "./types";
+import { DEFAULT_RPC } from "./config";
 
 const STORAGE_KEY_PK = "private_key";
 const STORAGE_KEY_ADDRESS = "stark_address";
-
-const DEFAULT_RPC: Record<Network, string> = {
-  sepolia: "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/vH9MXIQ41pUGskqg5kTR8",
-  mainnet: "https://starknet-mainnet.public.blastapi.io/rpc/v0_9",
-};
 
 export class CloakClient {
   private provider: RpcProvider;
