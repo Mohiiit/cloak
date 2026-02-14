@@ -51,6 +51,7 @@ export default function App() {
           const deployed = await chrome.runtime.sendMessage({ type: "IS_DEPLOYED" });
           if (deployed?.data) window.location.reload();
         }}
+        onBack={w.clearWallet}
         error={w.error}
       />
     );
@@ -122,7 +123,8 @@ export default function App() {
               <ChevronDown className="w-3.5 h-3.5 text-cloak-muted" />
             )}
           </button>
-          {wardExpanded && ward.wardInfo && (
+          {wardExpanded && (
+            ward.wardInfo ? (
             <div className="mt-1.5 p-2.5 rounded-lg bg-cloak-card border border-amber-500/10 space-y-1.5">
               <div className="flex justify-between">
                 <span className="text-[10px] text-cloak-muted">Guardian</span>
@@ -143,6 +145,12 @@ export default function App() {
                 </span>
               </div>
             </div>
+            ) : (
+            <div className="mt-1.5 p-3 rounded-lg bg-cloak-card border border-amber-500/10 flex items-center justify-center">
+              <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mr-2" />
+              <span className="text-[10px] text-cloak-muted">Loading ward info...</span>
+            </div>
+            )
           )}
         </div>
       )}

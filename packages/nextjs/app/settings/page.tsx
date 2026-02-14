@@ -132,6 +132,26 @@ export default function SettingsPage() {
               <span className="text-sm font-medium text-amber-400">Ward Account</span>
             </div>
             <div className="space-y-2">
+              {/* Tongo Address */}
+              {tongoAddress && (
+                <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
+                  <span className="text-xs text-slate-500">Tongo Address</span>
+                  <div className="flex items-center gap-1.5 max-w-[60%]">
+                    <span className="text-xs text-slate-300 font-mono truncate">
+                      {tongoAddress.slice(0, 8)}...{tongoAddress.slice(-6)}
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(tongoAddress);
+                        toast.success("Tongo address copied!");
+                      }}
+                      className="text-slate-500 hover:text-blue-400 transition-colors shrink-0"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between bg-slate-900 rounded-lg p-3">
                 <span className="text-xs text-slate-500">Guardian</span>
                 <span className="text-xs text-slate-300 font-mono truncate max-w-[60%]">

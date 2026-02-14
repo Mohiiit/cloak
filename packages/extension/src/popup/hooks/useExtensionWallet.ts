@@ -29,7 +29,12 @@ export function useExtensionWallet() {
       if (hasWallet) {
         const w = await sendMessage({ type: "GET_WALLET" });
         setWallet(w);
-        const deployed = await sendMessage({ type: "IS_DEPLOYED" });
+        let deployed = await sendMessage({ type: "IS_DEPLOYED" });
+        // Ward accounts are deployed by their guardian — check on-chain
+        if (!deployed) {
+          const isWard = await sendMessage({ type: "CHECK_WARD" });
+          if (isWard) deployed = true;
+        }
         setIsDeployed(deployed);
       }
     } catch (err: any) {
@@ -60,6 +65,14 @@ export function useExtensionWallet() {
       setError(null);
       const w = await sendMessage({ type: "IMPORT_WALLET", privateKey, address });
       setWallet(w);
+      // Check deployment status after import
+      let deployed = await sendMessage({ type: "IS_DEPLOYED" });
+      // Ward accounts are deployed by their guardian — check on-chain
+      if (!deployed) {
+        const isWard = await sendMessage({ type: "CHECK_WARD" });
+        if (isWard) deployed = true;
+      }
+      setIsDeployed(deployed);
       return w;
     } catch (err: any) {
       setError(err.message);

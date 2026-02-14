@@ -10,6 +10,7 @@ import type {
   TwoFAApprovalParams as SdkParams,
   TwoFAApprovalResult,
 } from "@cloak-wallet/sdk";
+import { RpcProvider } from "starknet";
 
 export { normalizeAddress };
 export type { TwoFAApprovalResult };
@@ -39,7 +40,6 @@ export async function check2FAEnabled(walletAddress: string): Promise<boolean> {
  */
 export async function check2FAEnabledOnChain(walletAddress: string): Promise<boolean> {
   try {
-    const { RpcProvider } = await import("starknet");
     const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
     const result = await provider.callContract({
       contractAddress: walletAddress,

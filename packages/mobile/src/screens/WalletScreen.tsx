@@ -17,8 +17,7 @@ import {
 import Clipboard from "@react-native-clipboard/clipboard";
 import { ShieldPlus, ShieldOff, Check } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
-import { useWardContext } from "../lib/wardContext";
-import { useDualSigExecutor } from "../hooks/useDualSigExecutor";
+import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoToDisplay, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
@@ -29,8 +28,7 @@ type SuccessInfo = { txHash: string; amount: string; type: "shield" | "unshield"
 
 export default function WalletScreen({ route }: any) {
   const wallet = useWallet();
-  const ward = useWardContext();
-  const { executeDualSig, is2FAEnabled } = useDualSigExecutor();
+  const { execute } = useTransactionRouter();
   const modal = useThemedModal();
   const [mode, setMode] = useState<Mode>(null);
   const [amount, setAmount] = useState("");
@@ -56,52 +54,14 @@ export default function WalletScreen({ route }: any) {
     triggerMedium();
     setIsPending(true);
     try {
-      let result: { txHash: string };
-
-      // Ward path — insert request + poll for approval
-      if (ward.isWard) {
-        const action = mode === "shield" ? "fund" : "withdraw";
-        const { calls } = mode === "shield"
-          ? await wallet.prepareFund(amount)
-          : await wallet.prepareWithdraw(amount);
-
-        const wardResult = await ward.initiateWardTransaction({
-          action,
-          token: wallet.selectedToken,
-          amount,
-          calls,
-        });
-
-        if (wardResult.approved && wardResult.txHash) {
-          setSuccessInfo({ txHash: wardResult.txHash, amount, type: mode! });
-          wallet.refreshBalance();
-        } else {
-          throw new Error(wardResult.error || "Ward approval failed");
-        }
-        setAmount("");
-        setMode(null);
-        return;
-      }
-
-      if (mode === "shield") {
-        if (is2FAEnabled) {
-          const { calls } = await wallet.prepareFund(amount);
-          result = await executeDualSig(calls);
-        } else {
-          result = await wallet.fund(amount);
-        }
-        setSuccessInfo({ txHash: result.txHash, amount, type: "shield" });
-        wallet.refreshBalance();
-      } else if (mode === "unshield") {
-        if (is2FAEnabled) {
-          const { calls } = await wallet.prepareWithdraw(amount);
-          result = await executeDualSig(calls);
-        } else {
-          result = await wallet.withdraw(amount);
-        }
-        setSuccessInfo({ txHash: result.txHash, amount, type: "unshield" });
-        wallet.refreshBalance();
-      }
+      const action = mode === "shield" ? "fund" : "withdraw";
+      const result = await execute({
+        action,
+        token: wallet.selectedToken,
+        amount,
+      });
+      setSuccessInfo({ txHash: result.txHash, amount, type: mode! });
+      wallet.refreshBalance();
       setAmount("");
       setMode(null);
     } catch (e: any) {
@@ -203,26 +163,7 @@ export default function WalletScreen({ route }: any) {
                 onPress={async () => {
                   try {
                     const pendingAmount = wallet.pending;
-                    let result: { txHash: string };
-
-                    if (ward.isWard) {
-                      const { calls } = await wallet.prepareRollover();
-                      const wardResult = await ward.initiateWardTransaction({
-                        action: "rollover",
-                        token: wallet.selectedToken,
-                        calls,
-                      });
-                      if (wardResult.approved && wardResult.txHash) {
-                        result = { txHash: wardResult.txHash };
-                      } else {
-                        throw new Error(wardResult.error || "Ward approval failed");
-                      }
-                    } else if (is2FAEnabled) {
-                      const { calls } = await wallet.prepareRollover();
-                      result = await executeDualSig(calls);
-                    } else {
-                      result = await wallet.rollover();
-                    }
+                    const result = await execute({ action: "rollover", token: wallet.selectedToken });
                     setSuccessInfo({ txHash: result.txHash, amount: pendingAmount, type: "claim" });
                     wallet.refreshBalance();
                   } catch (e: any) {

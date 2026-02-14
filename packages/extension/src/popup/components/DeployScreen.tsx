@@ -7,10 +7,11 @@ interface Props {
   wallet: WalletInfo;
   onDeploy: () => Promise<string | null>;
   onRefresh: () => Promise<void>;
+  onBack?: () => void;
   error: string | null;
 }
 
-export function DeployScreen({ wallet, onDeploy, onRefresh, error }: Props) {
+export function DeployScreen({ wallet, onDeploy, onRefresh, onBack, error }: Props) {
   const [deploying, setDeploying] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -81,6 +82,14 @@ export function DeployScreen({ wallet, onDeploy, onRefresh, error }: Props) {
         >
           Check if deployed
         </button>
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="w-full py-2.5 rounded-xl text-cloak-text-dim text-sm hover:text-cloak-text transition-colors"
+          >
+            ← Start Over
+          </button>
+        )}
       </div>
 
       {error && (

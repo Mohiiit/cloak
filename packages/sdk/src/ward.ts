@@ -5,8 +5,11 @@
  * On-chain reads use starknet.js RpcProvider.
  * Supabase operations accept a SupabaseLite instance from the caller.
  */
-import { ec, num, RpcProvider } from "starknet";
+import { ec, num, hash, transaction, RpcProvider } from "starknet";
 import type { SupabaseLite } from "./supabase";
+import { TOKENS, formatTokenAmount } from "./tokens";
+import type { TokenKey } from "./types";
+import { DEFAULT_RPC } from "./config";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -256,14 +259,174 @@ export async function getBlockGasPrices(
   };
 }
 
+// ─── Dynamic Fee Estimation ──────────────────────────────────────────────────
+
+export interface FeeEstimate {
+  l2Gas: bigint;
+  l2GasPrice: bigint;
+  l1DataGas: bigint;
+  l1DataGasPrice: bigint;
+  overallFee: bigint;
+}
+
 /**
- * Build resource bounds for a ward invoke v3 transaction.
+ * Estimate invoke fee for a ward/CloakAccount transaction using
+ * `starknet_estimateFee` with SKIP_VALIDATE (bypasses __validate__ signature check).
+ *
+ * This works for CloakWard and CloakAccount+2FA where normal estimateInvokeFee fails.
  */
-export function buildWardResourceBounds(gasPrices: BlockGasPrices): any {
+export async function estimateWardInvokeFee(
+  provider: RpcProvider,
+  senderAddress: string,
+  calls: any[],
+): Promise<FeeEstimate> {
+  const nonce = await provider.getNonceForAddress(senderAddress);
+  const compiledCalldata = transaction.getExecuteCalldata(calls, "1");
+
+  // Extract RPC URL from provider internals
+  const rpcUrl =
+    (provider as any).channel?.nodeUrl ||
+    (provider as any).nodeUrl ||
+    DEFAULT_RPC.sepolia;
+
+  // High ceiling resource bounds so estimation doesn't fail due to limits
+  const ceilingBounds = {
+    l1_gas: { max_amount: "0x0", max_price_per_unit: "0x0" },
+    l2_gas: { max_amount: "0xf42400", max_price_per_unit: "0x2540be400" },
+    l1_data_gas: { max_amount: "0x10000", max_price_per_unit: "0x2540be400" },
+  };
+
+  const body = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "starknet_estimateFee",
+    params: {
+      request: [
+        {
+          type: "INVOKE",
+          sender_address: num.toHex(senderAddress),
+          calldata: compiledCalldata.map((c: any) => num.toHex(BigInt(c))),
+          version: "0x3",
+          signature: ["0x0"],
+          nonce: num.toHex(nonce),
+          resource_bounds: ceilingBounds,
+          tip: "0x0",
+          paymaster_data: [],
+          account_deployment_data: [],
+          nonce_data_availability_mode: "L1",
+          fee_data_availability_mode: "L1",
+        },
+      ],
+      simulation_flags: ["SKIP_VALIDATE"],
+      block_id: "pending",
+    },
+  };
+
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = await response.json();
+  if (json.error) {
+    throw new Error(
+      `Fee estimation failed: ${json.error.message || JSON.stringify(json.error)}`,
+    );
+  }
+
+  const result = json.result?.[0];
+  if (!result) throw new Error("No fee estimation result returned");
+
+  return {
+    l2Gas: BigInt(result.gas_consumed || "0"),
+    l2GasPrice: BigInt(result.gas_price || "0"),
+    l1DataGas: BigInt(result.data_gas_consumed || "0"),
+    l1DataGasPrice: BigInt(result.data_gas_price || "0"),
+    overallFee: BigInt(result.overall_fee || "0"),
+  };
+}
+
+/**
+ * Build resource bounds from a fee estimate with a safety multiplier.
+ * @param estimate - result from estimateWardInvokeFee()
+ * @param safetyMultiplier - multiplier on max_amount values (default 1.5)
+ */
+export function buildResourceBoundsFromEstimate(
+  estimate: FeeEstimate,
+  safetyMultiplier = 1.5,
+): any {
+  const mul = (v: bigint) =>
+    BigInt(Math.ceil(Number(v) * safetyMultiplier));
+  return {
+    l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
+    l2_gas: {
+      max_amount: mul(estimate.l2Gas),
+      max_price_per_unit: estimate.l2GasPrice * 2n,
+    },
+    l1_data_gas: {
+      max_amount: mul(estimate.l1DataGas),
+      max_price_per_unit: estimate.l1DataGasPrice * 2n,
+    },
+  };
+}
+
+/**
+ * @deprecated Use estimateWardInvokeFee() + buildResourceBoundsFromEstimate() instead.
+ * Kept for backward compatibility during migration.
+ */
+export function buildWardResourceBounds(gasPrices: BlockGasPrices, multiplier = 1.5): any {
+  const applyMultiplier = (base: bigint) => BigInt(Math.ceil(Number(base) * multiplier));
   return {
     l1_gas: { max_amount: 0n, max_price_per_unit: gasPrices.l1GasPrice },
-    l2_gas: { max_amount: 800000n, max_price_per_unit: 100000000000n },
-    l1_data_gas: { max_amount: 256n, max_price_per_unit: gasPrices.l1DataGasPrice },
+    l2_gas: { max_amount: applyMultiplier(900000n), max_price_per_unit: 100000000000n },
+    l1_data_gas: { max_amount: applyMultiplier(256n), max_price_per_unit: gasPrices.l1DataGasPrice },
+  };
+}
+
+// ─── Amount Formatting ──────────────────────────────────────────────────────
+
+/**
+ * Format a ward transaction amount for display.
+ * Returns human-readable string like "0.5 STRK" or "Claim pending balance".
+ */
+export function formatWardAmount(
+  tongoUnits: string | null | undefined,
+  tokenKey: string,
+  action: string,
+): string {
+  if (!tongoUnits || action === "rollover") return "Claim pending balance";
+  const token = TOKENS[tokenKey as TokenKey];
+  if (!token) return `${tongoUnits} units`;
+  const erc20Amount = BigInt(tongoUnits) * token.rate;
+  return `${formatTokenAmount(erc20Amount, token.decimals)} ${token.symbol}`;
+}
+
+/**
+ * Parse a sequencer "Insufficient max" gas error.
+ * Returns the resource type and amounts, or null if not a gas error.
+ *
+ * Example error: "Insufficient max L2Gas: max amount: 800000, actual used: 809800."
+ */
+export function parseInsufficientGasError(errorMsg: string): {
+  resource: string;
+  maxAmount: number;
+  actualUsed: number;
+  suggestedMultiplier: number;
+} | null {
+  const match = errorMsg.match(
+    /Insufficient max (\w+):\s*max amount:\s*(\d+),\s*actual used:\s*(\d+)/i,
+  );
+  if (!match) return null;
+  const maxAmount = parseInt(match[2], 10);
+  const actualUsed = parseInt(match[3], 10);
+  // Suggest multiplier that covers actual + 30% headroom
+  const suggestedMultiplier = Math.ceil((actualUsed / maxAmount) * 1.3 * 100) / 100;
+  return {
+    resource: match[1],
+    maxAmount,
+    actualUsed,
+    suggestedMultiplier: Math.max(suggestedMultiplier, 1.5),
   };
 }
 

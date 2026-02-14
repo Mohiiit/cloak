@@ -24,6 +24,7 @@ export type { WardInfo };
 export interface WardEntry {
   wardAddress: string;
   wardPublicKey: string;
+  tongoAddress?: string;
   status: string;
   spendingLimitPerTx: string | null;
   requireGuardianForAll: boolean;
@@ -56,7 +57,7 @@ export function useWard() {
   }, [address]);
 
   const refreshWardInfo = useCallback(async () => {
-    if (!address || !isWard) return;
+    if (!address) return;
     try {
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const info = await fetchWardInfo(provider, address);
@@ -64,7 +65,7 @@ export function useWard() {
     } catch (err) {
       console.warn("[useWard] Failed to read ward info:", err);
     }
-  }, [address, isWard]);
+  }, [address]);
 
   const refreshWards = useCallback(async () => {
     if (!address) return;
@@ -86,6 +87,7 @@ export function useWard() {
         const entries: WardEntry[] = (rows || []).map((r: any) => ({
           wardAddress: r.ward_address,
           wardPublicKey: r.ward_public_key,
+          tongoAddress: r.tongo_address || undefined,
           status: r.status,
           spendingLimitPerTx: r.spending_limit_per_tx,
           requireGuardianForAll: r.require_guardian_for_all ?? true,

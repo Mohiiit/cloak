@@ -65,11 +65,15 @@ export {
   signHash,
   assembleWardSignature,
   getBlockGasPrices,
+  estimateWardInvokeFee,
+  buildResourceBoundsFromEstimate,
   buildWardResourceBounds,
+  parseInsufficientGasError,
   serializeResourceBounds,
   deserializeResourceBounds,
   requestWardApproval,
   normalizeAddress,
+  formatWardAmount,
 } from "./ward";
 export type {
   WardApprovalNeeds,
@@ -78,6 +82,7 @@ export type {
   WardApprovalParams,
   WardApprovalResult,
   BlockGasPrices,
+  FeeEstimate,
 } from "./ward";
 
 // Types

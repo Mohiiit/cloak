@@ -38,7 +38,7 @@ export function useWard(starkAddress: string | undefined) {
   }, [starkAddress]);
 
   const refreshWardInfo = useCallback(async () => {
-    if (!starkAddress || !isWard) return;
+    if (!starkAddress) return;
     try {
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const info = await sdkFetchWardInfo(provider, starkAddress);
@@ -46,7 +46,7 @@ export function useWard(starkAddress: string | undefined) {
     } catch (err) {
       console.warn("[useWard] Failed to read ward info:", err);
     }
-  }, [starkAddress, isWard]);
+  }, [starkAddress]);
 
   useEffect(() => {
     if (starkAddress) {

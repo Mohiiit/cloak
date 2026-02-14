@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { useAccount } from "~~/hooks/useAccount";
+import { useTransactionRouter } from "~~/hooks/useTransactionRouter";
 import { padAddress } from "~~/lib/address";
 
 interface UseTongoFundReturn {
@@ -17,6 +18,7 @@ interface UseTongoFundReturn {
 export function useTongoFund(): UseTongoFundReturn {
   const { tongoAccount } = useTongo();
   const { account, address } = useAccount();
+  const { executeOrRoute } = useTransactionRouter();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -46,10 +48,14 @@ export function useTongoFund(): UseTongoFundReturn {
         }
         calls.push(fundOp.toCalldata());
 
-        const tx = await account.execute(calls);
-        setTxHash(tx.transaction_hash);
+        const txHash = await executeOrRoute(calls, {
+          action: "fund",
+          token: "STRK",
+          amount: tongoAmount.toString(),
+        });
+        setTxHash(txHash);
         setIsSuccess(true);
-        return tx.transaction_hash;
+        return txHash;
       } catch (err: any) {
         console.error("Fund failed:", err);
         setError(err?.message || "Failed to shield funds");
@@ -58,7 +64,7 @@ export function useTongoFund(): UseTongoFundReturn {
         setIsPending(false);
       }
     },
-    [tongoAccount, account, address],
+    [tongoAccount, account, address, executeOrRoute],
   );
 
   const reset = useCallback(() => {

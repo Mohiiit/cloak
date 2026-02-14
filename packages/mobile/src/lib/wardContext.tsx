@@ -26,12 +26,14 @@ import {
   fetchWardInfo as sdkFetchWardInfo,
   signHash,
   assembleWardSignature,
-  getBlockGasPrices,
-  buildWardResourceBounds,
+  estimateWardInvokeFee,
+  buildResourceBoundsFromEstimate,
+  parseInsufficientGasError,
   serializeResourceBounds,
   deserializeResourceBounds,
   requestWardApproval as sdkRequestWardApproval,
   serializeCalls,
+  formatWardAmount,
   DEFAULT_RPC,
   CLOAK_WARD_CLASS_HASH,
   STRK_ADDRESS,
@@ -55,6 +57,8 @@ import {
 
 const STORAGE_KEY_IS_WARD = "cloak_is_ward";
 const STORAGE_KEY_GUARDIAN_ADDR = "cloak_guardian_address";
+const STORAGE_KEY_WARD_INFO = "cloak_ward_info_cache";
+const MAX_GAS_RETRIES = 2;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -163,19 +167,23 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
   // ── Read ward info from on-chain (for ward accounts) ──
 
+  const wardInfoRef = useRef<WardInfo | null>(null);
+
   const refreshWardInfo = useCallback(async () => {
-    if (!wallet.keys?.starkAddress || !isWard) return;
+    if (!wallet.keys?.starkAddress) return;
     try {
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const info = await sdkFetchWardInfo(provider as any, wallet.keys.starkAddress);
       if (info) {
         setWardInfo(info);
+        wardInfoRef.current = info;
         await AsyncStorage.setItem(STORAGE_KEY_GUARDIAN_ADDR, info.guardianAddress);
+        await AsyncStorage.setItem(STORAGE_KEY_WARD_INFO, JSON.stringify(info));
       }
     } catch (err) {
       console.warn("[WardContext] Failed to read ward info:", err);
     }
-  }, [wallet.keys?.starkAddress, isWard]);
+  }, [wallet.keys?.starkAddress]);
 
   // ── Load guardian's ward list from Supabase ──
 
@@ -499,87 +507,129 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     const calls = deserializeCalls(request.calls_json);
     const wardPk = wallet.keys.starkPrivateKey;
 
-    // 1. Get nonce from chain
-    const nonce = await provider.getNonceForAddress(request.ward_address);
-
-    // 2. Get gas prices and build resource bounds via SDK
-    const gasPrices = await getBlockGasPrices(provider as any);
-    const resourceBounds = buildWardResourceBounds(gasPrices);
-
-    // 3. Compute invoke v3 tx hash
-    const chainId = await provider.getChainId();
-    const compiledCalldata = transaction.getExecuteCalldata(calls, "1");
-    const txHash = num.toHex(hash.calculateInvokeTransactionHash({
-      senderAddress: request.ward_address,
-      version: "0x3",
-      compiledCalldata,
-      chainId,
-      nonce,
-      accountDeploymentData: [],
-      nonceDataAvailabilityMode: 0,
-      feeDataAvailabilityMode: 0,
-      resourceBounds,
-      tip: 0,
-      paymasterData: [],
-    }));
-
-    // 4. Sign with ward primary key
-    const wardSig = signHash(txHash, wardPk);
-
-    // 5. Sign with ward 2FA key if needed
-    let ward2faSig: [string, string] | undefined;
+    // Get 2FA key upfront (before retry loop) so we only prompt biometrics once
+    let secondaryPk: string | null = null;
     if (request.needs_ward_2fa) {
-      const secondaryPk = await getSecondaryPrivateKey();
+      secondaryPk = await getSecondaryPrivateKey();
       if (!secondaryPk) throw new Error("Ward 2FA key not found");
-      ward2faSig = signHash(txHash, secondaryPk);
     }
-
-    // Serialize resource bounds (BigInt → hex strings) via SDK
-    const rbJson = serializeResourceBounds(resourceBounds);
 
     const sb = await getSupabaseLite();
+    const chainId = await provider.getChainId();
+    let safetyMultiplier = 1.5;
 
-    if (!request.needs_guardian) {
-      // Ward can finalize and submit on-chain
-      const fullSig = [...wardSig];
-      if (ward2faSig) fullSig.push(...ward2faSig);
+    for (let attempt = 0; attempt <= MAX_GAS_RETRIES; attempt++) {
+      // 1. Dynamic fee estimation with SKIP_VALIDATE
+      const estimate = await estimateWardInvokeFee(provider as any, request.ward_address, calls);
+      const resourceBounds = buildResourceBoundsFromEstimate(estimate, safetyMultiplier);
 
-      const account = new Account({
-        provider,
-        address: request.ward_address,
-        signer: new DualSignSigner(fullSig),
-      });
+      // 2. Get nonce from chain (fresh each attempt — nonce doesn't change if tx wasn't sent)
+      const nonce = await provider.getNonceForAddress(request.ward_address);
 
-      const txResponse = await account.execute(calls, { nonce, resourceBounds, tip: 0 });
+      // 3. Compute invoke v3 tx hash
+      const compiledCalldata = transaction.getExecuteCalldata(calls, "1");
+      const txHash = num.toHex(hash.calculateInvokeTransactionHash({
+        senderAddress: request.ward_address,
+        version: "0x3",
+        compiledCalldata,
+        chainId,
+        nonce,
+        accountDeploymentData: [],
+        nonceDataAvailabilityMode: 0,
+        feeDataAvailabilityMode: 0,
+        resourceBounds,
+        tip: 0,
+        paymasterData: [],
+      }));
 
-      await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
-        nonce: nonce.toString(),
-        resource_bounds_json: rbJson,
-        tx_hash: txHash,
-        ward_sig_json: JSON.stringify(wardSig),
-        ward_2fa_sig_json: ward2faSig ? JSON.stringify(ward2faSig) : null,
-        status: "approved",
-        final_tx_hash: txResponse.transaction_hash,
-        responded_at: new Date().toISOString(),
-      });
-    } else {
-      // Needs guardian — save sigs + computed values, advance to pending_guardian
-      const updateBody: any = {
-        nonce: nonce.toString(),
-        resource_bounds_json: rbJson,
-        tx_hash: txHash,
-        ward_sig_json: JSON.stringify(wardSig),
-        status: "pending_guardian",
-        responded_at: new Date().toISOString(),
-      };
-      if (ward2faSig) {
-        updateBody.ward_2fa_sig_json = JSON.stringify(ward2faSig);
+      // 4. Sign with ward primary key
+      const wardSig = signHash(txHash, wardPk);
+
+      // 5. Sign with ward 2FA key if needed
+      let ward2faSig: [string, string] | undefined;
+      if (secondaryPk) {
+        ward2faSig = signHash(txHash, secondaryPk);
       }
-      await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+
+      // Serialize resource bounds (BigInt → hex strings) via SDK
+      const rbJson = serializeResourceBounds(resourceBounds);
+
+      if (!request.needs_guardian) {
+        // Ward can finalize and submit on-chain
+        const fullSig = [...wardSig];
+        if (ward2faSig) fullSig.push(...ward2faSig);
+
+        const account = new Account({
+          provider,
+          address: request.ward_address,
+          signer: new DualSignSigner(fullSig),
+        });
+
+        try {
+          const txResponse = await account.execute(calls, { nonce, resourceBounds, tip: 0 });
+
+          // Wait for on-chain confirmation and check for revert
+          const receipt = await provider.waitForTransaction(txResponse.transaction_hash);
+          if ((receipt as any).execution_status === "REVERTED") {
+            const revertReason = (receipt as any).revert_reason || "Transaction reverted on-chain";
+            await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+              status: "failed",
+              error_message: revertReason,
+              final_tx_hash: txResponse.transaction_hash,
+              responded_at: new Date().toISOString(),
+            });
+            throw new Error(`Transaction reverted: ${revertReason}`);
+          }
+
+          await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+            nonce: nonce.toString(),
+            resource_bounds_json: rbJson,
+            tx_hash: txHash,
+            ward_sig_json: JSON.stringify(wardSig),
+            ward_2fa_sig_json: ward2faSig ? JSON.stringify(ward2faSig) : null,
+            status: "approved",
+            final_tx_hash: txResponse.transaction_hash,
+            responded_at: new Date().toISOString(),
+          });
+
+          await fetchWardSignRequests();
+          showToast("Ward transaction confirmed on-chain", "success");
+          return;
+        } catch (err: any) {
+          const errMsg = err?.message || String(err);
+          const gasInfo = parseInsufficientGasError(errMsg);
+          if (gasInfo && attempt < MAX_GAS_RETRIES) {
+            safetyMultiplier = gasInfo.suggestedMultiplier;
+            showToast(
+              `Gas too low (used ${gasInfo.actualUsed}, had ${gasInfo.maxAmount}). Re-estimating...`,
+              "warning",
+            );
+            continue;
+          }
+          throw err;
+        }
+      } else {
+        // Needs guardian — save sigs + computed values, advance to pending_guardian
+        const updateBody: any = {
+          nonce: nonce.toString(),
+          resource_bounds_json: rbJson,
+          tx_hash: txHash,
+          ward_sig_json: JSON.stringify(wardSig),
+          status: "pending_guardian",
+          responded_at: new Date().toISOString(),
+        };
+        if (ward2faSig) {
+          updateBody.ward_2fa_sig_json = JSON.stringify(ward2faSig);
+        }
+        await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+
+        await fetchWardSignRequests();
+        showToast("Ward signature submitted", "success");
+        return;
+      }
     }
 
-    await fetchWardSignRequests();
-    showToast("Ward signature submitted", "success");
+    throw new Error("Max gas retries exceeded");
   }, [wallet.keys, fetchWardSignRequests, showToast]);
 
   const approveAsGuardian = useCallback(async (request: WardApprovalRequest) => {
@@ -608,26 +658,78 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     // Parse resource bounds via SDK (hex strings → BigInt)
     const resourceBounds = deserializeResourceBounds(request.resource_bounds_json);
 
-    const txResponse = await account.execute(calls, {
-      nonce: request.nonce,
-      resourceBounds,
-      tip: 0,
-    });
-
     const sb = await getSupabaseLite();
-    const updateBody: any = {
-      guardian_sig_json: JSON.stringify(guardianSig),
-      status: "approved",
-      final_tx_hash: txResponse.transaction_hash,
-      responded_at: new Date().toISOString(),
-    };
-    if (guardian2faSig) {
-      updateBody.guardian_2fa_sig_json = JSON.stringify(guardian2faSig);
-    }
-    await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
 
-    await fetchGuardianRequests();
-    showToast("Guardian approval submitted on-chain", "success");
+    try {
+      const txResponse = await account.execute(calls, {
+        nonce: request.nonce,
+        resourceBounds,
+        tip: 0,
+      });
+
+      // Wait for on-chain confirmation and check for revert
+      const receipt = await provider.waitForTransaction(txResponse.transaction_hash);
+      if ((receipt as any).execution_status === "REVERTED") {
+        const revertReason = (receipt as any).revert_reason || "Transaction reverted on-chain";
+        await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+          guardian_sig_json: JSON.stringify(guardianSig),
+          guardian_2fa_sig_json: guardian2faSig ? JSON.stringify(guardian2faSig) : null,
+          status: "failed",
+          error_message: revertReason,
+          final_tx_hash: txResponse.transaction_hash,
+          responded_at: new Date().toISOString(),
+        });
+        await fetchGuardianRequests();
+        throw new Error(`Transaction reverted: ${revertReason}`);
+      }
+
+      const updateBody: any = {
+        guardian_sig_json: JSON.stringify(guardianSig),
+        status: "approved",
+        final_tx_hash: txResponse.transaction_hash,
+        responded_at: new Date().toISOString(),
+      };
+      if (guardian2faSig) {
+        updateBody.guardian_2fa_sig_json = JSON.stringify(guardian2faSig);
+      }
+      await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+
+      await fetchGuardianRequests();
+      showToast("Guardian approval confirmed on-chain", "success");
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      const gasInfo = parseInsufficientGasError(errMsg);
+
+      if (gasInfo) {
+        // Gas error — set status to gas_error so the extension can auto-retry
+        await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+          guardian_sig_json: JSON.stringify(guardianSig),
+          guardian_2fa_sig_json: guardian2faSig ? JSON.stringify(guardian2faSig) : null,
+          status: "gas_error",
+          error_message: errMsg,
+          responded_at: new Date().toISOString(),
+        });
+
+        await fetchGuardianRequests();
+        showToast(
+          `Gas too low (used ${gasInfo.actualUsed}, had ${gasInfo.maxAmount}). Extension will retry automatically.`,
+          "warning",
+        );
+        return;
+      }
+
+      // Non-gas error — mark as failed (if not already marked by revert check)
+      if (!errMsg.includes("Transaction reverted:")) {
+        await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+          status: "failed",
+          error_message: errMsg,
+          responded_at: new Date().toISOString(),
+        });
+      }
+
+      await fetchGuardianRequests();
+      throw err;
+    }
   }, [wallet.keys, fetchGuardianRequests, showToast]);
 
   // ── Initiate a ward transaction (for ward users on mobile) ──
@@ -641,8 +743,15 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     recipient?: string;
     calls: any[];
   }): Promise<WardApprovalResult> => {
-    if (!wallet.keys?.starkAddress || !wardInfo) {
-      throw new Error("Ward info not loaded");
+    if (!wallet.keys?.starkAddress) {
+      throw new Error("No wallet connected");
+    }
+    // Auto-refresh wardInfo if not yet loaded (race condition fix)
+    if (!wardInfoRef.current) {
+      await refreshWardInfo();
+    }
+    if (!wardInfoRef.current) {
+      throw new Error("Ward info not loaded — please try again");
     }
 
     const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
@@ -658,12 +767,15 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     const { url, key } = await getSupabaseConfig();
     const sdkSb = new SdkSupabaseLite(url, key);
 
+    // Format amount for human-readable display on guardian side
+    const formattedAmount = formatWardAmount(params.amount || null, params.token, params.action);
+
     return sdkRequestWardApproval(sdkSb, {
       wardAddress: wallet.keys.starkAddress,
       guardianAddress: needs.guardianAddress,
       action: params.action,
       token: params.token,
-      amount: params.amount || null,
+      amount: formattedAmount,
       recipient: params.recipient || null,
       callsJson,
       wardSigJson: "[]",
@@ -674,7 +786,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       needsGuardian: needs.needsGuardian,
       needsGuardian2fa: needs.guardianHas2fa,
     });
-  }, [wallet.keys?.starkAddress, wardInfo]);
+  }, [wallet.keys?.starkAddress, refreshWardInfo]);
 
   const rejectWardRequest = useCallback(async (requestId: string) => {
     const sb = await getSupabaseLite();
@@ -691,15 +803,25 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (wallet.isWalletCreated && wallet.isDeployed && wallet.keys?.starkAddress) {
-      // Check cached value first for instant UI
+      // Restore cached wardInfo for instant UI
       AsyncStorage.getItem(STORAGE_KEY_IS_WARD).then((cached) => {
         if (cached === "true") {
           setIsWard(true);
+          // Also restore cached wardInfo
+          AsyncStorage.getItem(STORAGE_KEY_WARD_INFO).then((infoJson) => {
+            if (infoJson) {
+              try {
+                const info = JSON.parse(infoJson) as WardInfo;
+                setWardInfo(info);
+                wardInfoRef.current = info;
+              } catch {}
+            }
+          });
         }
       });
-      // Then verify on-chain
-      checkIfWard().then((result) => {
-        if (result) refreshWardInfo();
+      // Then verify on-chain and refresh
+      checkIfWard().then(async (result) => {
+        if (result) await refreshWardInfo();
       });
       // Also load wards (in case this is a guardian)
       refreshWards();

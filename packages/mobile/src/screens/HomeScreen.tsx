@@ -20,6 +20,7 @@ import Clipboard from "@react-native-clipboard/clipboard";
 import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ClipboardPaste, ShieldAlert, Info } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
+import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
@@ -28,6 +29,7 @@ import { CloakIcon } from "../components/CloakIcon";
 export default function HomeScreen({ navigation }: any) {
   const wallet = useWallet();
   const ward = useWardContext();
+  const { execute } = useTransactionRouter();
   const modal = useThemedModal();
   const [showImport, setShowImport] = useState(false);
   const [showWardImport, setShowWardImport] = useState(false);
@@ -223,7 +225,7 @@ export default function HomeScreen({ navigation }: any) {
     setIsClaiming(true);
     try {
       const pendingAmount = wallet.pending;
-      const result = await wallet.rollover();
+      const result = await execute({ action: "rollover", token: wallet.selectedToken });
       setClaimSuccess({ txHash: result.txHash, amount: pendingAmount });
       // Refresh balance — await so pending updates before user dismisses success card
       await wallet.refreshBalance();
@@ -324,7 +326,8 @@ export default function HomeScreen({ navigation }: any) {
           )}
 
           {/* Ward Info Panel */}
-          {ward.isWard && showWardInfo && ward.wardInfo && (
+          {ward.isWard && showWardInfo && (
+            ward.wardInfo ? (
             <View style={styles.wardInfoPanel}>
               <View style={styles.wardInfoRow}>
                 <Text style={styles.wardInfoLabel}>Guardian</Text>
@@ -359,6 +362,14 @@ export default function HomeScreen({ navigation }: any) {
                 </Text>
               </View>
             </View>
+            ) : (
+            <View style={[styles.wardInfoPanel, { alignItems: "center", paddingVertical: spacing.xl }]}>
+              <ActivityIndicator size="small" color={colors.warning} />
+              <Text style={{ color: colors.textSecondary, fontSize: fontSize.xs, marginTop: spacing.sm }}>
+                Loading ward info...
+              </Text>
+            </View>
+            )
           )}
 
           {/* Claim Banner */}

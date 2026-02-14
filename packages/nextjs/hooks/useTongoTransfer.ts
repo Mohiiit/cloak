@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { useAccount } from "~~/hooks/useAccount";
+import { useTransactionRouter } from "~~/hooks/useTransactionRouter";
 import { padAddress } from "~~/lib/address";
 
 interface UseTongoTransferReturn {
@@ -20,6 +21,7 @@ interface UseTongoTransferReturn {
 export function useTongoTransfer(): UseTongoTransferReturn {
   const { tongoAccount } = useTongo();
   const { account, address } = useAccount();
+  const { executeOrRoute } = useTransactionRouter();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -53,10 +55,15 @@ export function useTongoTransfer(): UseTongoTransferReturn {
           sender: padAddress(address),
         });
 
-        const tx = await account.execute([transferOp.toCalldata()]);
-        setTxHash(tx.transaction_hash);
+        const txHash = await executeOrRoute([transferOp.toCalldata()], {
+          action: "transfer",
+          token: "STRK",
+          amount: tongoAmount.toString(),
+          recipient: recipientTongoAddress,
+        });
+        setTxHash(txHash);
         setIsSuccess(true);
-        return tx.transaction_hash;
+        return txHash;
       } catch (err: any) {
         console.error("Transfer failed:", err);
         setError(err?.message || "Failed to transfer");
@@ -65,7 +72,7 @@ export function useTongoTransfer(): UseTongoTransferReturn {
         setIsPending(false);
       }
     },
-    [tongoAccount, account, address],
+    [tongoAccount, account, address, executeOrRoute],
   );
 
   const reset = useCallback(() => {

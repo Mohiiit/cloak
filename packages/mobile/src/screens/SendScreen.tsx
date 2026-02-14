@@ -17,8 +17,7 @@ import {
 import Clipboard from "@react-native-clipboard/clipboard";
 import { ShieldPlus, ShieldOff, ArrowUpFromLine, Check, ClipboardPaste } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
-import { useWardContext } from "../lib/wardContext";
-import { useDualSigExecutor } from "../hooks/useDualSigExecutor";
+import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
@@ -32,8 +31,7 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function SendScreen({ navigation }: any) {
   const wallet = useWallet();
-  const ward = useWardContext();
-  const { executeDualSig, is2FAEnabled } = useDualSigExecutor();
+  const { execute } = useTransactionRouter();
   const modal = useThemedModal();
   const { contacts } = useContacts();
   const [step, setStep] = useState<Step>(1);
@@ -90,30 +88,12 @@ export default function SendScreen({ navigation }: any) {
     triggerMedium();
     setIsPending(true);
     try {
-      let result: { txHash: string };
-
-      // Ward path — insert request + poll for approval
-      if (ward.isWard) {
-        const { calls } = await wallet.prepareTransfer(amount, recipient);
-        const wardResult = await ward.initiateWardTransaction({
-          action: "transfer",
-          token: wallet.selectedToken,
-          amount,
-          recipient,
-          calls,
-        });
-
-        if (wardResult.approved && wardResult.txHash) {
-          result = { txHash: wardResult.txHash };
-        } else {
-          throw new Error(wardResult.error || "Ward approval failed");
-        }
-      } else if (is2FAEnabled) {
-        const { calls } = await wallet.prepareTransfer(amount, recipient);
-        result = await executeDualSig(calls);
-      } else {
-        result = await wallet.transfer(amount, recipient);
-      }
+      const result = await execute({
+        action: "transfer",
+        token: wallet.selectedToken,
+        amount,
+        recipient: recipient.trim(),
+      });
 
       setTxHash(result.txHash);
       await saveTxNote(result.txHash, {

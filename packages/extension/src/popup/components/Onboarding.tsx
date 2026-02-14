@@ -4,7 +4,7 @@ import { CloakIcon } from "./CloakIcon";
 
 interface Props {
   onCreateWallet: () => Promise<any>;
-  onImportWallet: (pk: string) => Promise<any>;
+  onImportWallet: (pk: string, address?: string) => Promise<any>;
   error: string | null;
 }
 
@@ -83,10 +83,10 @@ export function Onboarding({ onCreateWallet, onImportWallet, error }: Props) {
               setLoading(true);
               try {
                 const invite = JSON.parse(wardInvite.trim());
-                if (invite.type !== "cloak_ward_invite" || !invite.wardPrivateKey) {
-                  throw new Error("Invalid ward invite format");
+                if (invite.type !== "cloak_ward_invite" || !invite.wardPrivateKey || !invite.wardAddress) {
+                  throw new Error("Invalid ward invite: must include wardPrivateKey and wardAddress");
                 }
-                await onImportWallet(invite.wardPrivateKey);
+                await onImportWallet(invite.wardPrivateKey, invite.wardAddress);
               } catch {
                 // Error handled by parent
               }

@@ -143,9 +143,7 @@ function GuardianApprovalCard({
         <DetailRow label="Ward" value={truncate(request.ward_address)} />
         <DetailRow label="Action" value={formatAction(request.action)} />
         <DetailRow label="Token" value={request.token} />
-        {request.amount && (
-          <DetailRow label="Amount" value={request.amount} />
-        )}
+        <DetailRow label="Amount" value={request.amount || "Claim pending balance"} />
         {request.recipient && (
           <DetailRow label="Recipient" value={truncate(request.recipient)} />
         )}

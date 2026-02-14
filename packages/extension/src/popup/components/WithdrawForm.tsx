@@ -1,12 +1,12 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { TOKENS, parseTokenAmount } from "@cloak-wallet/sdk";
 import { Header, ErrorBox } from "./ShieldForm";
 import type { useExtensionWallet } from "../hooks/useExtensionWallet";
 import { saveTxNote } from "../lib/storage";
-import { check2FAEnabled, request2FAApproval } from "@/shared/two-factor";
 import { TxConfirmModal } from "./TxConfirmModal";
 import { TxSuccessModal } from "./TxSuccessModal";
 import { TwoFactorWaiting } from "./TwoFactorWaiting";
+import { useWard } from "../hooks/useWard";
 
 interface Props {
   wallet: ReturnType<typeof useExtensionWallet>;
@@ -14,6 +14,7 @@ interface Props {
 }
 
 export function WithdrawForm({ wallet: w, onBack }: Props) {
+  const { isWard } = useWard(w.wallet?.starkAddress);
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -36,72 +37,30 @@ export function WithdrawForm({ wallet: w, onBack }: Props) {
     setShowConfirm(true);
   };
 
+  // Listen for 2FA/ward status updates from background
+  useEffect(() => {
+    const listener = (msg: any) => {
+      if (msg.type === "2FA_STATUS_UPDATE" && loading) {
+        setShow2FAWaiting(true);
+        setTwoFAStatus(msg.status);
+      }
+      if (msg.type === "2FA_COMPLETE" && loading) {
+        setShow2FAWaiting(false);
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, [loading]);
+
   const handleConfirmedSubmit = async () => {
     setShowConfirm(false);
     setLoading(true);
     try {
-      // ─── 2FA gate ─────────────────────────────────────────────
-      const is2FA = await check2FAEnabled(w.wallet!.starkAddress);
-      if (is2FA) {
-        const erc20Amount = parseTokenAmount(amount, token.decimals);
-        const tongoAmount = erc20Amount / token.rate;
-
-        abortController.current = new AbortController();
-        setShow2FAWaiting(true);
-        setTwoFAStatus("Preparing transaction...");
-
-        // Build calls only (mobile handles both signatures)
-        const prepResult = await chrome.runtime.sendMessage({
-          type: "BUILD_CALLS",
-          token: w.selectedToken,
-          action: "withdraw",
-          amount: tongoAmount.toString(),
-        });
-
-        if (!prepResult.success) {
-          setShow2FAWaiting(false);
-          w.setError(prepResult.error || "Failed to prepare transaction");
-          return;
-        }
-
-        // Request approval via Supabase (mobile signs with both keys)
-        const result = await request2FAApproval({
-          walletAddress: w.wallet!.starkAddress,
-          action: "withdraw",
-          token: w.selectedToken,
-          amount: amount,
-          recipient: null,
-          callsJson: JSON.stringify(prepResult.data.calls),
-          sig1Json: "[]",
-          nonce: "",
-          resourceBoundsJson: "{}",
-          txHash: "",
-          onStatusChange: setTwoFAStatus,
-          signal: abortController.current.signal,
-        });
-
-        setShow2FAWaiting(false);
-        if (result.approved && result.txHash) {
-          setTxHash(result.txHash);
-          await saveTxNote(result.txHash, {
-            txHash: result.txHash,
-            privacyLevel: "private",
-            timestamp: Date.now(),
-            type: "withdraw",
-            token: w.selectedToken,
-            amount: amount,
-          });
-          setShowSuccess(true);
-        } else {
-          w.setError(result.error || "Approval denied");
-        }
-        return;
-      }
-
-      // ─── Normal (non-2FA) execution ───────────────────────────
+      // Background router handles ward/2FA checks automatically
       const erc20Amount = parseTokenAmount(amount, token.decimals);
       const tongoAmount = erc20Amount / token.rate;
       const hash = await w.withdraw(tongoAmount);
+      setShow2FAWaiting(false);
       if (hash) {
         setTxHash(hash);
         await saveTxNote(hash, {
@@ -116,6 +75,7 @@ export function WithdrawForm({ wallet: w, onBack }: Props) {
       }
     } finally {
       setLoading(false);
+      setShow2FAWaiting(false);
     }
   };
 
@@ -186,6 +146,8 @@ export function WithdrawForm({ wallet: w, onBack }: Props) {
           setShow2FAWaiting(false);
           setLoading(false);
         }}
+        title={isWard ? "Guardian Approval Required" : undefined}
+        subtitle={isWard ? "Waiting for guardian to approve this transaction" : undefined}
       />
     </div>
   );

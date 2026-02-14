@@ -11,7 +11,12 @@ import React, {
 } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { Account, RpcProvider } from "starknet";
-import { DEFAULT_RPC } from "@cloak-wallet/sdk";
+import {
+  DEFAULT_RPC,
+  checkIfWardAccount,
+  estimateWardInvokeFee,
+  buildResourceBoundsFromEstimate,
+} from "@cloak-wallet/sdk";
 import { useWallet } from "./WalletContext";
 import { useToast } from "../components/Toast";
 import {
@@ -219,11 +224,21 @@ export function TwoFactorProvider({
         address: wallet.keys.starkAddress,
         signer: wallet.keys.starkPrivateKey,
       });
-      const tx = await account.execute([{
+
+      // Ward accounts need manual resource bounds (estimateInvokeFee fails on CloakWard)
+      const isWardAcct = await checkIfWardAccount(provider as any, wallet.keys.starkAddress);
+      const enableCalls = [{
         contractAddress: wallet.keys.starkAddress,
         entrypoint: "set_secondary_key",
         calldata: [publicKey],
-      }]);
+      }];
+      let enableOpts: any = {};
+      if (isWardAcct) {
+        const estimate = await estimateWardInvokeFee(provider as any, wallet.keys.starkAddress, enableCalls);
+        enableOpts = { tip: 0, resourceBounds: buildResourceBoundsFromEstimate(estimate) };
+      }
+
+      const tx = await account.execute(enableCalls, enableOpts);
       console.warn("[TwoFactorContext] set_secondary_key tx:", tx.transaction_hash);
       await provider.waitForTransaction(tx.transaction_hash);
 
@@ -277,6 +292,13 @@ export function TwoFactorProvider({
         calldata: [],
       }];
 
+      // Dynamic estimation with SKIP_VALIDATE:
+      // - CloakAccount with 2FA: normal estimateInvokeFee fails (__validate__ expects dual sigs)
+      // - CloakWard: normal estimateInvokeFee fails (__execute__ deserialization)
+      // SKIP_VALIDATE bypasses __validate__, runs __execute__ for accurate gas measurement
+      const estimate = await estimateWardInvokeFee(provider as any, wallet.keys.starkAddress, calls);
+      const executeOpts = { tip: 0, resourceBounds: buildResourceBoundsFromEstimate(estimate) };
+
       let txHash: string;
       if (secondaryPk) {
         // 2FA is active — use DualKeySigner (starknet.js handles hash + signing)
@@ -289,7 +311,7 @@ export function TwoFactorProvider({
           address: wallet.keys.starkAddress,
           signer: dualSigner,
         });
-        const tx = await dualAccount.execute(calls, { tip: 0 });
+        const tx = await dualAccount.execute(calls, executeOpts);
         txHash = tx.transaction_hash;
       } else {
         // No secondary key locally — try single-sig (2FA may not be active on-chain)
@@ -298,7 +320,7 @@ export function TwoFactorProvider({
           address: wallet.keys.starkAddress,
           signer: wallet.keys.starkPrivateKey,
         });
-        const tx = await account.execute(calls);
+        const tx = await account.execute(calls, executeOpts);
         txHash = tx.transaction_hash;
       }
 

@@ -5,11 +5,13 @@ interface Props {
   isOpen: boolean;
   status: string;
   onCancel: () => void;
+  title?: string;
+  subtitle?: string;
 }
 
 const TIMEOUT_SECONDS = 5 * 60; // 5 minutes
 
-export function TwoFactorWaiting({ isOpen, status, onCancel }: Props) {
+export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: Props) {
   const [countdown, setCountdown] = useState(TIMEOUT_SECONDS);
 
   useEffect(() => {
@@ -61,10 +63,10 @@ export function TwoFactorWaiting({ isOpen, status, onCancel }: Props) {
             </div>
           </div>
           <h3 className="text-base font-semibold text-white mb-1">
-            Mobile Approval Required
+            {title || "Mobile Approval Required"}
           </h3>
           <p className="text-xs text-gray-400 text-center">
-            Open the Cloak mobile app to approve this transaction
+            {subtitle || "Open the Cloak mobile app to approve this transaction"}
           </p>
         </div>
 

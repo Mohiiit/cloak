@@ -10,6 +10,7 @@ export type MessageRequest =
   | { type: "CLEAR_WALLET" }
   | { type: "DEPLOY_ACCOUNT" }
   | { type: "IS_DEPLOYED" }
+  | { type: "CHECK_WARD" }
   | { type: "GET_TONGO_ADDRESS" }
   | { type: "GET_STATE"; token: TokenKey }
   | { type: "GET_ERC20_BALANCE"; token: TokenKey }
