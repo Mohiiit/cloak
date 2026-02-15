@@ -331,6 +331,9 @@ export default function HomeScreen({ navigation }: any) {
   const handleRefresh = async () => {
     await wallet.refreshBalance();
     await wallet.refreshAllBalances();
+    if (ward.isWard) {
+      await ward.refreshWardInfo();
+    }
   };
 
   return (
@@ -412,26 +415,50 @@ export default function HomeScreen({ navigation }: any) {
         <>
           {/* Ward Badge Banner */}
           {ward.isWard && (
+            (() => {
+              const isFrozen = !!ward.wardInfo?.isFrozen;
+              const bannerBg = isFrozen ? "rgba(239, 68, 68, 0.08)" : "rgba(245, 158, 11, 0.08)";
+              const bannerBorder = isFrozen ? "rgba(239, 68, 68, 0.22)" : "rgba(245, 158, 11, 0.2)";
+              const accent = isFrozen ? colors.error : colors.warning;
+              const sub = isFrozen ? "Frozen by guardian" : "Managed by guardian";
+              return (
             <TouchableOpacity
-              style={styles.wardBanner}
-              onPress={() => setShowWardInfo(!showWardInfo)}
+              style={[styles.wardBanner, { backgroundColor: bannerBg, borderColor: bannerBorder }]}
+              onPress={async () => {
+                const next = !showWardInfo;
+                setShowWardInfo(next);
+                // Pull latest status when user opens the panel.
+                if (next) {
+                  await ward.refreshWardInfo();
+                }
+              }}
               activeOpacity={0.7}
             >
               <View style={styles.wardBannerLeft}>
-                <ShieldAlert size={18} color={colors.warning} />
+                <ShieldAlert size={18} color={accent} />
                 <View>
-                  <Text style={styles.wardBannerTitle}>Ward Account</Text>
-                  <Text style={styles.wardBannerSub}>Managed by guardian</Text>
+                  <Text style={[styles.wardBannerTitle, { color: accent }]}>Ward Account</Text>
+                  <Text style={styles.wardBannerSub}>{sub}</Text>
                 </View>
               </View>
               <Info size={18} color={colors.textMuted} />
             </TouchableOpacity>
+              );
+            })()
           )}
 
           {/* Ward Info Panel */}
           {ward.isWard && showWardInfo && (
             ward.wardInfo ? (
-            <View style={styles.wardInfoPanel}>
+            <View
+              style={[
+                styles.wardInfoPanel,
+                ward.wardInfo.isFrozen && {
+                  borderColor: "rgba(239, 68, 68, 0.22)",
+                  borderLeftColor: colors.error,
+                },
+              ]}
+            >
               <View style={styles.wardInfoRow}>
                 <Text style={styles.wardInfoLabel}>Guardian</Text>
                 <Text style={styles.wardInfoValue} numberOfLines={1}>

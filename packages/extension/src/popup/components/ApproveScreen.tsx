@@ -7,6 +7,15 @@ interface PendingRequest {
   origin?: string;
 }
 
+interface ApprovalFlowMeta {
+  is2FA: boolean;
+  isWard: boolean;
+  needsWard2FA: boolean;
+  needsGuardian: boolean;
+  needsGuardian2FA: boolean;
+  shouldWaitForExternalApproval: boolean;
+}
+
 /** Human-readable labels for RPC methods */
 const METHOD_LABELS: Record<string, string> = {
   cloak_fund: "Shield Tokens",
@@ -32,46 +41,115 @@ function truncateAddress(addr: string): string {
   return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
 }
 
+function getApprovalFlowMeta(params?: any): ApprovalFlowMeta {
+  const fallback2FA = !!params?._is2FA;
+  const legacyMeta: ApprovalFlowMeta = {
+    is2FA: fallback2FA,
+    isWard: !!params?._isWard,
+    needsWard2FA: !!params?._needsWard2FA,
+    needsGuardian: !!params?._needsGuardian,
+    needsGuardian2FA: !!params?._needsGuardian2FA,
+    shouldWaitForExternalApproval: !!params?._postApproveWait || fallback2FA,
+  };
+
+  const raw = params?._approvalFlow;
+  if (!raw || typeof raw !== "object") return legacyMeta;
+  return {
+    is2FA: !!raw.is2FA,
+    isWard: !!raw.isWard,
+    needsWard2FA: !!raw.needsWard2FA,
+    needsGuardian: !!raw.needsGuardian,
+    needsGuardian2FA: !!raw.needsGuardian2FA,
+    shouldWaitForExternalApproval: !!raw.shouldWaitForExternalApproval,
+  };
+}
+
+function getInitialWaitingStatus(meta: ApprovalFlowMeta): string {
+  if (meta.isWard) {
+    if (meta.needsWard2FA) return "Waiting for ward mobile signature...";
+    if (meta.needsGuardian) return "Waiting for guardian approval...";
+    return "Submitting ward transaction...";
+  }
+  if (meta.is2FA) return "Waiting for mobile 2FA approval...";
+  return "Submitting transaction...";
+}
+
+function getFlowNotice(meta: ApprovalFlowMeta): string | null {
+  if (!meta.shouldWaitForExternalApproval) return null;
+  if (meta.isWard) {
+    if (meta.needsWard2FA && meta.needsGuardian) {
+      return meta.needsGuardian2FA
+        ? "After approving here, this request goes to ward mobile first, then guardian mobile (guardian 2FA enabled)."
+        : "After approving here, this request goes to ward mobile first, then guardian mobile.";
+    }
+    if (meta.needsWard2FA) {
+      return "After approving here, ward mobile signature is required before execution.";
+    }
+    if (meta.needsGuardian) {
+      return meta.needsGuardian2FA
+        ? "After approving here, guardian approval is required (guardian 2FA enabled)."
+        : "After approving here, guardian approval is required on mobile.";
+    }
+    return "This transaction will continue in the approval flow.";
+  }
+  if (meta.is2FA) {
+    return "Two-Factor Authentication is enabled. After approving here, confirm on your mobile device.";
+  }
+  return null;
+}
+
+function getWaitingTitle(meta: ApprovalFlowMeta): string {
+  if (meta.isWard) return "Waiting for Ward/Guardian Approval";
+  if (meta.is2FA) return "Waiting for 2FA Approval";
+  return "Submitting Transaction";
+}
+
+function getWaitingSubtitle(meta: ApprovalFlowMeta): string {
+  if (meta.isWard) {
+    if (meta.needsWard2FA && meta.needsGuardian) return "Approval chain: ward mobile -> guardian mobile";
+    if (meta.needsWard2FA) return "Approval chain: ward mobile";
+    if (meta.needsGuardian) return "Approval chain: guardian mobile";
+  }
+  if (meta.is2FA) return "Approval chain: mobile 2FA";
+  return "Please keep this window open";
+}
+
 export default function ApproveScreen() {
   const [request, setRequest] = useState<PendingRequest | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 2FA waiting state
-  const [waiting2FA, setWaiting2FA] = useState(false);
-  const [twoFAStatus, setTwoFAStatus] = useState("Preparing...");
-  const [twoFAComplete, setTwoFAComplete] = useState(false);
-  const [twoFAApproved, setTwoFAApproved] = useState(false);
+  const [waitingApproval, setWaitingApproval] = useState(false);
+  const [approvalStatus, setApprovalStatus] = useState("Preparing...");
+  const [approvalComplete, setApprovalComplete] = useState(false);
+  const [approvalApproved, setApprovalApproved] = useState(false);
+
+  const flowMeta = getApprovalFlowMeta(request?.params);
 
   useEffect(() => {
-    // Get the pending request from background
     chrome.runtime.sendMessage({ type: "GET_PENDING_APPROVAL" }, (response) => {
-      if (response?.data) {
-        setRequest(response.data);
-      }
+      if (response?.data) setRequest(response.data);
       setLoading(false);
     });
   }, []);
 
-  // Listen for 2FA status updates from background
   useEffect(() => {
-    if (!waiting2FA) return;
+    if (!waitingApproval) return;
 
     const listener = (msg: any) => {
       if (msg.type === "2FA_STATUS_UPDATE") {
-        setTwoFAStatus(msg.status);
+        setApprovalStatus(msg.status);
       }
       if (msg.type === "2FA_COMPLETE") {
-        setTwoFAComplete(true);
-        setTwoFAApproved(!!msg.approved);
-        setTwoFAStatus(msg.approved ? "Approved!" : "Rejected");
-        // Auto-close after a short delay
+        setApprovalComplete(true);
+        setApprovalApproved(!!msg.approved);
+        setApprovalStatus(msg.approved ? "Approved!" : (msg.error || "Rejected"));
         setTimeout(() => window.close(), 2000);
       }
     };
 
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, [waiting2FA]);
+  }, [waitingApproval]);
 
   const handleApprove = () => {
     if (!request) return;
@@ -81,13 +159,12 @@ export default function ApproveScreen() {
       approved: true,
     });
 
-    // If 2FA is enabled, show waiting UI instead of closing
-    if (request.params?._is2FA) {
-      setWaiting2FA(true);
-      setTwoFAStatus("Submitting approval request...");
-    } else {
-      window.close();
+    if (flowMeta.shouldWaitForExternalApproval) {
+      setWaitingApproval(true);
+      setApprovalStatus(getInitialWaitingStatus(flowMeta));
+      return;
     }
+    window.close();
   };
 
   const handleReject = () => {
@@ -97,11 +174,6 @@ export default function ApproveScreen() {
       id: request.id,
       approved: false,
     });
-    window.close();
-  };
-
-  const handleCancel2FA = () => {
-    // Close popup — background will handle timeout/cleanup
     window.close();
   };
 
@@ -127,11 +199,9 @@ export default function ApproveScreen() {
     );
   }
 
-  // ─── 2FA Waiting UI ─────────────────────────────────────────────
-  if (waiting2FA) {
+  if (waitingApproval) {
     return (
       <div className="flex flex-col h-screen bg-[#0F172A] text-white">
-        {/* Header */}
         <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
@@ -144,13 +214,11 @@ export default function ApproveScreen() {
             </div>
             <span className="text-sm font-semibold">Cloak Wallet</span>
           </div>
-          <p className="text-xs text-gray-400">Two-Factor Authentication</p>
+          <p className="text-xs text-gray-400">{getWaitingSubtitle(flowMeta)}</p>
         </div>
 
-        {/* Body */}
         <div className="flex-1 flex flex-col items-center justify-center px-6">
-          {/* Pulsing phone icon */}
-          {!twoFAComplete && (
+          {!approvalComplete && (
             <div className="relative mb-6">
               <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center animate-pulse">
                 <svg
@@ -172,15 +240,14 @@ export default function ApproveScreen() {
             </div>
           )}
 
-          {/* Completed icon */}
-          {twoFAComplete && (
+          {approvalComplete && (
             <div className="mb-6">
               <div
                 className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                  twoFAApproved ? "bg-green-500/20" : "bg-red-500/20"
+                  approvalApproved ? "bg-green-500/20" : "bg-red-500/20"
                 }`}
               >
-                {twoFAApproved ? (
+                {approvalApproved ? (
                   <svg
                     width="32"
                     height="32"
@@ -214,23 +281,21 @@ export default function ApproveScreen() {
             </div>
           )}
 
-          {/* Status text */}
           <p className="text-sm font-medium text-white mb-2 text-center">
-            {twoFAComplete
-              ? twoFAApproved
+            {approvalComplete
+              ? approvalApproved
                 ? "Transaction Approved!"
-                : "Transaction Rejected"
-              : "Waiting for Mobile Approval"}
+                : "Transaction Failed"
+              : getWaitingTitle(flowMeta)}
           </p>
-          <p className="text-xs text-gray-400 mb-6 text-center">{twoFAStatus}</p>
+          <p className="text-xs text-gray-400 mb-6 text-center break-words">{approvalStatus}</p>
 
-          {/* Cancel button (only when still waiting) */}
-          {!twoFAComplete && (
+          {!approvalComplete && (
             <button
-              onClick={handleCancel2FA}
+              onClick={() => window.close()}
               className="px-6 py-2 rounded-xl text-sm font-medium bg-[#1E293B] border border-[#334155] text-gray-300 hover:bg-[#334155] transition-colors"
             >
-              Cancel
+              Close
             </button>
           )}
         </div>
@@ -238,16 +303,15 @@ export default function ApproveScreen() {
     );
   }
 
-  // ─── Normal Approval UI ─────────────────────────────────────────
   const label = METHOD_LABELS[request.method] || request.method;
   const isFundMethod = FUND_METHODS.includes(request.method);
   const token = request.params?.token || "STRK";
   const amount = request.params?.amount;
   const recipient = request.params?.to;
+  const flowNotice = getFlowNotice(flowMeta);
 
   return (
     <div className="flex flex-col h-screen bg-[#0F172A] text-white">
-      {/* Header */}
       <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
@@ -263,21 +327,16 @@ export default function ApproveScreen() {
         <p className="text-xs text-gray-400">Transaction approval required</p>
       </div>
 
-      {/* Body */}
       <div className="flex-1 px-5 py-4 overflow-y-auto">
-        {/* Origin */}
         {request.origin && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
             <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
               Requesting site
             </p>
-            <p className="text-xs font-mono text-gray-300 truncate">
-              {request.origin}
-            </p>
+            <p className="text-xs font-mono text-gray-300 truncate">{request.origin}</p>
           </div>
         )}
 
-        {/* Action */}
         <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
           <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
             Action
@@ -285,7 +344,6 @@ export default function ApproveScreen() {
           <p className="text-sm font-semibold text-white">{label}</p>
         </div>
 
-        {/* Amount */}
         {isFundMethod && amount && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
             <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
@@ -297,7 +355,6 @@ export default function ApproveScreen() {
           </div>
         )}
 
-        {/* Recipient */}
         {recipient && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
             <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
@@ -309,17 +366,12 @@ export default function ApproveScreen() {
           </div>
         )}
 
-        {/* 2FA notice */}
-        {request.params?._is2FA && (
+        {flowNotice && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-            <p className="text-xs text-blue-400">
-              Two-Factor Authentication is enabled. After approving, you'll need
-              to confirm on your mobile device.
-            </p>
+            <p className="text-xs text-blue-400">{flowNotice}</p>
           </div>
         )}
 
-        {/* Warning */}
         <div className="mt-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
           <p className="text-xs text-amber-400">
             Only approve transactions from sites you trust. This action cannot
@@ -328,7 +380,6 @@ export default function ApproveScreen() {
         </div>
       </div>
 
-      {/* Buttons */}
       <div className="px-5 pb-5 pt-3 border-t border-[#334155] flex gap-3">
         <button
           onClick={handleReject}

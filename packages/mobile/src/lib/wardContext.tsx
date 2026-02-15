@@ -281,7 +281,36 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         spendingLimitPerTx: r.spending_limit_per_tx,
         requireGuardianForAll: r.require_guardian_for_all ?? true,
       }));
-      setWards(entries);
+
+      // Overlay on-chain frozen state as source-of-truth.
+      // Supabase status can be stale if updates fail or devices are out of sync.
+      try {
+        const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+        const frozenFlags = await Promise.all(
+          entries.map(async (w) => {
+            try {
+              const result = await provider.callContract({
+                contractAddress: w.wardAddress,
+                entrypoint: "is_frozen",
+                calldata: [],
+              });
+              const v = result?.[0];
+              return v !== "0x0" && v !== "0";
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const merged = entries.map((w, idx) => {
+          const flag = frozenFlags[idx];
+          if (flag === null) return w;
+          return { ...w, status: flag ? "frozen" : "active" };
+        });
+        setWards(merged);
+      } catch (err) {
+        console.warn("[WardContext] Failed to overlay on-chain frozen flags:", err);
+        setWards(entries);
+      }
     } catch (err) {
       console.warn("[WardContext] Failed to load wards:", err);
     } finally {
@@ -564,6 +593,27 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const freezeWard = useCallback(
     async (wardAddress: string) => {
       await executeGuardianAction(wardAddress, "freeze", []);
+      // Keep Supabase status in sync so guardian UI can reliably show Unfreeze.
+      try {
+        const sb = await getSupabaseLite();
+        await sb.update(
+          "ward_configs",
+          `ward_address=eq.${normalizeAddress(wardAddress)}`,
+          { status: "frozen" },
+        );
+      } catch (err) {
+        console.warn("[WardContext] Failed to update ward status=frozen in Supabase:", err);
+      }
+
+      // Optimistic local update (avoids UI flip-flop while refreshWards is in-flight).
+      setWards((prev) =>
+        prev.map((w) =>
+          normalizeAddress(w.wardAddress) === normalizeAddress(wardAddress)
+            ? { ...w, status: "frozen" }
+            : w,
+        ),
+      );
+
       showToast("Ward account frozen", "warning");
       await refreshWards();
     },
@@ -573,6 +623,27 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const unfreezeWard = useCallback(
     async (wardAddress: string) => {
       await executeGuardianAction(wardAddress, "unfreeze", []);
+      // Keep Supabase status in sync so guardian UI can reliably show Freeze/Unfreeze.
+      try {
+        const sb = await getSupabaseLite();
+        await sb.update(
+          "ward_configs",
+          `ward_address=eq.${normalizeAddress(wardAddress)}`,
+          { status: "active" },
+        );
+      } catch (err) {
+        console.warn("[WardContext] Failed to update ward status=active in Supabase:", err);
+      }
+
+      // Optimistic local update (avoids UI flip-flop while refreshWards is in-flight).
+      setWards((prev) =>
+        prev.map((w) =>
+          normalizeAddress(w.wardAddress) === normalizeAddress(wardAddress)
+            ? { ...w, status: "active" }
+            : w,
+        ),
+      );
+
       showToast("Ward account unfrozen", "success");
       await refreshWards();
     },
@@ -723,12 +794,17 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         ) {
           fetchWardSignRequests();
           fetchGuardianRequests();
+          // Ward on-chain config can change while the app is backgrounded (freeze/2FA/etc).
+          // Refresh so Home banner reflects current status without requiring manual pull-to-refresh.
+          if (isWard) {
+            refreshWardInfo();
+          }
         }
         appStateRef.current = nextState;
       },
     );
     return () => subscription.remove();
-  }, [fetchWardSignRequests, fetchGuardianRequests]);
+  }, [fetchWardSignRequests, fetchGuardianRequests, isWard, refreshWardInfo]);
 
   // ── Ward Approval Actions ──
 

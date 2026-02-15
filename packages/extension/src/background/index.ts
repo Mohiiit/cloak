@@ -5,7 +5,7 @@ import { CloakClient, DEFAULT_RPC } from "@cloak-wallet/sdk";
 import { Account, RpcProvider } from "starknet";
 import type { MessageRequest } from "@/shared/messages";
 import { check2FAEnabled } from "@/shared/two-factor";
-import { checkIfWardAccount } from "@/shared/ward-approval";
+import { checkIfWardAccount, getWardApprovalNeeds } from "@/shared/ward-approval";
 import { routeTransaction, routeRawCalls } from "./transaction-router";
 
 // ─── Chrome Storage Adapter ─────────────────────────────────────────
@@ -60,6 +60,15 @@ interface PendingApproval {
   resolve: (approved: boolean) => void;
 }
 
+interface ApprovalFlowHints {
+  is2FA: boolean;
+  isWard: boolean;
+  needsWard2FA: boolean;
+  needsGuardian: boolean;
+  needsGuardian2FA: boolean;
+  shouldWaitForExternalApproval: boolean;
+}
+
 let approvalCounter = 0;
 let pendingApproval: PendingApproval | null = null;
 let approvalWindowId: number | null = null;
@@ -107,6 +116,45 @@ function rpcStatusCallback(status: string) {
   chrome.runtime.sendMessage({ type: "2FA_STATUS_UPDATE", status }).catch(() => {});
 }
 
+async function getApprovalFlowHints(
+  c: CloakClient,
+  method: string,
+): Promise<ApprovalFlowHints> {
+  const hints: ApprovalFlowHints = {
+    is2FA: false,
+    isWard: false,
+    needsWard2FA: false,
+    needsGuardian: false,
+    needsGuardian2FA: false,
+    shouldWaitForExternalApproval: false,
+  };
+
+  // Only transaction methods can require post-approval waiting flows.
+  if (!APPROVAL_REQUIRED_METHODS.has(method)) return hints;
+
+  // Message signing currently does not run the async ward/2FA approval pipelines.
+  if (method === "wallet_signTypedData") return hints;
+
+  const wallet = await c.getWallet();
+  if (!wallet) return hints;
+
+  hints.isWard = await checkIfWardAccount(wallet.starkAddress);
+  if (hints.isWard) {
+    const wardNeeds = await getWardApprovalNeeds(wallet.starkAddress);
+    if (!wardNeeds) return hints;
+    hints.needsWard2FA = wardNeeds.wardHas2fa;
+    hints.needsGuardian = wardNeeds.needsGuardian;
+    hints.needsGuardian2FA = wardNeeds.guardianHas2fa;
+    hints.shouldWaitForExternalApproval =
+      wardNeeds.wardHas2fa || wardNeeds.needsGuardian || wardNeeds.guardianHas2fa;
+    return hints;
+  }
+
+  hints.is2FA = await check2FAEnabled(wallet.starkAddress);
+  hints.shouldWaitForExternalApproval = hints.is2FA;
+  return hints;
+}
+
 // ─── Message handler ────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener(
@@ -121,6 +169,13 @@ chrome.runtime.onMessage.addListener(
         }
         if (errorMsg.includes("is_2fa_enabled") || errorMsg.includes("Contract not found")) {
           errorMsg = "Could not check 2FA status. The account may not be a CloakAccount.";
+        }
+        if (request.type === "WALLET_RPC" && APPROVAL_REQUIRED_METHODS.has(request.method)) {
+          chrome.runtime.sendMessage({
+            type: "2FA_COMPLETE",
+            approved: false,
+            error: errorMsg,
+          }).catch(() => {});
         }
         sendResponse({ success: false, error: errorMsg });
       });
@@ -315,14 +370,31 @@ async function handleWalletRpc(
 ): Promise<any> {
   // ─── Check if this method needs user approval ────────────────
   if (APPROVAL_REQUIRED_METHODS.has(method)) {
-    // Pre-check 2FA so the approval popup can show waiting UI
-    let is2FA = false;
+    let hints: ApprovalFlowHints = {
+      is2FA: false,
+      isWard: false,
+      needsWard2FA: false,
+      needsGuardian: false,
+      needsGuardian2FA: false,
+      shouldWaitForExternalApproval: false,
+    };
     try {
-      const wallet = await c.getWallet();
-      if (wallet) is2FA = await check2FAEnabled(wallet.starkAddress);
+      hints = await getApprovalFlowHints(c, method);
     } catch {}
 
-    const approved = await requestApproval(method, { ...params, _is2FA: is2FA }, origin);
+    const approvalParams = {
+      ...(params && typeof params === "object" ? params : { value: params }),
+      _approvalFlow: hints,
+      // legacy flag kept for compatibility with existing popup code paths
+      _is2FA: hints.is2FA,
+      _isWard: hints.isWard,
+      _needsWard2FA: hints.needsWard2FA,
+      _needsGuardian: hints.needsGuardian,
+      _needsGuardian2FA: hints.needsGuardian2FA,
+      _postApproveWait: hints.shouldWaitForExternalApproval,
+    };
+
+    const approved = await requestApproval(method, approvalParams, origin);
     if (!approved) {
       throw new Error("Transaction rejected by user");
     }

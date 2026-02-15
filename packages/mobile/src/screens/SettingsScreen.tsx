@@ -872,6 +872,10 @@ export default function SettingsScreen() {
                   setTfaLoading(true);
                   setTfaStep("auth");
                   await twoFactor.enable2FA((step) => setTfaStep(step));
+                  // If this device is a ward, refresh on-chain ward flags so Home banner reflects the new state.
+                  if (ward.isWard) {
+                    await ward.refreshWardInfo();
+                  }
                   setTfaLoading(false);
                   // Reset after done (longer delay on error so user can read it)
                   const delay = twoFactor.isEnabled ? 2000 : 5000;
@@ -890,6 +894,10 @@ export default function SettingsScreen() {
             onPress={async () => {
               setTfaLoading(true);
               await twoFactor.disable2FA();
+              // If this device is a ward, refresh on-chain ward flags so Home banner reflects the new state.
+              if (ward.isWard) {
+                await ward.refreshWardInfo();
+              }
               setTfaLoading(false);
             }}
           >
