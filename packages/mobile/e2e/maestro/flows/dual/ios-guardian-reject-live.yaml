@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+name: ios-guardian-reject-live
+---
+- extendedWaitUntil:
+    visible:
+      id: approval.guardian.reject.press
+    timeout: 120000
+- tapOn:
+    id: approval.guardian.reject.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-ios-guardian-reject

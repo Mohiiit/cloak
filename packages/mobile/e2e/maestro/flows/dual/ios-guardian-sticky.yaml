@@ -1,0 +1,9 @@
+appId: ${APP_ID}
+name: ios-guardian-sticky
+---
+- runFlow:
+    file: ../core/scenario-guardian-transactions.yaml
+- runFlow:
+    file: ../ward/scenario-guardian-approve-path.yaml
+- runFlow:
+    file: ../ward/scenario-guardian-reject-path.yaml

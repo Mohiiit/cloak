@@ -46,6 +46,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const translateY = useRef(new Animated.Value(-100)).current;
   const idCounter = useRef(0);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastMarkerText = `toast.last.type=${lastToastType}`;
 
   const dismiss = useCallback(() => {
     Animated.timing(translateY, {
@@ -81,14 +82,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <View pointerEvents="none" style={styles.markerContainer} accessible={false}>
-        <Text
-          {...testProps(testIDs.markers.toastLastType)}
-          style={styles.markerText}
-          accessible={false}
+      <View pointerEvents="none" style={styles.markerContainer} collapsable={false}>
+        <View
+          {...testProps(testIDs.markers.toastLastType, toastMarkerText)}
+          style={styles.markerNode}
+          collapsable={false}
+          accessible
+          importantForAccessibility="yes"
         >
-          {`toast.last.type=${lastToastType}`}
-        </Text>
+          <Text style={styles.markerText}>{toastMarkerText}</Text>
+        </View>
       </View>
       {toast && (
         <Animated.View
@@ -141,13 +144,18 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     top: 0,
-    width: 2,
-    height: 2,
-    opacity: 0.01,
+    width: 240,
+    height: 10,
+    opacity: 1,
+    zIndex: 9999,
   },
   markerText: {
-    fontSize: 1,
-    lineHeight: 1,
-    color: "#000000",
+    fontSize: 7,
+    lineHeight: 9,
+    color: "#0F172A",
+  },
+  markerNode: {
+    width: 240,
+    height: 9,
   },
 });

@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+name: android-ward-initiate-send-live
+---
+- runFlow:
+    file: ../shared/fill-send-form.yaml
+- tapOn:
+    id: send.confirm.send.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-android-ward-send-submitted

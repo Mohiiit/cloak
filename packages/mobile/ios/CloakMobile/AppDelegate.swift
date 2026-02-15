@@ -46,3 +46,31 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
 #endif
   }
 }
+
+@objc(CloakRuntimeConfig)
+class CloakRuntimeConfig: NSObject, RCTBridgeModule {
+  static func moduleName() -> String! {
+    return "CloakRuntimeConfig"
+  }
+
+  static func requiresMainQueueSetup() -> Bool {
+    return false
+  }
+
+  @objc
+  func constantsToExport() -> [AnyHashable: Any]! {
+#if E2E
+    let runtimeMode = "e2e-mock"
+    let networkMode = "mock"
+#else
+    let runtimeMode = "prod"
+    let networkMode = "live"
+#endif
+
+    return [
+      "applicationId": Bundle.main.bundleIdentifier ?? "",
+      "runtimeMode": runtimeMode,
+      "networkMode": networkMode,
+    ]
+  }
+}

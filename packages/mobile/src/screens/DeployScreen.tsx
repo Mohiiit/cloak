@@ -34,6 +34,12 @@ export default function DeployScreen() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const deployStatusValue = wallet.isCheckingDeployment
+    ? "checking_deployment"
+    : wallet.isDeployed
+    ? "deployed"
+    : "needs_deploy";
+  const deployStatusMarker = `deploy.status=${deployStatusValue}`;
 
   const address = wallet.keys?.starkAddress || "";
 
@@ -74,6 +80,17 @@ export default function DeployScreen() {
       style={[styles.container, { paddingTop: insets.top }]}
       contentContainerStyle={styles.content}
     >
+      <View pointerEvents="none" style={styles.markerContainer} collapsable={false}>
+        <View
+          {...testProps(testIDs.markers.deployStatus, deployStatusMarker)}
+          style={styles.markerNode}
+          collapsable={false}
+          accessible
+          importantForAccessibility="yes"
+        >
+          <Text style={styles.markerText}>{deployStatusMarker}</Text>
+        </View>
+      </View>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.iconWrapper}>
@@ -399,5 +416,22 @@ const styles = StyleSheet.create({
   checkBtnText: {
     color: colors.textSecondary,
     fontSize: fontSize.sm,
+  },
+  markerContainer: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 240,
+    height: 10,
+    zIndex: 9999,
+  },
+  markerNode: {
+    width: 240,
+    height: 9,
+  },
+  markerText: {
+    fontSize: 7,
+    lineHeight: 9,
+    color: "#0F172A",
   },
 });

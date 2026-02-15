@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+name: ios-guardian-approvals-only
+---
+- runFlow:
+    file: ../ward/scenario-guardian-approve-path.yaml
+- runFlow:
+    file: ../ward/scenario-guardian-reject-path.yaml

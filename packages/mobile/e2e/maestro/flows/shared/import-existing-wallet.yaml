@@ -8,6 +8,7 @@ appId: ${APP_ID}
 - tapOn:
     id: home.wallet.importexisting.address.input
 - inputText: ${IMPORT_STARK_ADDRESS}
+- hideKeyboard
 - tapOn:
     id: onboarding.wallet.importexisting.submit
 - extendedWaitUntil:

@@ -1,0 +1,6 @@
+appId: ${APP_ID}
+---
+- assertVisible:
+    id: deploy.address.copy.press
+- tapOn:
+    id: deploy.address.copy.press

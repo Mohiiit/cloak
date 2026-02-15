@@ -1,5 +1,27 @@
 appId: ${APP_ID}
 ---
+- launchApp:
+    appId: ${APP_ID}
+    clearState: false
+    stopApp: false
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.check.press
+    commands:
+      - tapOn:
+          id: deploy.account.check.press
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.deploy.press
+    commands:
+      - tapOn:
+          id: deploy.account.deploy.press
+- extendedWaitUntil:
+    visible:
+      id: ${TAB_ID}
+    timeout: 180000
 - tapOn:
     id: ${TAB_ID}
 - waitForAnimationToEnd

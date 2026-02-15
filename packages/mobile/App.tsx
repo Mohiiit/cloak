@@ -27,8 +27,8 @@ import ApprovalModal from "./src/components/ApprovalModal";
 import WardApprovalModal from "./src/components/WardApprovalModal";
 import GuardianApprovalModal from "./src/components/GuardianApprovalModal";
 import AppNavigator from "./src/navigation/AppNavigator";
-import TestStateMarkers from "./src/testing/TestStateMarkers";
 import { isE2E } from "./src/testing/runtimeConfig";
+import TestStateMarkers from "./src/testing/TestStateMarkers";
 
 if (isE2E()) {
   LogBox.ignoreAllLogs(true);
@@ -45,8 +45,8 @@ function App() {
               <WardProvider>
                 <ErrorBoundary>
                   <AppNavigator />
-                  <TestStateMarkers />
                 </ErrorBoundary>
+                {isE2E() && <TestStateMarkers />}
                 <ApprovalModal />
                 <WardApprovalModal />
                 <GuardianApprovalModal />

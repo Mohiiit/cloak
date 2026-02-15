@@ -1,0 +1,84 @@
+appId: ${APP_ID}
+name: ios-guardian-postdeploy-createward-live
+---
+- launchApp:
+    appId: ${APP_ID}
+    clearState: false
+    stopApp: true
+- extendedWaitUntil:
+    visible:
+      id: deploy.account.deploy.press
+    timeout: 5000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.deploy.press
+    commands:
+      - tapOn:
+          id: deploy.account.deploy.press
+- extendedWaitUntil:
+    visible:
+      id: nav.tab.settings.press
+    timeout: 180000
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- scrollUntilVisible:
+    element:
+      id: settings.ward.create.press
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: settings.ward.create.press
+- extendedWaitUntil:
+    visible:
+      id: modal.themed.confirm.press
+    timeout: 15000
+- tapOn:
+    id: modal.themed.confirm.press
+- extendedWaitUntil:
+    visible:
+      id: settings.ward.creation.done.press
+    timeout: 240000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        id: settings.ward.creation.retry.press
+    commands:
+      - tapOn:
+          id: settings.ward.creation.retry.press
+      - extendedWaitUntil:
+          visible:
+            id: settings.ward.creation.done.press
+          timeout: 240000
+          optional: true
+- runFlow:
+    when:
+      visible:
+        id: settings.ward.creation.retry.press
+    commands:
+      - tapOn:
+          id: settings.ward.creation.retry.press
+      - extendedWaitUntil:
+          visible:
+            id: settings.ward.creation.done.press
+          timeout: 240000
+- tapOn:
+    id: settings.ward.creation.done.press
+- extendedWaitUntil:
+    visible:
+      id: settings.qr.copy.press
+    timeout: 120000
+- tapOn:
+    id: settings.qr.copy.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-ios-guardian-ward-invite-copied
+- tapOn:
+    id: settings.qr.close.press
+    optional: true

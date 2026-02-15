@@ -1,0 +1,36 @@
+appId: ${APP_ID}
+name: android-ward-open-cloak-qr-live
+---
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.check.press
+    commands:
+      - tapOn:
+          id: deploy.account.check.press
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.deploy.press
+    commands:
+      - tapOn:
+          id: deploy.account.deploy.press
+- extendedWaitUntil:
+    visible:
+      id: nav.tab.settings.press
+    timeout: 180000
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- tapOn:
+    id: settings.cloak.qr.open.press
+- extendedWaitUntil:
+    visible:
+      id: settings.qr.value.text
+    timeout: 20000
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-android-ward-cloak-qr-open

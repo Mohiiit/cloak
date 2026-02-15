@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+name: android-ward-reject-stage-live
+---
+- extendedWaitUntil:
+    visible:
+      id: approval.ward.reject.press
+    timeout: 120000
+- tapOn:
+    id: approval.ward.reject.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-android-ward-reject-stage

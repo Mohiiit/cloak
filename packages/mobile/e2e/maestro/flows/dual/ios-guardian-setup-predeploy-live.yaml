@@ -1,8 +1,10 @@
 appId: ${APP_ID}
+name: ios-guardian-setup-predeploy-live
 ---
 - launchApp:
     appId: ${APP_ID}
     clearState: true
+    stopApp: true
 - assertVisible:
     id: onboarding.wallet.create.press
 - tapOn:
@@ -11,5 +13,9 @@ appId: ${APP_ID}
     visible:
       id: deploy.account.deploy.press
     timeout: 120000
-- assertVisible:
-    id: deploy.status
+- tapOn:
+    id: deploy.address.copy.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-ios-guardian-predeploy

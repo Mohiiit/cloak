@@ -1,15 +1,32 @@
 appId: ${APP_ID}
 ---
 - runFlow:
-    file: ./open-tab.yaml
-    env:
-      TAB_ID: nav.tab.settings.press
-      ASSERT_TEXT: Settings
-- scrollUntilVisible:
-    element:
-      id: settings.data.clearall.press
-    direction: DOWN
-- tapOn:
-    id: settings.data.clearall.press
+    when:
+      visible:
+        id: nav.tab.settings.press
+    commands:
+      - runFlow:
+          file: ./open-tab.yaml
+          env:
+            TAB_ID: nav.tab.settings.press
+            ASSERT_TEXT: Settings
+      - scrollUntilVisible:
+          element:
+            id: settings.data.clearall.press
+          direction: DOWN
+      - tapOn:
+          id: settings.data.clearall.press
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.deploy.press
+    commands:
+      - launchApp:
+          appId: ${APP_ID}
+          clearState: true
+- extendedWaitUntil:
+    visible:
+      id: onboarding.wallet.create.press
+    timeout: 30000
 - assertVisible:
     id: onboarding.wallet.create.press

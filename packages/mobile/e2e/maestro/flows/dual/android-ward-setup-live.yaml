@@ -1,0 +1,39 @@
+appId: ${APP_ID}
+name: android-ward-setup-live
+---
+- launchApp:
+    appId: ${APP_ID}
+    clearState: true
+    stopApp: true
+- assertVisible:
+    id: onboarding.wallet.create.press
+- tapOn:
+    id: onboarding.ward.import.toggle
+- tapOn:
+    id: home.ward.import.json.input
+- inputText: ${WARD_INVITE_JSON}
+- hideKeyboard
+- tapOn:
+    id: onboarding.ward.import.submit
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.check.press
+    commands:
+      - tapOn:
+          id: deploy.account.check.press
+- runFlow:
+    when:
+      visible:
+        id: deploy.account.deploy.press
+    commands:
+      - tapOn:
+          id: deploy.account.deploy.press
+- extendedWaitUntil:
+    visible:
+      id: home.quick.send.press
+    timeout: 180000
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-android-ward-setup-complete

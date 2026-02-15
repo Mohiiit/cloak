@@ -8,6 +8,12 @@ name: scenario-guardian-transactions
       ASSERT_TEXT: Cloak
 - tapOn:
     id: home.quick.shield.press
+- tapOn:
+    id: wallet.amount.value.input
+- inputText: ${SEND_AMOUNT}
+- hideKeyboard
+- tapOn:
+    id: wallet.input.submit.press
 - assertVisible:
     id: transaction.router.path
     text: transaction.router.path=direct
@@ -15,6 +21,9 @@ name: scenario-guardian-transactions
     file: ../shared/screenshot-checkpoint.yaml
     env:
       SHOT_NAME: core-guardian-shield
+- tapOn:
+    id: wallet.success.done.press
+    optional: true
 - runFlow:
     file: ../shared/open-tab.yaml
     env:
@@ -25,12 +34,16 @@ name: scenario-guardian-transactions
 - tapOn:
     id: wallet.amount.value.input
 - inputText: ${UNSHIELD_AMOUNT}
+- hideKeyboard
 - tapOn:
     id: wallet.input.submit.press
 - runFlow:
     file: ../shared/screenshot-checkpoint.yaml
     env:
       SHOT_NAME: core-guardian-unshield
+- tapOn:
+    id: wallet.success.done.press
+    optional: true
 - runFlow:
     file: ../shared/fill-send-form.yaml
 - tapOn:

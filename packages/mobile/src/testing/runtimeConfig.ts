@@ -14,11 +14,39 @@ declare global {
 let cachedMode: RuntimeMode | null = null;
 let cachedNetworkMode: NetworkMode | null = null;
 
-function readNativeBundleIdentifier(): string | undefined {
+type NativeRuntimeConfig = {
+  applicationId?: string;
+  runtimeMode?: string;
+  networkMode?: string;
+};
+
+function readNativeRuntimeConfig(): NativeRuntimeConfig {
   try {
-    // Lazy require keeps node-side tests decoupled from RN runtime internals.
     const reactNative = require("react-native");
     const nativeModules = reactNative?.NativeModules ?? {};
+    const cfg = nativeModules?.CloakRuntimeConfig;
+    if (cfg && typeof cfg === "object") {
+      return {
+        applicationId:
+          typeof cfg.applicationId === "string" ? cfg.applicationId : undefined,
+        runtimeMode:
+          typeof cfg.runtimeMode === "string" ? cfg.runtimeMode : undefined,
+        networkMode:
+          typeof cfg.networkMode === "string" ? cfg.networkMode : undefined,
+      };
+    }
+  } catch {
+    // Ignore and fall through to defaults.
+  }
+  return {};
+}
+
+function readNativeBundleIdentifier(): string | undefined {
+  try {
+    const reactNative = require("react-native");
+    const nativeModules = reactNative?.NativeModules ?? {};
+    const nativeConfig = readNativeRuntimeConfig();
+    if (nativeConfig.applicationId) return nativeConfig.applicationId;
     return (
       nativeModules?.PlatformConstants?.BundleIdentifier ||
       nativeModules?.PlatformConstants?.bundleIdentifier ||
@@ -48,6 +76,11 @@ function readRuntimeMode(): RuntimeMode {
 
   if (globalMode) {
     return normalizeMode(String(globalMode));
+  }
+
+  const nativeMode = readNativeRuntimeConfig().runtimeMode;
+  if (nativeMode) {
+    return normalizeMode(nativeMode);
   }
 
   const env = (globalThis as any)?.process?.env as
@@ -83,6 +116,11 @@ function readNetworkMode(): NetworkMode {
       : undefined;
   if (globalMode) {
     return normalizeNetworkMode(String(globalMode));
+  }
+
+  const nativeMode = readNativeRuntimeConfig().networkMode;
+  if (nativeMode) {
+    return normalizeNetworkMode(nativeMode);
   }
 
   const env = (globalThis as any)?.process?.env as

@@ -6,8 +6,8 @@ env:
 - runFlow: ../setup/onboarding-create-import-clear.yaml
 - runFlow: ../setup/deploy-success-failure-retry.yaml
 - runFlow: ../setup/guardian-create-ward.yaml
-- runFlow: ../setup/ward-import-second-device.yaml
 - runFlow: ./scenario-guardian-transactions.yaml
+- runFlow: ../setup/ward-import-second-device.yaml
 - runFlow: ./scenario-ward-claim-mobile.yaml
 - runFlow: ./scenario-ward-initiated-needs-guardian.yaml
 - runFlow: ../ward/scenario-guardian-approve-path.yaml

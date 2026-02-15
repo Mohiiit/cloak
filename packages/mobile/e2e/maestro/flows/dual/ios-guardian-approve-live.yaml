@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+name: ios-guardian-approve-live
+---
+- extendedWaitUntil:
+    visible:
+      id: approval.guardian.approve.press
+    timeout: 120000
+- tapOn:
+    id: approval.guardian.approve.press
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-ios-guardian-approve

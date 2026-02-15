@@ -1,0 +1,22 @@
+appId: ${APP_ID}
+name: android-ward-enable-2fa-live
+---
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- scrollUntilVisible:
+    element:
+      id: settings.twofa.enable.press
+    direction: DOWN
+- tapOn:
+    id: settings.twofa.enable.press
+- extendedWaitUntil:
+    visible:
+      id: settings.twofa.disable.press
+    timeout: 180000
+- runFlow:
+    file: ../shared/screenshot-checkpoint.yaml
+    env:
+      SHOT_NAME: dual-android-ward-2fa-enabled

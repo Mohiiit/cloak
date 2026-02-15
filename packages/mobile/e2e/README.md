@@ -19,6 +19,7 @@ This folder contains deterministic mobile testing assets for Android and iOS.
 - `maestro/flows/ward`: guardian/ward approval scenarios.
 - `maestro/flows/twofa`: ward and guardian 2FA scenario matrix.
 - `maestro/flows/regressions`: resilience and retry regressions.
+- `maestro/flows/dual`: sticky-role suites (iOS guardian, Android ward) without role resets.
 - `artifacts/<run-id>/<platform>/...`: screenshots, logs, junit output.
 
 ## Run Commands
@@ -28,7 +29,11 @@ From repo root:
 ```bash
 yarn mobile:test:unit
 yarn mobile:test:e2e:android:mock
+yarn mobile:test:e2e:android:basic-live-deploy
 yarn mobile:test:e2e:ios:mock
+yarn mobile:test:e2e:dual-role:mock
+yarn mobile:test:e2e:dual-role:live
+yarn mobile:test:e2e:dual-role:matrix:live
 yarn mobile:test:e2e:live-smoke
 yarn mobile:test:all:mock
 ```
@@ -38,10 +43,79 @@ From `packages/mobile`:
 ```bash
 yarn test:unit
 yarn test:e2e:android:mock
+yarn test:e2e:android:basic-live-deploy
 yarn test:e2e:ios:mock
+yarn test:e2e:dual-role:mock
+yarn test:e2e:dual-role:live
+yarn test:e2e:dual-role:matrix:live
 yarn test:e2e:live-smoke
 yarn test:all:mock
 ```
+
+## Dual-Role Sticky Mode (iOS Guardian + Android Ward)
+
+Use this when you want to keep role state stable across runs and avoid delete/re-import loops.
+
+Default stage order:
+
+1. iOS guardian actions (`ios-guardian-sticky`)
+2. Android ward actions (`android-ward-sticky`)
+3. iOS guardian approvals (`ios-guardian-approvals-only`)
+4. Optional Android ward 2FA stage (`android-ward-twofa-sticky`, enabled with `RUN_WARD_TWOFA=1`)
+
+Command:
+
+```bash
+yarn workspace CloakMobile test:e2e:dual-role:live
+```
+
+Useful overrides:
+
+```bash
+RUN_ID=dual-20260215 \
+IOS_SKIP_BUILD=1 \
+ANDROID_SKIP_BUILD=1 \
+IOS_SIMULATOR_NAME="iPhone 16" \
+ANDROID_DEVICE=emulator-5554 \
+RUN_WARD_TWOFA=1 \
+yarn workspace CloakMobile test:e2e:dual-role:live
+```
+
+Preconditions:
+
+- iOS device should already be in guardian context (wallet exists, deployed, funded as needed).
+- Android device should already be in ward context.
+- For true guardian/ward interaction signal across devices, use `e2e-live` (shared backend).
+- `e2e-mock` dual-role mode is useful for UI stability checks but does not provide shared cross-device backend state.
+
+## Dual-Role Matrix (Live)
+
+For the full matrix requested during debugging (guardian setup + ward setup + accept/reject branches):
+
+```bash
+yarn workspace CloakMobile test:e2e:dual-role:matrix:live
+```
+
+This script performs:
+
+1. iOS guardian setup from scratch: create wallet -> copy deploy address -> fund via script -> deploy -> create ward -> copy ward invite JSON.
+2. Android ward setup from scratch: import ward invite JSON -> ensure ward home.
+3. Case matrix:
+   - guardian transfer + ward claim + guardian approve/reject
+   - ward 2FA enabled: ward-stage reject, then ward-approve + guardian reject/approve
+   - ward 2FA + guardian 2FA enabled: ward-approve + guardian reject/approve
+
+Required env vars:
+
+- `FUNDER_ADDRESS`
+- `FUNDER_PRIVATE_KEY`
+
+Optional:
+
+- `FUND_AMOUNT` (default `1.0`)
+- `STARKNET_RPC_URL` (default `https://rpc.starknet-testnet.lava.build`)
+- `IOS_SIMULATOR_NAME` (default `iPhone 17 Pro`)
+- `ANDROID_DEVICE` (default `emulator-5554`)
 
 ## Artifacts
 
@@ -62,6 +136,18 @@ The scripts capture:
 - `prod`: default app behavior.
 - `e2e-mock`: deterministic suite with mock bridge/approval backends.
 - `e2e-live`: integration smoke suite.
+
+## Live Deploy Prereqs (Android Basic Flow)
+
+For `test:e2e:android:basic-live-deploy`, provide:
+
+- `FUNDER_ADDRESS`: funded Starknet Sepolia account
+- `FUNDER_PRIVATE_KEY`: private key for that account
+
+Optional:
+
+- `FUND_AMOUNT` (default `0.8` STRK)
+- `STARKNET_RPC_URL` (default `https://rpc.starknet-testnet.lava.build`)
 
 ## CI Gate Policy
 

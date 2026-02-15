@@ -21,3 +21,6 @@ appId: ${APP_ID}
 - tapOn:
     id: settings.ward.creation.done.press
     optional: true
+- tapOn:
+    id: settings.qr.close.press
+    optional: true

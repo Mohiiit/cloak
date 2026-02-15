@@ -125,11 +125,34 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
   onClose: () => void;
 }) {
   const isDone = currentStep > 6 && !failed;
+  const markerStatus = failed ? "failed" : isDone ? "done" : "in_progress";
+  const markerStepText = `ward.creation.step=${currentStep}`;
+  const markerStatusText = `ward.creation.status=${markerStatus}`;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => { if (isDone || failed) onClose(); }}>
       <View style={wardModalStyles.overlay}>
         <View style={wardModalStyles.card}>
+          <View pointerEvents="none" style={styles.testMarkerContainer} collapsable={false}>
+            <View
+              {...testProps(testIDs.markers.wardCreationStep, markerStepText)}
+              style={styles.testMarkerNode}
+              collapsable={false}
+              accessible
+              importantForAccessibility="yes"
+            >
+              <Text style={styles.testMarkerText}>{markerStepText}</Text>
+            </View>
+            <View
+              {...testProps(testIDs.markers.wardCreationStatus, markerStatusText)}
+              style={styles.testMarkerNode}
+              collapsable={false}
+              accessible
+              importantForAccessibility="yes"
+            >
+              <Text style={styles.testMarkerText}>{markerStatusText}</Text>
+            </View>
+          </View>
           {/* Header */}
           <View style={[wardModalStyles.iconCircle, isDone && wardModalStyles.iconCircleDone, failed && wardModalStyles.iconCircleFailed]}>
             {isDone ? (
@@ -265,12 +288,26 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
           <View style={styles.qrModalQRWrapper}>
             <QRCode value={value} size={250} backgroundColor="#FFFFFF" color="#000000" />
           </View>
-          <Text style={styles.qrModalAddress} selectable>{value}</Text>
+          <Text
+            {...testProps(testIDs.settings.qrValue)}
+            style={styles.qrModalAddress}
+            selectable
+          >
+            {value}
+          </Text>
           <View style={styles.qrModalActions}>
-            <TouchableOpacity style={styles.qrModalCopyBtn} onPress={handleCopy}>
+            <TouchableOpacity
+              {...testProps(testIDs.settings.qrCopy)}
+              style={styles.qrModalCopyBtn}
+              onPress={handleCopy}
+            >
               <Text style={styles.qrModalCopyText}>{copied ? "Copied!" : "Copy Address"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.qrModalCloseBtn} onPress={onClose}>
+            <TouchableOpacity
+              {...testProps(testIDs.settings.qrClose)}
+              style={styles.qrModalCloseBtn}
+              onPress={onClose}
+            >
               <Text style={styles.qrModalCloseText}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -320,6 +357,8 @@ export default function SettingsScreen() {
     : wardModalVisible || isCreatingWard
     ? "in_progress"
     : "idle";
+  const wardCreationStepText = `ward.creation.step=${wardStep}`;
+  const wardCreationStatusText = `ward.creation.status=${wardCreationStatus}`;
 
   const startWardCreation = async (isRetry: boolean = false) => {
     setWardFailed(false);
@@ -376,7 +415,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <View style={styles.container}>
       {modal.ModalComponent}
       {qrModal && (
         <FullScreenQR
@@ -386,22 +425,32 @@ export default function SettingsScreen() {
           onClose={() => setQrModal(null)}
         />
       )}
-      <View pointerEvents="none" style={styles.testMarkerContainer} accessible={false}>
-        <Text
-          {...testProps(testIDs.markers.wardCreationStep)}
-          style={styles.testMarkerText}
-          accessible={false}
+      <View pointerEvents="none" style={styles.testMarkerContainer} collapsable={false}>
+        <View
+          {...testProps(testIDs.markers.wardCreationStep, wardCreationStepText)}
+          style={styles.testMarkerNode}
+          collapsable={false}
+          accessible
+          importantForAccessibility="yes"
         >
-          {`ward.creation.step=${wardStep}`}
-        </Text>
-        <Text
-          {...testProps(testIDs.markers.wardCreationStatus)}
-          style={styles.testMarkerText}
-          accessible={false}
+          <Text style={styles.testMarkerText}>{wardCreationStepText}</Text>
+        </View>
+        <View
+          {...testProps(testIDs.markers.wardCreationStatus, wardCreationStatusText)}
+          style={styles.testMarkerNode}
+          collapsable={false}
+          accessible
+          importantForAccessibility="yes"
         >
-          {`ward.creation.status=${wardCreationStatus}`}
-        </Text>
+          <Text style={styles.testMarkerText}>{wardCreationStatusText}</Text>
+        </View>
       </View>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
       {/* Cloak Address */}
       <View style={[styles.section, styles.addressSection]}>
         <View style={styles.sectionHeader}>
@@ -411,7 +460,10 @@ export default function SettingsScreen() {
         <Text style={styles.sectionDesc}>
           Share this with others so they can send you shielded payments.
         </Text>
-        <TouchableOpacity onPress={() => setQrModal({ label: "Cloak Address", value: wallet.keys!.tongoAddress })}>
+        <TouchableOpacity
+          {...testProps(testIDs.settings.cloakQrOpen)}
+          onPress={() => setQrModal({ label: "Cloak Address", value: wallet.keys!.tongoAddress })}
+        >
           <CopyRow label="Tongo Address" value={wallet.keys.tongoAddress} />
           <AddressQR value={wallet.keys.tongoAddress} glowColor="blue" />
           <Text style={styles.tapHint}>Tap to enlarge QR</Text>
@@ -427,7 +479,10 @@ export default function SettingsScreen() {
         <Text style={styles.sectionDesc}>
           Your public Starknet wallet address.
         </Text>
-        <TouchableOpacity onPress={() => setQrModal({ label: "Starknet Address", value: wallet.keys!.starkAddress })}>
+        <TouchableOpacity
+          {...testProps(testIDs.settings.starkQrOpen)}
+          onPress={() => setQrModal({ label: "Starknet Address", value: wallet.keys!.starkAddress })}
+        >
           <CopyRow label="Starknet Address" value={wallet.keys.starkAddress} />
           <AddressQR value={wallet.keys.starkAddress} glowColor="violet" />
           <Text style={styles.tapHint}>Tap to enlarge QR</Text>
@@ -898,12 +953,14 @@ export default function SettingsScreen() {
         <Text style={styles.aboutText}>Built for Re{"{define}"} Hackathon</Text>
         <Text style={styles.aboutText}>Privacy Track</Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  scrollContainer: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: 100 },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: "center", alignItems: "center" },
   emptyText: { color: colors.textSecondary, fontSize: fontSize.md },
@@ -911,14 +968,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     top: 0,
-    width: 2,
-    height: 2,
-    opacity: 0.01,
+    width: 240,
+    height: 20,
+    opacity: 1,
+    zIndex: 9999,
   },
   testMarkerText: {
-    fontSize: 1,
-    lineHeight: 1,
-    color: "#000000",
+    fontSize: 7,
+    lineHeight: 9,
+    color: "#0F172A",
+  },
+  testMarkerNode: {
+    width: 240,
+    height: 9,
   },
 
   section: {

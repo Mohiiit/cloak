@@ -5,9 +5,10 @@ appId: ${APP_ID}
 - tapOn:
     id: home.ward.import.json.input
 - inputText: ${WARD_INVITE_JSON}
+- hideKeyboard
 - tapOn:
     id: onboarding.ward.import.submit
 - extendedWaitUntil:
     visible:
-      id: home.quick.send.press
+      id: deploy.account.deploy.press
     timeout: 120000

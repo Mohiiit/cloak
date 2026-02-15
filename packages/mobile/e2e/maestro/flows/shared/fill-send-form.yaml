@@ -1,18 +1,36 @@
 appId: ${APP_ID}
 ---
+- tapOn:
+    id: send.success.sendanother.press
+    optional: true
+- tapOn:
+    id: send.success.gohome.press
+    optional: true
 - runFlow:
     file: ./open-tab.yaml
     env:
       TAB_ID: nav.tab.send.press
       ASSERT_TEXT: Send Payment
 - tapOn:
+    id: send.success.sendanother.press
+    optional: true
+- tapOn:
+    id: send.success.gohome.press
+    optional: true
+- tapOn:
     id: send.recipient.address.input
 - inputText: ${SEND_RECIPIENT}
+- hideKeyboard
 - tapOn:
     id: send.recipient.next.press
+- extendedWaitUntil:
+    visible:
+      id: send.amount.value.input
+    timeout: 20000
 - tapOn:
     id: send.amount.value.input
 - inputText: ${SEND_AMOUNT}
+- hideKeyboard
 - tapOn:
     id: send.amount.next.press
 - tapOn:

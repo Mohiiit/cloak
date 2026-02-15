@@ -10,6 +10,8 @@ export const testIDs = {
     approvalQueueCount: "approval.queue.count",
     transactionRouterPath: "transaction.router.path",
     toastLastType: "toast.last.type",
+    runtimeMode: "runtime.mode",
+    networkMode: "network.mode",
   },
   onboarding: {
     createWallet: "onboarding.wallet.create.press",
@@ -103,6 +105,8 @@ export const testIDs = {
     successDone: "wallet.success.done.press",
   },
   settings: {
+    cloakQrOpen: "settings.cloak.qr.open.press",
+    starkQrOpen: "settings.stark.qr.open.press",
     contactsAddToggle: "settings.contacts.add.toggle",
     contactsAddSubmit: "settings.contacts.add.submit",
     wardCreate: "settings.ward.create.press",
@@ -111,6 +115,9 @@ export const testIDs = {
     wardCreationDone: "settings.ward.creation.done.press",
     wardCreationRetry: "settings.ward.creation.retry.press",
     wardCreationDismiss: "settings.ward.creation.dismiss.press",
+    qrCopy: "settings.qr.copy.press",
+    qrClose: "settings.qr.close.press",
+    qrValue: "settings.qr.value.text",
     keyBackupReveal: "settings.keys.reveal.press",
     keyBackupHide: "settings.keys.hide.press",
     tfaEnable: "settings.twofa.enable.press",

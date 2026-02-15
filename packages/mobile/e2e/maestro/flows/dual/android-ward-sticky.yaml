@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+name: android-ward-sticky
+---
+- runFlow:
+    file: ../core/scenario-ward-claim-mobile.yaml
+- runFlow:
+    file: ../core/scenario-ward-initiated-needs-guardian.yaml

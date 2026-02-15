@@ -18,6 +18,7 @@ import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { colors, fontSize, spacing } from "../lib/theme";
 import { testIDs } from "../testing/testIDs";
+import TestStateMarkers from "../testing/TestStateMarkers";
 
 const Tab = createBottomTabNavigator();
 
@@ -77,63 +78,74 @@ export default function AppNavigator() {
 
   // Gate: show deploy screen if wallet exists but is not deployed
   if (wallet.isWalletCreated && !wallet.isDeployed && !wallet.isLoading && !wallet.isCheckingDeployment) {
-    return <DeployScreen />;
+    return (
+      <View style={styles.root}>
+        <DeployScreen />
+        <TestStateMarkers />
+      </View>
+    );
   }
 
   return (
-    <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerStyle: { backgroundColor: colors.bg, elevation: 0, shadowOpacity: 0 },
-          headerTintColor: colors.text,
-          headerTitleStyle: { fontWeight: "600" },
-          headerTitleAlign: "center" as const,
-          tabBarStyle: {
-            ...styles.tabBar,
-            paddingBottom: bottomPadding + 6,
-            height: 60 + bottomPadding,
-          },
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarLabelStyle: styles.tabLabel,
-          tabBarButtonTestID: TAB_TEST_IDS[route.name],
-          tabBarAccessibilityLabel: TAB_TEST_IDS[route.name],
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label={route.name} focused={focused} />
-          ),
-        })}
-      >
-        <Tab.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ headerTitle: () => <HeaderTitle /> }}
-        />
-        <Tab.Screen
-          name="Send"
-          component={SendScreen}
-          options={{ headerTitle: "Send Payment" }}
-        />
-        <Tab.Screen
-          name="Wallet"
-          component={WalletScreen}
-          options={{ headerTitle: "Wallet" }}
-        />
-        <Tab.Screen
-          name="Activity"
-          component={ActivityScreen}
-          options={{ headerTitle: "Activity" }}
-        />
-        <Tab.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{ headerTitle: "Settings" }}
-        />
-      </Tab.Navigator>
-    </NavigationContainer>
+    <View style={styles.root}>
+      <NavigationContainer>
+        <Tab.Navigator
+          screenOptions={({ route }) => ({
+            headerStyle: { backgroundColor: colors.bg, elevation: 0, shadowOpacity: 0 },
+            headerTintColor: colors.text,
+            headerTitleStyle: { fontWeight: "600" },
+            headerTitleAlign: "center" as const,
+            tabBarStyle: {
+              ...styles.tabBar,
+              paddingBottom: bottomPadding + 6,
+              height: 60 + bottomPadding,
+            },
+            tabBarActiveTintColor: colors.primary,
+            tabBarInactiveTintColor: colors.textMuted,
+            tabBarLabelStyle: styles.tabLabel,
+            tabBarButtonTestID: TAB_TEST_IDS[route.name],
+            tabBarAccessibilityLabel: TAB_TEST_IDS[route.name],
+            tabBarIcon: ({ focused }) => (
+              <TabIcon label={route.name} focused={focused} />
+            ),
+          })}
+        >
+          <Tab.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{ headerTitle: () => <HeaderTitle /> }}
+          />
+          <Tab.Screen
+            name="Send"
+            component={SendScreen}
+            options={{ headerTitle: "Send Payment" }}
+          />
+          <Tab.Screen
+            name="Wallet"
+            component={WalletScreen}
+            options={{ headerTitle: "Wallet" }}
+          />
+          <Tab.Screen
+            name="Activity"
+            component={ActivityScreen}
+            options={{ headerTitle: "Activity" }}
+          />
+          <Tab.Screen
+            name="Settings"
+            component={SettingsScreen}
+            options={{ headerTitle: "Settings" }}
+          />
+        </Tab.Navigator>
+      </NavigationContainer>
+      <TestStateMarkers />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   tabBar: {
     backgroundColor: colors.surface,
     borderTopColor: colors.borderLight,

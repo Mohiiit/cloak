@@ -5,6 +5,7 @@ import { useTwoFactor } from "../lib/TwoFactorContext";
 import { useWardContext } from "../lib/wardContext";
 import { testIDs, testProps } from "./testIDs";
 import { useTransactionRouterPath } from "./transactionRouteTrace";
+import { getNetworkMode, getRuntimeMode } from "./runtimeConfig";
 
 function getDeployStatus(wallet: ReturnType<typeof useWallet>) {
   if (!wallet.isWalletCreated) return "wallet_missing";
@@ -18,51 +19,87 @@ export default function TestStateMarkers() {
   const twoFactor = useTwoFactor();
   const ward = useWardContext();
   const routerPath = useTransactionRouterPath();
+  const deployStatus = getDeployStatus(wallet);
 
   const approvalQueueCount =
     twoFactor.pendingRequests.length +
     ward.pendingWard2faRequests.length +
     ward.pendingGuardianRequests.length;
+  const approvalQueueText = `approval.queue.count=${approvalQueueCount}`;
+  const deployStatusText = `deploy.status=${deployStatus}`;
+  const routerPathText = `transaction.router.path=${routerPath}`;
+  const runtimeModeText = `runtime.mode=${getRuntimeMode()}`;
+  const networkModeText = `network.mode=${getNetworkMode()}`;
+  const topOffset = 64;
 
   return (
-    <View pointerEvents="none" style={styles.container} accessible={false}>
-      <Text
-        {...testProps(testIDs.markers.deployStatus)}
-        style={styles.marker}
-        accessible={false}
+    <>
+      <View
+        {...testProps(testIDs.markers.deployStatus, deployStatusText)}
+        style={[styles.markerContainer, { top: topOffset }]}
+        collapsable={false}
+        accessible
+        importantForAccessibility="yes"
+        pointerEvents="none"
       >
-        {`deploy.status=${getDeployStatus(wallet)}`}
-      </Text>
-      <Text
-        {...testProps(testIDs.markers.approvalQueueCount)}
-        style={styles.marker}
-        accessible={false}
+        <Text style={styles.marker}>{deployStatusText}</Text>
+      </View>
+      <View
+        {...testProps(testIDs.markers.approvalQueueCount, approvalQueueText)}
+        style={[styles.markerContainer, { top: topOffset + 10 }]}
+        collapsable={false}
+        accessible
+        importantForAccessibility="yes"
+        pointerEvents="none"
       >
-        {`approval.queue.count=${approvalQueueCount}`}
-      </Text>
-      <Text
-        {...testProps(testIDs.markers.transactionRouterPath)}
-        style={styles.marker}
-        accessible={false}
+        <Text style={styles.marker}>{approvalQueueText}</Text>
+      </View>
+      <View
+        {...testProps(testIDs.markers.transactionRouterPath, routerPathText)}
+        style={[styles.markerContainer, { top: topOffset + 20 }]}
+        collapsable={false}
+        accessible
+        importantForAccessibility="yes"
+        pointerEvents="none"
       >
-        {`transaction.router.path=${routerPath}`}
-      </Text>
-    </View>
+        <Text style={styles.marker}>{routerPathText}</Text>
+      </View>
+      <View
+        {...testProps(testIDs.markers.runtimeMode, runtimeModeText)}
+        style={[styles.markerContainer, { top: topOffset + 30 }]}
+        collapsable={false}
+        accessible
+        importantForAccessibility="yes"
+        pointerEvents="none"
+      >
+        <Text style={styles.marker}>{runtimeModeText}</Text>
+      </View>
+      <View
+        {...testProps(testIDs.markers.networkMode, networkModeText)}
+        style={[styles.markerContainer, { top: topOffset + 40 }]}
+        collapsable={false}
+        accessible
+        importantForAccessibility="yes"
+        pointerEvents="none"
+      >
+        <Text style={styles.marker}>{networkModeText}</Text>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  markerContainer: {
     position: "absolute",
     left: 0,
-    top: 0,
-    width: 2,
-    height: 2,
-    opacity: 0.01,
+    width: 240,
+    height: 9,
+    opacity: 1,
+    zIndex: 9999,
   },
   marker: {
-    fontSize: 1,
-    lineHeight: 1,
-    color: "#000000",
+    fontSize: 7,
+    lineHeight: 9,
+    color: "#0F172A",
   },
 });

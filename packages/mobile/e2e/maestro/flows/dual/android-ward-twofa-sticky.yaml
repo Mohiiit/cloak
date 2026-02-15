@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+name: android-ward-twofa-sticky
+---
+- runFlow:
+    file: ../twofa/scenario-ward-2fa-matrix.yaml
+- runFlow:
+    file: ../twofa/scenario-ward-guardian-2fa-matrix.yaml

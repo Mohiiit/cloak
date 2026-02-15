@@ -7,6 +7,7 @@ import type {
   BridgeTxResult,
   TongoState,
 } from "../interfaces/BridgeClient";
+import { ec } from "starknet";
 import { loadActiveScenarioFixture } from "../fixtures/loadScenarioFixture";
 
 type BridgeFixture = {
@@ -176,16 +177,19 @@ export class MockBridgeClient implements BridgeClient {
 
   async generateKeypair(): Promise<BridgeKeypair> {
     const id = `${Date.now()}_${this.txCounter + 1}`;
-    const privateKey = this.toDeterministicHex(`priv_${id}`, 64);
-    const publicKey = this.toDeterministicHex(`pub_${id}`, 64);
+    const privateKey = this.grindPrivateKeyHex(this.toDeterministicHex(`priv_${id}`, 64));
+    const publicKey = ec.starkCurve.getStarkKey(privateKey);
     return { privateKey, publicKey };
   }
 
   async derivePublicKey(privateKey: string): Promise<BridgePublicKey> {
-    const sanitized = privateKey.replace(/^0x/i, "").padStart(64, "0").slice(-64);
+    const normalized = this.normalizeOrGrindPrivateKeyHex(privateKey);
+    const starkKey = ec.starkCurve.getStarkKey(normalized);
+    const uncompressed = ec.starkCurve.getPublicKey(normalized, false);
+    const y = this.bytesToHex(uncompressed.slice(33, 65));
     return {
-      x: `0x${sanitized}`,
-      y: this.toDeterministicHex(`y_${privateKey}`, 64),
+      x: starkKey,
+      y,
     };
   }
 
@@ -242,5 +246,32 @@ export class MockBridgeClient implements BridgeClient {
       out += mixed.toString(16).padStart(2, "0");
     }
     return `0x${out.slice(0, hexLen)}`;
+  }
+
+  private normalizePrivateKeyHex(privateKey: string): string {
+    const normalized = ec.starkCurve.normalizePrivateKey(privateKey);
+    return normalized.startsWith("0x") ? normalized : `0x${normalized}`;
+  }
+
+  private grindPrivateKeyHex(seed: string): string {
+    const grounded = ec.starkCurve.grindKey(seed);
+    return grounded.startsWith("0x") ? grounded : `0x${grounded}`;
+  }
+
+  private normalizeOrGrindPrivateKeyHex(privateKey: string): string {
+    try {
+      const normalized = this.normalizePrivateKeyHex(privateKey);
+      // getStarkKey validates private key range; if invalid we fallback to grind.
+      ec.starkCurve.getStarkKey(normalized);
+      return normalized;
+    } catch {
+      return this.grindPrivateKeyHex(privateKey);
+    }
+  }
+
+  private bytesToHex(bytes: Uint8Array): string {
+    return `0x${Array.from(bytes)
+      .map((v) => v.toString(16).padStart(2, "0"))
+      .join("")}`;
   }
 }

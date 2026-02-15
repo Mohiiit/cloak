@@ -27,6 +27,55 @@ import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
 
+type WardInvitePayload = {
+  type: string;
+  wardAddress: string;
+  wardPrivateKey: string;
+  guardianAddress?: string;
+  network?: string;
+};
+
+function parseWardInvitePayload(raw: string): WardInvitePayload {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Invalid ward invite format");
+  }
+
+  const candidates: string[] = [trimmed];
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    candidates.push(trimmed.slice(1, -1));
+  }
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    let value = candidate.trim();
+    for (let attempt = 0; attempt < 4 && value.length > 0; attempt += 1) {
+      if (seen.has(value)) {
+        break;
+      }
+      seen.add(value);
+      try {
+        return JSON.parse(value) as WardInvitePayload;
+      } catch {
+        if (!value.endsWith("}")) {
+          break;
+        }
+        value = value.slice(0, -1).trimEnd();
+      }
+    }
+  }
+
+  throw new Error("Invalid ward invite format");
+}
+
 export default function HomeScreen({ navigation }: any) {
   const wallet = useWallet();
   const ward = useWardContext();
@@ -81,7 +130,7 @@ export default function HomeScreen({ navigation }: any) {
             Shielded payments on Starknet
           </Text>
           <TouchableOpacity
-            {...testProps(testIDs.home.createWallet)}
+            {...testProps(testIDs.onboarding.createWallet)}
             style={styles.createButton}
             onPress={async () => {
               try {
@@ -100,7 +149,7 @@ export default function HomeScreen({ navigation }: any) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            {...testProps(testIDs.home.importExistingToggle)}
+            {...testProps(testIDs.onboarding.importExistingToggle)}
             style={styles.importToggle}
             onPress={() => { setShowImport(!showImport); setShowWardImport(false); }}
           >
@@ -138,7 +187,7 @@ export default function HomeScreen({ navigation }: any) {
                 autoComplete="off"
               />
               <TouchableOpacity
-                {...testProps(testIDs.home.importExistingSubmit)}
+                {...testProps(testIDs.onboarding.importExistingSubmit)}
                 style={[styles.createButton, (!importPK || !importAddr || isImporting) && { opacity: 0.4 }]}
                 disabled={!importPK || !importAddr || isImporting}
                 onPress={async () => {
@@ -168,7 +217,7 @@ export default function HomeScreen({ navigation }: any) {
           )}
 
           <TouchableOpacity
-            {...testProps(testIDs.home.importWardToggle)}
+            {...testProps(testIDs.onboarding.importWardToggle)}
             style={styles.importToggle}
             onPress={() => { setShowWardImport(!showWardImport); setShowImport(false); }}
           >
@@ -202,13 +251,13 @@ export default function HomeScreen({ navigation }: any) {
                 numberOfLines={4}
               />
               <TouchableOpacity
-                {...testProps(testIDs.home.importWardSubmit)}
+                {...testProps(testIDs.onboarding.importWardSubmit)}
                 style={[styles.createButton, { backgroundColor: colors.warning }, (!wardInviteJson.trim() || isImporting) && { opacity: 0.4 }]}
                 disabled={!wardInviteJson.trim() || isImporting}
                 onPress={async () => {
                   setIsImporting(true);
                   try {
-                    const invite = JSON.parse(wardInviteJson.trim());
+                    const invite = parseWardInvitePayload(wardInviteJson);
                     if (invite.type !== "cloak_ward_invite" || !invite.wardAddress || !invite.wardPrivateKey) {
                       throw new Error("Invalid ward invite format");
                     }
@@ -255,6 +304,14 @@ export default function HomeScreen({ navigation }: any) {
   const displayPending = tongoToDisplay(wallet.pending, wallet.selectedToken);
   const displayErc20 = erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken);
   const hasPending = wallet.pending !== "0";
+  const deployStatusValue = wallet.isCheckingDeployment
+    ? "checking_deployment"
+    : wallet.isDeployed
+    ? "deployed"
+    : wallet.isWalletCreated
+    ? "needs_deploy"
+    : "wallet_missing";
+  const deployStatusMarker = `deploy.status=${deployStatusValue}`;
 
   const handleClaim = async () => {
     setIsClaiming(true);
@@ -289,6 +346,17 @@ export default function HomeScreen({ navigation }: any) {
         />
       }
     >
+      <View pointerEvents="none" style={styles.markerContainer} collapsable={false}>
+        <View
+          {...testProps(testIDs.markers.deployStatus, deployStatusMarker)}
+          style={styles.markerNode}
+          collapsable={false}
+          accessible
+          importantForAccessibility="yes"
+        >
+          <Text style={styles.markerText}>{deployStatusMarker}</Text>
+        </View>
+      </View>
       {modal.ModalComponent}
 
       {claimSuccess && (
@@ -560,6 +628,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: Platform.OS === "ios" ? spacing.sm : spacing.lg,
     paddingBottom: 100,
+  },
+  markerContainer: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 240,
+    height: 10,
+    zIndex: 9999,
+  },
+  markerNode: {
+    width: 240,
+    height: 9,
+  },
+  markerText: {
+    fontSize: 7,
+    lineHeight: 9,
+    color: "#0F172A",
   },
   center: {
     flex: 1,
