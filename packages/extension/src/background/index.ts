@@ -114,11 +114,12 @@ chrome.runtime.onMessage.addListener(
     handleMessage(request, sender)
       .then((data) => sendResponse({ success: true, data }))
       .catch((err) => {
-        // Format user-friendly error messages for common failures
-        let errorMsg = err.message || "Unknown error";
-        if (errorMsg.includes("starknet_addInvokeTransaction") || errorMsg.includes("TRANSACTION_EXECUTION_ERROR")) {
-          errorMsg = "Transaction failed on-chain. If 2FA is enabled, please approve from your mobile device.";
-        } else if (errorMsg.includes("is_2fa_enabled") || errorMsg.includes("Contract not found")) {
+        // Preserve raw RPC details whenever available so debugging in extension is actionable.
+        let errorMsg = err?.message || String(err) || "Unknown error";
+        if (err?.cause?.message && !errorMsg.includes(err.cause.message)) {
+          errorMsg = `${errorMsg}\nCause: ${err.cause.message}`;
+        }
+        if (errorMsg.includes("is_2fa_enabled") || errorMsg.includes("Contract not found")) {
           errorMsg = "Could not check 2FA status. The account may not be a CloakAccount.";
         }
         sendResponse({ success: false, error: errorMsg });

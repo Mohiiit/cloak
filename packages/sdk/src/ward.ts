@@ -78,6 +78,19 @@ export interface WardApprovalParams {
   needsGuardian2fa: boolean;
 }
 
+export interface WardApprovalRequestOptions {
+  /**
+   * Initial DB status for the inserted request.
+   * Defaults to "pending_ward_sig".
+   */
+  initialStatus?: "pending_ward_sig" | "pending_guardian";
+  /**
+   * Optional hook to run immediately after request insertion and before polling.
+   * Useful for mobile-originated flows that can auto-sign locally.
+   */
+  onRequestCreated?: (request: WardApprovalRequest) => Promise<void> | void;
+}
+
 export interface WardApprovalResult {
   approved: boolean;
   txHash?: string;
@@ -262,6 +275,8 @@ export async function getBlockGasPrices(
 // ─── Dynamic Fee Estimation ──────────────────────────────────────────────────
 
 export interface FeeEstimate {
+  l1Gas: bigint;
+  l1GasPrice: bigint;
   l2Gas: bigint;
   l2GasPrice: bigint;
   l1DataGas: bigint;
@@ -291,60 +306,144 @@ export async function estimateWardInvokeFee(
 
   // High ceiling resource bounds so estimation doesn't fail due to limits
   const ceilingBounds = {
-    l1_gas: { max_amount: "0x0", max_price_per_unit: "0x0" },
+    l1_gas: { max_amount: "0x100000", max_price_per_unit: "0x2540be400" },
     l2_gas: { max_amount: "0xf42400", max_price_per_unit: "0x2540be400" },
     l1_data_gas: { max_amount: "0x10000", max_price_per_unit: "0x2540be400" },
   };
 
-  const body = {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "starknet_estimateFee",
-    params: {
-      request: [
-        {
-          type: "INVOKE",
-          sender_address: num.toHex(senderAddress),
-          calldata: compiledCalldata.map((c: any) => num.toHex(BigInt(c))),
-          version: "0x3",
-          signature: ["0x0"],
-          nonce: num.toHex(nonce),
-          resource_bounds: ceilingBounds,
-          tip: "0x0",
-          paymaster_data: [],
-          account_deployment_data: [],
-          nonce_data_availability_mode: "L1",
-          fee_data_availability_mode: "L1",
-        },
-      ],
-      simulation_flags: ["SKIP_VALIDATE"],
-      block_id: "pending",
-    },
+  const invokeBase = {
+    type: "INVOKE",
+    sender_address: num.toHex(senderAddress),
+    calldata: compiledCalldata.map((c: any) => num.toHex(BigInt(c))),
+    version: "0x3",
+    nonce: num.toHex(nonce),
+    resource_bounds: ceilingBounds,
+    tip: "0x0",
+    paymaster_data: [],
+    account_deployment_data: [],
   };
 
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const requestVariants = [
+    {
+      ...invokeBase,
+      signature: [] as string[],
+      nonce_data_availability_mode: "L1",
+      fee_data_availability_mode: "L1",
+    },
+    {
+      ...invokeBase,
+      signature: [] as string[],
+      nonce_data_availability_mode: 0,
+      fee_data_availability_mode: 0,
+    },
+    {
+      ...invokeBase,
+      signature: ["0x0"],
+      nonce_data_availability_mode: "L1",
+      fee_data_availability_mode: "L1",
+    },
+    {
+      ...invokeBase,
+      signature: ["0x0"],
+      nonce_data_availability_mode: 0,
+      fee_data_availability_mode: 0,
+    },
+  ];
 
-  const json = await response.json();
-  if (json.error) {
-    throw new Error(
-      `Fee estimation failed: ${json.error.message || JSON.stringify(json.error)}`,
-    );
+  let lastError: Error | null = null;
+
+  for (const request of requestVariants) {
+    const blockIds = ["pre_confirmed", "latest"];
+    for (const blockId of blockIds) {
+      const rpcParamShapes = [
+        {
+          request,
+          simulation_flags: ["SKIP_VALIDATE"],
+          block_id: blockId,
+        },
+        [request, ["SKIP_VALIDATE"], blockId],
+        {
+          request: [request],
+          simulation_flags: ["SKIP_VALIDATE"],
+          block_id: blockId,
+        },
+        [[request], ["SKIP_VALIDATE"], blockId],
+      ];
+
+      for (const params of rpcParamShapes) {
+        const response = await fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "starknet_estimateFee",
+            params,
+          }),
+        });
+
+        const rawText = await response.text();
+        let json: any = null;
+        if (rawText.trim().length > 0) {
+          try {
+            json = JSON.parse(rawText);
+          } catch {
+            lastError = new Error(
+              `Fee estimation failed: invalid JSON response (HTTP ${response.status})`,
+            );
+            continue;
+          }
+        }
+
+        if (json?.error) {
+          const rpcErrMsg = json.error.message || JSON.stringify(json.error);
+          lastError = new Error(`Fee estimation failed: ${rpcErrMsg}`);
+          continue;
+        }
+
+        if (!response.ok) {
+          const bodySnippet = rawText.slice(0, 240);
+          lastError = new Error(
+            `Fee estimation failed: HTTP ${response.status} ${response.statusText}${bodySnippet ? ` - ${bodySnippet}` : ""}`,
+          );
+          continue;
+        }
+
+        const rawResult = json?.result;
+        const result = Array.isArray(rawResult) ? rawResult[0] : rawResult;
+        if (!result) {
+          lastError = new Error("No fee estimation result returned");
+          continue;
+        }
+
+        const l1Gas = BigInt(result.l1_gas_consumed ?? "0");
+        const l1GasPrice = BigInt(result.l1_gas_price ?? "0");
+        const l2Gas = BigInt(result.l2_gas_consumed ?? result.gas_consumed ?? "0");
+        const l2GasPrice = BigInt(result.l2_gas_price ?? result.gas_price ?? "0");
+        const l1DataGas = BigInt(result.l1_data_gas_consumed ?? result.data_gas_consumed ?? "0");
+        const l1DataGasPrice = BigInt(result.l1_data_gas_price ?? result.data_gas_price ?? "0");
+
+        if (l1Gas === 0n && l2Gas === 0n && l1DataGas === 0n) {
+          lastError = new Error(
+            `Fee estimation returned zero resources for all categories: ${JSON.stringify(result)}`,
+          );
+          continue;
+        }
+
+        return {
+          l1Gas,
+          l1GasPrice,
+          l2Gas,
+          l2GasPrice,
+          l1DataGas,
+          l1DataGasPrice,
+          overallFee: BigInt(result.overall_fee || "0"),
+        };
+      }
+    }
   }
 
-  const result = json.result?.[0];
-  if (!result) throw new Error("No fee estimation result returned");
-
-  return {
-    l2Gas: BigInt(result.gas_consumed || "0"),
-    l2GasPrice: BigInt(result.gas_price || "0"),
-    l1DataGas: BigInt(result.data_gas_consumed || "0"),
-    l1DataGasPrice: BigInt(result.data_gas_price || "0"),
-    overallFee: BigInt(result.overall_fee || "0"),
-  };
+  throw lastError || new Error("Fee estimation failed");
 }
 
 /**
@@ -359,15 +458,21 @@ export function buildResourceBoundsFromEstimate(
   // Use BigInt math to avoid precision loss on large values
   const multiplierBp = BigInt(Math.round(safetyMultiplier * 10000));
   const mul = (v: bigint) => (v * multiplierBp + 9999n) / 10000n; // ceiling division
+  const minOneWhenNonZero = (v: bigint) => (v > 0n ? (v < 1n ? 1n : v) : 0n);
+  const amountWithSafety = (v: bigint) => minOneWhenNonZero(mul(v));
+  const priceWithSafety = (v: bigint) => minOneWhenNonZero(v * 2n);
   return {
-    l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
+    l1_gas: {
+      max_amount: amountWithSafety(estimate.l1Gas),
+      max_price_per_unit: priceWithSafety(estimate.l1GasPrice),
+    },
     l2_gas: {
-      max_amount: mul(estimate.l2Gas),
-      max_price_per_unit: estimate.l2GasPrice * 2n,
+      max_amount: amountWithSafety(estimate.l2Gas),
+      max_price_per_unit: priceWithSafety(estimate.l2GasPrice),
     },
     l1_data_gas: {
-      max_amount: mul(estimate.l1DataGas),
-      max_price_per_unit: estimate.l1DataGasPrice * 2n,
+      max_amount: amountWithSafety(estimate.l1DataGas),
+      max_price_per_unit: priceWithSafety(estimate.l1DataGasPrice),
     },
   };
 }
@@ -557,6 +662,7 @@ export async function requestWardApproval(
   params: WardApprovalParams,
   onStatusChange?: (status: string) => void,
   signal?: AbortSignal,
+  options?: WardApprovalRequestOptions,
 ): Promise<WardApprovalResult> {
   const normalizedWard = normalizeAddress(params.wardAddress);
   const normalizedGuardian = normalizeAddress(params.guardianAddress);
@@ -580,7 +686,7 @@ export async function requestWardApproval(
       needs_ward_2fa: params.needsWard2fa,
       needs_guardian: params.needsGuardian,
       needs_guardian_2fa: params.needsGuardian2fa,
-      status: "pending_ward_sig",
+      status: options?.initialStatus || "pending_ward_sig",
     });
   } catch (err: any) {
     return { approved: false, error: `Failed to submit ward approval: ${err.message}` };
@@ -589,6 +695,18 @@ export async function requestWardApproval(
   const requestId = Array.isArray(rows) ? rows[0]?.id : (rows as any)?.id;
   if (!requestId) {
     return { approved: false, error: "Failed to get ward approval request ID" };
+  }
+
+  if (options?.onRequestCreated) {
+    try {
+      const inserted = Array.isArray(rows) ? rows[0] : (rows as any);
+      await options.onRequestCreated(inserted as WardApprovalRequest);
+    } catch (err: any) {
+      return {
+        approved: false,
+        error: `Failed to process ward request: ${err?.message || String(err)}`,
+      };
+    }
   }
 
   onStatusChange?.("Waiting for ward mobile signing...");

@@ -15,6 +15,7 @@ import {
 import type {
   WardApprovalNeeds,
   WardApprovalParams,
+  WardApprovalRequest,
   WardApprovalResult,
 } from "@cloak-wallet/sdk";
 import { getSupabaseConfig } from "./supabase-config";
@@ -47,8 +48,14 @@ export interface ExtensionWardApprovalParams extends WardApprovalParams {
   signal?: AbortSignal;
 }
 
+export interface ExtensionWardApprovalOptions {
+  initialStatus?: "pending_ward_sig" | "pending_guardian";
+  onRequestCreated?: (request: WardApprovalRequest) => Promise<void> | void;
+}
+
 export async function requestWardApproval(
   params: ExtensionWardApprovalParams,
+  options?: ExtensionWardApprovalOptions,
 ): Promise<WardApprovalResult> {
   const client = await getSdkClient();
   return sdkRequestWardApproval(
@@ -56,5 +63,6 @@ export async function requestWardApproval(
     params,
     params.onStatusChange,
     params.signal,
+    options,
   );
 }

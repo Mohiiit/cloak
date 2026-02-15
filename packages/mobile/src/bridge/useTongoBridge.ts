@@ -5,13 +5,14 @@ import { useState, useEffect, useCallback } from "react";
 import { getTongoBridge, TongoBridgeRef } from "./TongoBridge";
 import { isMockMode } from "../testing/runtimeConfig";
 import { MockBridgeClient } from "../testing/mocks/MockBridgeClient";
+import { DEFAULT_RPC } from "@cloak-wallet/sdk";
 import type {
   BridgeClient,
   BridgeInitParams,
   TongoState,
 } from "../testing/interfaces/BridgeClient";
 
-const SEPOLIA_RPC = "https://rpc.starknet-testnet.lava.build";
+const SEPOLIA_RPC = DEFAULT_RPC.sepolia;
 
 class LiveBridgeClient implements BridgeClient {
   readonly isReady = true;

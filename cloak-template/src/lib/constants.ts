@@ -1,5 +1,5 @@
 export const RECIPIENT_TONGO_ADDRESS =
-  "biHzaYuUksyfVvVzXawtNyxW2BXfzjtc6zMPn5LdJmzU";
+  "uB7oESBnY4JPQEVzhLQKwJgn8bZvgHghaDJMd4EsXUW5";
 
 export const COFFEE_TIERS = [
   { id: 1, label: "1 Coffee", units: "1", strk: "0.05", emoji: "\u2615" },

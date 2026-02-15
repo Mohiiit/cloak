@@ -3,27 +3,24 @@
  *
  * ALL on-chain transactions (popup messages + dApp RPC) go through this router.
  * It checks ward status and 2FA status, routing accordingly:
- *   1. Ward account (no ward 2FA) → extension signs with ward key, sends to guardian
- *   2. Ward account (with ward 2FA) → full mobile pipeline (ward mobile + guardian)
- *   3. 2FA enabled  → request2FAApproval (Supabase + mobile signing)
- *   4. Otherwise    → direct SDK execution
+ *   1. Ward account →
+ *      - ward 2FA OFF: sign locally in extension, then guardian stage (if required)
+ *      - ward 2FA ON: ward-mobile stage first, then guardian stage (if required)
+ *   2. 2FA enabled  → request2FAApproval (Supabase + mobile signing)
+ *   3. Otherwise    → direct SDK execution
  *
- * Gas: Uses dynamic fee estimation (starknet_estimateFee + SKIP_VALIDATE).
- * Retries on gas errors by re-estimating with a higher safety multiplier.
+ * Gas estimation/retry for ward + guardian handoff is handled by SDK helpers.
  */
 
 import {
   CloakClient,
-  signHash,
-  estimateWardInvokeFee,
-  buildResourceBoundsFromEstimate,
-  parseInsufficientGasError,
-  serializeResourceBounds,
   serializeCalls,
-  SupabaseLite,
-  normalizeAddress,
   formatWardAmount,
   getProvider,
+  estimateWardInvokeFee,
+  buildResourceBoundsFromEstimate,
+  serializeResourceBounds,
+  signHash,
 } from "@cloak-wallet/sdk";
 import type { TokenKey, WardApprovalResult } from "@cloak-wallet/sdk";
 import { Account, hash, num, transaction } from "starknet";
@@ -33,7 +30,6 @@ import {
   getWardApprovalNeeds,
   requestWardApproval,
 } from "@/shared/ward-approval";
-import { getSupabaseConfig } from "@/shared/supabase-config";
 
 type Action = "fund" | "transfer" | "withdraw" | "rollover";
 
@@ -41,6 +37,13 @@ interface TransactionOpts {
   amount?: string;
   recipient?: string;
   onStatusChange?: (status: string) => void;
+}
+
+interface LocalWardEnvelope {
+  wardSigJson: string;
+  nonce: string;
+  resourceBoundsJson: string;
+  txHash: string;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -58,80 +61,21 @@ function notifyComplete(approved: boolean, txHash?: string) {
     .catch(() => {});
 }
 
-// ─── Ward signing from extension (no ward 2FA) ──────────────────────────────
-
-const WARD_POLL_INTERVAL = 2000;
-const WARD_TIMEOUT = 10 * 60 * 1000;
-const MAX_GAS_RETRIES = 2;
-
-/**
- * When ward 2FA is disabled, the extension signs with the ward key directly,
- * inserts request as pending_guardian, and polls for guardian completion.
- * Auto-retries on gas errors by re-estimating dynamically.
- */
-async function signAndRequestGuardian(
-  wallet: { starkAddress: string; privateKey: string },
+async function prepareLocalWardEnvelope(
+  wardAddress: string,
+  wardPrivateKey: string,
   calls: any[],
-  guardianAddress: string,
-  action: string,
-  token: string,
-  amount: string | null,
-  recipient: string | null,
-  needsGuardian2fa: boolean,
-  onStatusChange?: (s: string) => void,
-): Promise<WardApprovalResult> {
-  let safetyMultiplier = 1.5;
-
-  for (let attempt = 0; attempt <= MAX_GAS_RETRIES; attempt++) {
-    const result = await signAndSubmitWardRequest(
-      wallet, calls, guardianAddress, action, token,
-      amount, recipient, needsGuardian2fa, safetyMultiplier, onStatusChange,
-    );
-
-    // Check if it was a gas error that we can retry
-    if (!result.approved && result.error) {
-      const gasInfo = parseInsufficientGasError(result.error);
-      if (gasInfo && attempt < MAX_GAS_RETRIES) {
-        safetyMultiplier = gasInfo.suggestedMultiplier;
-        notifyStatus(
-          `Gas too low (needed ${gasInfo.actualUsed}, had ${gasInfo.maxAmount}). Retrying (${attempt + 1}/${MAX_GAS_RETRIES})...`,
-          onStatusChange,
-        );
-        continue;
-      }
-    }
-    return result;
-  }
-
-  return { approved: false, error: "Max gas retries exceeded" };
-}
-
-async function signAndSubmitWardRequest(
-  wallet: { starkAddress: string; privateKey: string },
-  calls: any[],
-  guardianAddress: string,
-  action: string,
-  token: string,
-  amount: string | null,
-  recipient: string | null,
-  needsGuardian2fa: boolean,
-  safetyMultiplier: number,
-  onStatusChange?: (s: string) => void,
-): Promise<WardApprovalResult> {
+): Promise<LocalWardEnvelope> {
   const provider = getProvider();
-
-  notifyStatus("Estimating gas...", onStatusChange);
-
-  // 1. Dynamic fee estimation with SKIP_VALIDATE
-  const estimate = await estimateWardInvokeFee(provider, wallet.starkAddress, calls);
-  const resourceBounds = buildResourceBoundsFromEstimate(estimate, safetyMultiplier);
-  const nonce = await provider.getNonceForAddress(wallet.starkAddress);
-
-  // 2. Compute tx hash
-  const chainId = await provider.getChainId();
+  const [chainId, nonce, estimate] = await Promise.all([
+    provider.getChainId(),
+    provider.getNonceForAddress(wardAddress),
+    estimateWardInvokeFee(provider as any, wardAddress, calls),
+  ]);
+  const resourceBounds = buildResourceBoundsFromEstimate(estimate, 1.5);
   const compiledCalldata = transaction.getExecuteCalldata(calls, "1");
   const txHash = num.toHex(hash.calculateInvokeTransactionHash({
-    senderAddress: wallet.starkAddress,
+    senderAddress: wardAddress,
     version: "0x3",
     compiledCalldata,
     chainId,
@@ -143,88 +87,13 @@ async function signAndSubmitWardRequest(
     tip: 0,
     paymasterData: [],
   }));
-
-  // 3. Sign with ward key
-  const wardSig = signHash(txHash, wallet.privateKey);
-
-  // 4. Insert request as pending_guardian (skip ward mobile)
-  const rbJson = serializeResourceBounds(resourceBounds);
-  const callsJson = serializeCalls(calls);
-  const { url, key } = await getSupabaseConfig();
-  const sb = new SupabaseLite(url, key);
-
-  const normalizedWard = normalizeAddress(wallet.starkAddress);
-  const normalizedGuardian = normalizeAddress(guardianAddress);
-
-  notifyStatus("Waiting for guardian approval...", onStatusChange);
-
-  // Format amount for human-readable display on guardian side
-  const formattedAmount = formatWardAmount(amount, token, action);
-
-  let rows: any[];
-  try {
-    rows = await sb.insert("ward_approval_requests", {
-      ward_address: normalizedWard,
-      guardian_address: normalizedGuardian,
-      action,
-      token,
-      amount: formattedAmount,
-      recipient,
-      calls_json: callsJson,
-      nonce: nonce.toString(),
-      resource_bounds_json: rbJson,
-      tx_hash: txHash,
-      ward_sig_json: JSON.stringify(wardSig),
-      needs_ward_2fa: false,
-      needs_guardian: true,
-      needs_guardian_2fa: needsGuardian2fa,
-      status: "pending_guardian",
-      responded_at: new Date().toISOString(),
-    });
-  } catch (err: any) {
-    return { approved: false, error: `Failed to submit ward request: ${err.message}` };
-  }
-
-  const requestId = Array.isArray(rows) ? rows[0]?.id : (rows as any)?.id;
-  if (!requestId) {
-    return { approved: false, error: "Failed to get ward request ID" };
-  }
-
-  // 5. Poll for guardian completion
-  const startTime = Date.now();
-  return new Promise<WardApprovalResult>((resolve) => {
-    const poll = async () => {
-      if (Date.now() - startTime > WARD_TIMEOUT) {
-        resolve({ approved: false, error: "Guardian approval timed out" });
-        return;
-      }
-      try {
-        const data = await sb.select(
-          "ward_approval_requests",
-          `id=eq.${requestId}`,
-        );
-        const req = data?.[0];
-        if (!req) {
-          setTimeout(poll, WARD_POLL_INTERVAL);
-          return;
-        }
-        if (req.status === "approved" && req.final_tx_hash) {
-          notifyStatus("Guardian approved!", onStatusChange);
-          resolve({ approved: true, txHash: req.final_tx_hash });
-        } else if (req.status === "rejected") {
-          resolve({ approved: false, error: "Guardian rejected the request" });
-        } else if (req.status === "gas_error") {
-          // Guardian hit a gas error — return it so we can retry with higher bounds
-          resolve({ approved: false, error: req.error_message || "Insufficient gas" });
-        } else {
-          setTimeout(poll, WARD_POLL_INTERVAL);
-        }
-      } catch {
-        setTimeout(poll, WARD_POLL_INTERVAL);
-      }
-    };
-    poll();
-  });
+  const wardSig = signHash(txHash, wardPrivateKey);
+  return {
+    wardSigJson: JSON.stringify(wardSig),
+    nonce: nonce.toString(),
+    resourceBoundsJson: serializeResourceBounds(resourceBounds),
+    txHash,
+  };
 }
 
 // ─── Main routing functions ──────────────────────────────────────────────────
@@ -262,54 +131,48 @@ export async function routeTransaction(
   const isWard = await checkIfWardAccount(wallet.starkAddress);
   if (isWard) {
     const wardNeeds = await getWardApprovalNeeds(wallet.starkAddress);
-    if (wardNeeds) {
-      if (wardNeeds.wardHas2fa) {
-        // Ward 2FA enabled → full mobile pipeline (ward mobile signs with both keys)
-        const rawAmount = opts?.amount?.toString() || null;
-        const wardResult = await requestWardApproval({
-          wardAddress: wallet.starkAddress,
-          guardianAddress: wardNeeds.guardianAddress,
-          action,
-          token,
-          amount: formatWardAmount(rawAmount, token, action),
-          recipient: opts?.recipient || null,
-          callsJson,
-          wardSigJson: "[]",
-          nonce: "",
-          resourceBoundsJson: "{}",
-          txHash: "",
-          needsWard2fa: true,
-          needsGuardian: wardNeeds.needsGuardian,
-          needsGuardian2fa: wardNeeds.guardianHas2fa,
-          onStatusChange: (s) => notifyStatus(s, opts?.onStatusChange),
-        });
-        notifyComplete(wardResult.approved, wardResult.txHash);
-        if (wardResult.approved && wardResult.txHash) {
-          return { txHash: wardResult.txHash };
-        }
-        throw new Error(wardResult.error || "Ward approval failed");
-      }
+    if (!wardNeeds) throw new Error("Failed to read ward approval requirements from chain");
 
-      if (wardNeeds.needsGuardian) {
-        // No ward 2FA but guardian needed → extension signs, sends to guardian
-        const wardResult = await signAndRequestGuardian(
-          wallet,
-          calls,
-          wardNeeds.guardianAddress,
-          action,
-          token,
-          opts?.amount?.toString() || null,
-          opts?.recipient || null,
-          wardNeeds.guardianHas2fa,
-          opts?.onStatusChange,
-        );
-        notifyComplete(wardResult.approved, wardResult.txHash);
-        if (wardResult.approved && wardResult.txHash) {
-          return { txHash: wardResult.txHash };
-        }
-        throw new Error(wardResult.error || "Ward approval failed");
-      }
+    // Ward + no ward-2FA: sign locally in extension first.
+    // If guardian is not required, execute directly.
+    const needsLocalWardSignature = !wardNeeds.wardHas2fa;
+    if (needsLocalWardSignature && !wardNeeds.needsGuardian) {
+      if (action === "fund") return acct.fund(BigInt(opts?.amount!));
+      if (action === "transfer") return acct.transfer(opts?.recipient!, BigInt(opts?.amount!));
+      if (action === "withdraw") return acct.withdraw(BigInt(opts?.amount!));
+      return acct.rollover();
     }
+
+    const rawAmount = opts?.amount?.toString() || null;
+    const localWardEnvelope = needsLocalWardSignature
+      ? await prepareLocalWardEnvelope(wallet.starkAddress, wallet.privateKey, calls)
+      : null;
+
+    const wardResult = await requestWardApproval(
+      {
+        wardAddress: wallet.starkAddress,
+        guardianAddress: wardNeeds.guardianAddress,
+        action,
+        token,
+        amount: formatWardAmount(rawAmount, token, action),
+        recipient: opts?.recipient || null,
+        callsJson,
+        wardSigJson: localWardEnvelope?.wardSigJson || "[]",
+        nonce: localWardEnvelope?.nonce || "",
+        resourceBoundsJson: localWardEnvelope?.resourceBoundsJson || "{}",
+        txHash: localWardEnvelope?.txHash || "",
+        needsWard2fa: wardNeeds.wardHas2fa,
+        needsGuardian: wardNeeds.needsGuardian,
+        needsGuardian2fa: wardNeeds.guardianHas2fa,
+        onStatusChange: (s) => notifyStatus(s, opts?.onStatusChange),
+      },
+      needsLocalWardSignature ? { initialStatus: "pending_guardian" } : undefined,
+    );
+    notifyComplete(wardResult.approved, wardResult.txHash);
+    if (wardResult.approved && wardResult.txHash) {
+      return { txHash: wardResult.txHash };
+    }
+    throw new Error(wardResult.error || "Ward approval failed");
   }
 
   // 3. 2FA check
@@ -360,53 +223,49 @@ export async function routeRawCalls(
   const isWard = await checkIfWardAccount(wallet.starkAddress);
   if (isWard) {
     const wardNeeds = await getWardApprovalNeeds(wallet.starkAddress);
-    if (wardNeeds) {
-      if (wardNeeds.wardHas2fa) {
-        // Ward 2FA → full mobile pipeline
-        const wardResult = await requestWardApproval({
-          wardAddress: wallet.starkAddress,
-          guardianAddress: wardNeeds.guardianAddress,
-          action: "invoke",
-          token: "STRK",
-          amount: null,
-          recipient: null,
-          callsJson,
-          wardSigJson: "[]",
-          nonce: "",
-          resourceBoundsJson: "{}",
-          txHash: "",
-          needsWard2fa: true,
-          needsGuardian: wardNeeds.needsGuardian,
-          needsGuardian2fa: wardNeeds.guardianHas2fa,
-          onStatusChange: (s) => notifyStatus(s, opts?.onStatusChange),
-        });
-        notifyComplete(wardResult.approved, wardResult.txHash);
-        if (wardResult.approved && wardResult.txHash) {
-          return { transaction_hash: wardResult.txHash };
-        }
-        throw new Error(wardResult.error || "Ward approval failed");
-      }
+    if (!wardNeeds) throw new Error("Failed to read ward approval requirements from chain");
 
-      if (wardNeeds.needsGuardian) {
-        // No ward 2FA → extension signs, sends to guardian
-        const wardResult = await signAndRequestGuardian(
-          wallet,
-          calls,
-          wardNeeds.guardianAddress,
-          "invoke",
-          "STRK",
-          null,
-          null,
-          wardNeeds.guardianHas2fa,
-          opts?.onStatusChange,
-        );
-        notifyComplete(wardResult.approved, wardResult.txHash);
-        if (wardResult.approved && wardResult.txHash) {
-          return { transaction_hash: wardResult.txHash };
-        }
-        throw new Error(wardResult.error || "Ward approval failed");
-      }
+    const needsLocalWardSignature = !wardNeeds.wardHas2fa;
+    if (needsLocalWardSignature && !wardNeeds.needsGuardian) {
+      const provider = getProvider();
+      const account = new Account({
+        provider,
+        address: wallet.starkAddress,
+        signer: wallet.privateKey,
+      });
+      const result = await account.execute(calls);
+      return { transaction_hash: result.transaction_hash };
     }
+
+    const localWardEnvelope = needsLocalWardSignature
+      ? await prepareLocalWardEnvelope(wallet.starkAddress, wallet.privateKey, calls)
+      : null;
+
+    const wardResult = await requestWardApproval(
+      {
+        wardAddress: wallet.starkAddress,
+        guardianAddress: wardNeeds.guardianAddress,
+        action: "invoke",
+        token: "STRK",
+        amount: null,
+        recipient: null,
+        callsJson,
+        wardSigJson: localWardEnvelope?.wardSigJson || "[]",
+        nonce: localWardEnvelope?.nonce || "",
+        resourceBoundsJson: localWardEnvelope?.resourceBoundsJson || "{}",
+        txHash: localWardEnvelope?.txHash || "",
+        needsWard2fa: wardNeeds.wardHas2fa,
+        needsGuardian: wardNeeds.needsGuardian,
+        needsGuardian2fa: wardNeeds.guardianHas2fa,
+        onStatusChange: (s) => notifyStatus(s, opts?.onStatusChange),
+      },
+      needsLocalWardSignature ? { initialStatus: "pending_guardian" } : undefined,
+    );
+    notifyComplete(wardResult.approved, wardResult.txHash);
+    if (wardResult.approved && wardResult.txHash) {
+      return { transaction_hash: wardResult.txHash };
+    }
+    throw new Error(wardResult.error || "Ward approval failed");
   }
 
   // 2FA check
