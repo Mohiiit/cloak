@@ -53,5 +53,7 @@
 	<false/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Cloak uses Face ID to authenticate transactions</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Cloak uses the camera to scan ward invite QR codes during onboarding</string>
 </dict>
 </plist>

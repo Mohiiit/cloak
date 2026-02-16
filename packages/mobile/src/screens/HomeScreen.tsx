@@ -14,10 +14,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ShieldAlert, Info } from "lucide-react-native";
+import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ShieldAlert, Info, Camera, ClipboardPaste } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
@@ -26,6 +27,7 @@ import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
+import WebView from "react-native-webview";
 
 type WardInvitePayload = {
   type: string;
@@ -33,6 +35,12 @@ type WardInvitePayload = {
   wardPrivateKey: string;
   guardianAddress?: string;
   network?: string;
+  pseudoName?: string;
+  initialFundingAmountWei?: string;
+};
+
+type WardImportScannerState = {
+  status: string;
 };
 
 function parseWardInvitePayload(raw: string): WardInvitePayload {
@@ -76,6 +84,261 @@ function parseWardInvitePayload(raw: string): WardInvitePayload {
   throw new Error("Invalid ward invite format");
 }
 
+function validateWardInvitePayload(invite: WardInvitePayload): void {
+  if (invite.type !== "cloak_ward_invite") {
+    throw new Error("Not a cloak ward invite payload");
+  }
+
+  if (!invite.wardAddress || !invite.wardPrivateKey) {
+    throw new Error("Invite is missing ward address or private key");
+  }
+
+  if (!invite.wardAddress.startsWith("0x") || !invite.wardPrivateKey.startsWith("0x")) {
+    throw new Error("Invite contains invalid address or private key format");
+  }
+}
+
+function buildWardInfoCacheFromInvite(invite: WardInvitePayload) {
+  return {
+    guardianAddress: invite.guardianAddress || "",
+    guardianPublicKey: "0x0",
+    isGuardian2faEnabled: false,
+    is2faEnabled: false,
+    isFrozen: false,
+    pseudoName: invite.pseudoName?.trim() || "",
+    initialFundingAmountWei: invite.initialFundingAmountWei || "",
+    spendingLimitPerTx: "0",
+    requireGuardianForAll: true,
+    wardType: "imported",
+  };
+}
+
+const WARD_WELCOME_SCANNER_HTML = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: stretch;
+      justify-content: flex-start;
+      padding: 12px;
+    }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+    .title { font-size: 16px; font-weight: 600; margin: 0; }
+    .muted { color: #94a3b8; font-size: 12px; margin-top: 2px; }
+    .videoWrap { position: relative; width: 100%; background: #020617; border-radius: 12px; overflow: hidden; aspect-ratio: 4 / 3; display: flex; align-items: stretch; justify-content: stretch; }
+    video, canvas { width: 100%; height: 100%; display: block; }
+    .inputWrap { margin-top: 8px; }
+    input[type=file] { width: 100%; color: #e2e8f0; }
+    button { background: #2563eb; color: #fff; border: 0; border-radius: 10px; padding: 10px 12px; font-weight: 600; width: 100%; }
+    button:disabled { opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <p class="title">Scan Ward Invite</p>
+    <p class="muted">Use your camera or pick a QR image</p>
+  </div>
+  <div class="card">
+    <div class="videoWrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas" hidden></canvas>
+    </div>
+  </div>
+  <div class="card inputWrap">
+    <input id="qr-file" type="file" accept="image/*" capture="environment" />
+  </div>
+  <div class="card inputWrap">
+    <button id="retry" type="button">Retry Camera</button>
+  </div>
+  <div class="card inputWrap" id="status">Initializing camera…</div>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script>
+    const statusNode = document.getElementById("status");
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const context = canvas.getContext("2d");
+    const retryBtn = document.getElementById("retry");
+    const fileInput = document.getElementById("qr-file");
+    let stream = null;
+    let rafId = null;
+    let scanning = false;
+
+    function post(type, data) {
+      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type, data }));
+    }
+
+    function updateStatus(text) {
+      statusNode.textContent = text;
+      post("status", text);
+    }
+
+    async function startBarcodeDetector() {
+      if (typeof BarcodeDetector === "undefined") {
+        return false;
+      }
+      try {
+        const detector = new BarcodeDetector({ formats: ["qr_code"] });
+        return detector;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function decodeImageWithJsqr(image) {
+      if (!window.jsQR) return null;
+      const width = image.width;
+      const height = image.height;
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(image, 0, 0, width, height);
+      const imageData = context.getImageData(0, 0, width, height);
+      const code = window.jsQR(imageData.data, width, height, { inversionAttempts: "attemptBoth" });
+      if (code && code.data) {
+        return code.data;
+      }
+      return null;
+    }
+
+    async function handleScanResult(raw) {
+      const text = (raw || "").trim();
+      if (!text) return false;
+      post("result", text);
+      return true;
+    }
+
+    async function startLoop() {
+      if (scanning) return;
+      scanning = true;
+      updateStatus("Starting camera…");
+      const detector = await startBarcodeDetector();
+      let noQrCount = 0;
+
+      while (scanning) {
+        if (video.readyState >= 2) {
+          try {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            let text = null;
+
+            if (detector && detector.detect) {
+              const detections = await detector.detect(imageData);
+              if (detections && detections.length > 0 && detections[0].rawValue) {
+                text = detections[0].rawValue;
+              }
+            }
+
+            if (!text && window.jsQR) {
+              const code = window.jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: "attemptBoth" });
+              if (code && code.data) {
+                text = code.data;
+              }
+            }
+
+            if (text) {
+              const accepted = await handleScanResult(text);
+              if (accepted) {
+                updateStatus("Captured invite");
+                scanning = false;
+                stop();
+                break;
+              }
+            } else {
+              noQrCount += 1;
+              if (noQrCount === 60) {
+                noQrCount = 0;
+                updateStatus("Align QR code inside camera view");
+              }
+            }
+          } catch (error) {
+            post("error", error && error.message ? error.message : "scan_failed");
+          }
+        }
+        rafId = requestAnimationFrame(startLoop);
+        return;
+      }
+    }
+
+    async function stop() {
+      scanning = false;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        updateStatus("Camera not supported in this view.");
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+        });
+        video.srcObject = stream;
+        await video.play();
+        updateStatus("Camera ready");
+        await startLoop();
+      } catch (error) {
+        updateStatus("Unable to start camera");
+        post("error", error && error.message ? error.message : "camera_error");
+      }
+    }
+
+    retryBtn.addEventListener("click", async () => {
+      stop();
+      updateStatus("Restarting camera…");
+      await startCamera();
+    });
+
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const image = new Image();
+      const reader = new FileReader();
+      reader.onload = () => {
+        image.onload = async () => {
+          try {
+            const result = decodeImageWithJsqr(image);
+            if (result) {
+              const accepted = await handleScanResult(result);
+              if (accepted) {
+                updateStatus("Captured invite");
+              } else {
+                updateStatus("No QR detected");
+              }
+            } else {
+              updateStatus("No QR detected");
+            }
+          } catch (error) {
+            post("error", error && error.message ? error.message : "file_decode_failed");
+          }
+        };
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    startCamera();
+  </script>
+</body>
+</html>`;
+
 export default function HomeScreen({ navigation }: any) {
   const wallet = useWallet();
   const ward = useWardContext();
@@ -91,6 +354,10 @@ export default function HomeScreen({ navigation }: any) {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [showWardInfo, setShowWardInfo] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState<{ txHash: string; amount: string } | null>(null);
+  const [wardImportScanVisible, setWardImportScanVisible] = useState(false);
+  const [wardImportScannerState, setWardImportScannerState] = useState<WardImportScannerState>({
+    status: "Tap scan and grant camera permission.",
+  });
 
   useEffect(() => {
     AsyncStorage.getItem("cloak_balance_hidden").then((v) => {
@@ -105,6 +372,86 @@ export default function HomeScreen({ navigation }: any) {
     const next = !balanceHidden;
     setBalanceHidden(next);
     AsyncStorage.setItem("cloak_balance_hidden", next ? "true" : "false");
+  };
+
+  const importWardAccountFromPayload = async (payloadRaw: string) => {
+    const invite = parseWardInvitePayload(payloadRaw);
+    validateWardInvitePayload(invite);
+    await AsyncStorage.setItem("cloak_is_ward", "true");
+    if (invite.guardianAddress) {
+      await AsyncStorage.setItem("cloak_guardian_address", invite.guardianAddress);
+    }
+    await AsyncStorage.setItem("cloak_ward_info_cache", JSON.stringify(buildWardInfoCacheFromInvite(invite)));
+    await wallet.importWallet(invite.wardPrivateKey, invite.wardAddress);
+  };
+
+  const importWardAccount = async (payloadRaw: string, source: "paste" | "scan") => {
+    setIsImporting(true);
+    try {
+      await importWardAccountFromPayload(payloadRaw);
+      setWardInviteJson("");
+      setWardImportScannerState({
+        status: source === "scan" ? "Ward imported from scan." : "Ward imported from paste.",
+      });
+      setWardImportScanVisible(false);
+      modal.showSuccess(
+        "Ward Imported",
+        source === "scan"
+          ? "Ward invite QR successfully imported."
+          : "Ward account is now managed by a guardian.",
+      );
+    } catch (e: any) {
+      setWardImportScannerState({
+        status: e?.message || "Failed to import invite.",
+      });
+      throw e;
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleWardScanMessage = async (event: any) => {
+    const raw = event?.nativeEvent?.data as string | undefined;
+    if (!raw) return;
+
+    let parsed: { type?: string; data?: string } = {};
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      setWardImportScannerState((prev) => ({
+        ...prev,
+        status: "Unable to read scanner event.",
+      }));
+      return;
+    }
+
+    if (parsed.type === "result" && parsed.data) {
+      setWardImportScannerState((prev) => ({
+        ...prev,
+        status: "Scanned ward invite. Importing...",
+      }));
+      try {
+        await importWardAccount(parsed.data, "scan");
+      } catch (e: any) {
+        setWardImportScannerState((prev) => ({ ...prev, status: e.message || "Scan import failed." }));
+      }
+      return;
+    }
+
+    if (parsed.type === "status" && parsed.data) {
+      setWardImportScannerState((prev) => ({
+        ...prev,
+        status: parsed.data || "Scanner status update.",
+      }));
+      return;
+    }
+
+    if (parsed.type === "error" && parsed.data) {
+      setWardImportScannerState((prev) => ({
+        ...prev,
+        status: parsed.data || "Scanner error.",
+      }));
+    }
   };
 
   if (wallet.isLoading) {
@@ -124,6 +471,46 @@ export default function HomeScreen({ navigation }: any) {
       >
         <ScrollView style={styles.container} contentContainerStyle={styles.center} keyboardShouldPersistTaps="handled">
           {modal.ModalComponent}
+          <Modal
+            visible={wardImportScanVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setWardImportScanVisible(false)}
+          >
+            <View style={styles.scanModalOverlay}>
+              <View style={styles.scanModalCard}>
+                <Text style={styles.scanModalTitle}>Scan Ward Invite</Text>
+                <Text style={styles.scanModalStatusLabel}>Use your camera or pick a QR image</Text>
+                <View style={styles.scanWebViewWrap}>
+                  <WebView
+                    originWhitelist={["*"]}
+                    source={{ html: WARD_WELCOME_SCANNER_HTML }}
+                    style={styles.scanWebView}
+                    onMessage={handleWardScanMessage}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    startInLoadingState
+                    allowsInlineMediaPlayback
+                  />
+                </View>
+                <Text
+                  {...testProps(testIDs.home.importWardScanStatus)}
+                  style={styles.scanStatus}
+                  numberOfLines={2}
+                >
+                  {wardImportScannerState.status}
+                </Text>
+                <TouchableOpacity
+                  {...testProps(testIDs.home.importWardScanClose)}
+                  style={styles.scanCloseBtn}
+                  onPress={() => setWardImportScanVisible(false)}
+                >
+                  <Text style={styles.scanCloseText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
           <CloakIcon size={64} />
           <Text style={styles.heroTitle}>Cloak</Text>
           <Text style={styles.heroSubtitle}>
@@ -250,41 +637,44 @@ export default function HomeScreen({ navigation }: any) {
                 multiline
                 numberOfLines={4}
               />
+              <View style={styles.wardImportActions}>
+                <TouchableOpacity
+                  {...testProps(testIDs.home.importWardPaste)}
+                  style={styles.wardImportActionBtn}
+                  disabled={isImporting}
+                  onPress={async () => {
+                    try {
+                      const clipboardText = await Clipboard.getString();
+                      await importWardAccount(clipboardText, "paste");
+                    } catch (e: any) {
+                      modal.showError("Import Failed", e.message || "Invalid clipboard invite", e.message || "Invalid clipboard invite");
+                    }
+                  }}
+                >
+                  <ClipboardPaste size={16} color={colors.primary} />
+                  <Text style={styles.wardImportActionText}>Paste from Clipboard</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  {...testProps(testIDs.home.importWardScan)}
+                  style={[styles.wardImportActionBtn, { borderColor: "rgba(245, 158, 11, 0.4)" }]}
+                  disabled={isImporting}
+                  onPress={() => {
+                    setWardImportScannerState({
+                      status: "Starting scanner…",
+                    });
+                    setWardImportScanVisible(true);
+                  }}
+                >
+                  <Camera size={16} color={colors.warning} />
+                  <Text style={[styles.wardImportActionText, { color: colors.warning }]}>Scan with Camera</Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 {...testProps(testIDs.onboarding.importWardSubmit)}
                 style={[styles.createButton, { backgroundColor: colors.warning }, (!wardInviteJson.trim() || isImporting) && { opacity: 0.4 }]}
                 disabled={!wardInviteJson.trim() || isImporting}
                 onPress={async () => {
-                  setIsImporting(true);
-                  try {
-                    const invite = parseWardInvitePayload(wardInviteJson);
-                    if (invite.type !== "cloak_ward_invite" || !invite.wardAddress || !invite.wardPrivateKey) {
-                      throw new Error("Invalid ward invite format");
-                    }
-                    if (invite.guardianAddress) {
-                      await AsyncStorage.setItem("cloak_guardian_address", invite.guardianAddress);
-                    }
-                    await AsyncStorage.setItem("cloak_is_ward", "true");
-                    await AsyncStorage.setItem(
-                      "cloak_ward_info_cache",
-                      JSON.stringify({
-                        guardianAddress: invite.guardianAddress || "",
-                        guardianPublicKey: "0x0",
-                        isGuardian2faEnabled: false,
-                        is2faEnabled: false,
-                        isFrozen: false,
-                        spendingLimitPerTx: "0",
-                        requireGuardianForAll: true,
-                      }),
-                    );
-                    await wallet.importWallet(invite.wardPrivateKey, invite.wardAddress);
-                    modal.showSuccess("Ward Imported", "This account is managed by a guardian.");
-                    setWardInviteJson("");
-                  } catch (e: any) {
-                    modal.showError("Import Failed", e.message || "Invalid invite JSON", e.message);
-                  } finally {
-                    setIsImporting(false);
-                  }
+                  await importWardAccount(wardInviteJson, "paste");
                 }}
               >
                 {isImporting ? (
@@ -719,6 +1109,84 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: "monospace",
     marginBottom: spacing.sm,
+  },
+  wardImportActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  wardImportActionBtn: {
+    flex: 1,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: "rgba(14, 165, 233, 0.35)",
+    backgroundColor: "rgba(14, 165, 233, 0.08)",
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  wardImportActionText: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: "600",
+  },
+  scanModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(2, 6, 23, 0.88)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  scanModalCard: {
+    width: "100%",
+    maxWidth: 380,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  scanModalTitle: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    marginBottom: spacing.xs,
+  },
+  scanModalStatusLabel: {
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    marginBottom: spacing.sm,
+  },
+  scanWebViewWrap: {
+    borderRadius: borderRadius.md,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    height: 320,
+    backgroundColor: "#020617",
+    marginBottom: spacing.sm,
+  },
+  scanWebView: {
+    flex: 1,
+  },
+  scanStatus: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    minHeight: 32,
+  },
+  scanCloseBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  scanCloseText: {
+    color: "#fff",
+    fontSize: fontSize.sm,
+    fontWeight: "600",
   },
 
   // Balance Card

@@ -60,8 +60,53 @@ const STORAGE_KEY_GUARDIAN_ADDR = "cloak_guardian_address";
 const STORAGE_KEY_WARD_INFO = "cloak_ward_info_cache";
 const STORAGE_KEY_PARTIAL_WARD = "cloak_partial_ward";
 const MAX_GAS_RETRIES = 2;
+const WARD_STRK_DECIMALS = 18n;
+const DEFAULT_WARD_FUNDING_WEI = "0x" + (5n * 10n ** (WARD_STRK_DECIMALS - 1n)).toString(16);
 
 const WARD_CREATION_TOTAL_STEPS = 6;
+
+function formatWeiToStrk(wei: string): string {
+  try {
+    const value = BigInt(wei);
+    const unit = 10n ** WARD_STRK_DECIMALS;
+    const whole = value / unit;
+    const fraction = value % unit;
+    const fractionText = fraction
+      .toString()
+      .padStart(Number(WARD_STRK_DECIMALS), "0")
+      .slice(0, 6)
+      .replace(/0+$/, "");
+    return fractionText ? `${whole}.${fractionText}` : `${whole}`;
+  } catch {
+    return "0";
+  }
+}
+
+function normalizeFundingAmount(wei: string | undefined): string | undefined {
+  if (!wei) return undefined;
+  const normalized = wei.trim();
+  if (!normalized.toLowerCase().startsWith("0x")) {
+    throw new Error("Funding amount must be a hex value (0x...)");
+  }
+  if (!/^0x[0-9a-fA-F]+$/.test(normalized)) {
+    throw new Error("Funding amount must be a valid hex value (0x...)");
+  }
+  const amount = BigInt(normalized);
+  if (amount <= 0n) throw new Error("Funding amount must be greater than 0");
+  return "0x" + amount.toString(16);
+}
+
+function normalizeWardCreationOptions(options?: WardCreationOptions): WardCreationOptions {
+  if (!options) return {};
+  return {
+    pseudoName: options.pseudoName?.trim() || undefined,
+    fundingAmountWei: normalizeFundingAmount(options.fundingAmountWei),
+  };
+}
+
+function getFundingAmountWei(options?: WardCreationOptions): string {
+  return normalizeFundingAmount(normalizeWardCreationOptions(options).fundingAmountWei) || DEFAULT_WARD_FUNDING_WEI;
+}
 
 function createDeterministicHex(seed: string, length = 64): string {
   let out = "";
@@ -89,6 +134,11 @@ export interface WardEntry {
 
 export type WardCreationProgress = (step: number, total: number, message: string) => void;
 
+export type WardCreationOptions = {
+  pseudoName?: string;
+  fundingAmountWei?: string;
+};
+
 export interface PartialWardState {
   wardAddress: string;
   wardPrivateKey: string;
@@ -96,6 +146,8 @@ export interface PartialWardState {
   guardianPublicKey: string;
   /** Which step failed (4 = funding, 5 = add token, 6 = register) */
   failedAtStep: number;
+  pseudoName?: string;
+  fundingAmountWei?: string;
 }
 
 type WardContextState = {
@@ -116,12 +168,18 @@ type WardContextState = {
   checkIfWard: () => Promise<boolean>;
   refreshWardInfo: () => Promise<void>;
   refreshWards: () => Promise<void>;
-  createWard: (onProgress?: WardCreationProgress) => Promise<{
+  createWard: (
+    onProgress?: WardCreationProgress,
+    options?: WardCreationOptions
+  ) => Promise<{
     wardAddress: string;
     wardPrivateKey: string;
     qrPayload: string;
   }>;
-  retryPartialWard: (onProgress?: WardCreationProgress) => Promise<{
+  retryPartialWard: (
+    onProgress?: WardCreationProgress,
+    options?: WardCreationOptions
+  ) => Promise<{
     wardAddress: string;
     wardPrivateKey: string;
     qrPayload: string;
@@ -328,14 +386,18 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     wardPrivateKey: string,
     wardPublicKey: string,
     guardianPublicKey: string,
+    wardOptions: WardCreationOptions,
     startFromStep: number,
     onProgress?: WardCreationProgress,
   ) => {
+    const normalizedOptions = normalizeWardCreationOptions(wardOptions);
+    const fundingAmountWei = getFundingAmountWei(normalizedOptions);
+    const fundingAmountDisplay = formatWeiToStrk(fundingAmountWei);
     // Step 4: Fund ward with 0.5 STRK for gas
     if (startFromStep <= 4) {
-      onProgress?.(4, WARD_CREATION_TOTAL_STEPS, "Funding ward with 0.5 STRK...");
+      onProgress?.(4, WARD_CREATION_TOTAL_STEPS, `Funding ward with ${fundingAmountDisplay} STRK...`);
       try {
-        const fundingAmount = "0x" + (5n * 10n ** 17n).toString(16);
+        const fundingAmount = fundingAmountWei;
         const fundTx = await guardianAccount.execute([
           {
             contractAddress: STRK_ADDRESS,
@@ -351,8 +413,18 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           wardPublicKey,
           guardianPublicKey,
           failedAtStep: 4,
+          pseudoName: normalizedOptions.pseudoName,
+          fundingAmountWei,
         }));
-        setPartialWard({ wardAddress: paddedWardAddress, wardPrivateKey, wardPublicKey, guardianPublicKey, failedAtStep: 4 });
+        setPartialWard({
+          wardAddress: paddedWardAddress,
+          wardPrivateKey,
+          wardPublicKey,
+          guardianPublicKey,
+          failedAtStep: 4,
+          pseudoName: normalizedOptions.pseudoName,
+          fundingAmountWei,
+        });
         throw err;
       }
     }
@@ -376,8 +448,18 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           wardPublicKey,
           guardianPublicKey,
           failedAtStep: 5,
+          pseudoName: normalizedOptions.pseudoName,
+          fundingAmountWei,
         }));
-        setPartialWard({ wardAddress: paddedWardAddress, wardPrivateKey, wardPublicKey, guardianPublicKey, failedAtStep: 5 });
+        setPartialWard({
+          wardAddress: paddedWardAddress,
+          wardPrivateKey,
+          wardPublicKey,
+          guardianPublicKey,
+          failedAtStep: 5,
+          pseudoName: normalizedOptions.pseudoName,
+          fundingAmountWei,
+        });
         throw err;
       }
     }
@@ -402,8 +484,18 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           wardPublicKey,
           guardianPublicKey,
           failedAtStep: 6,
+          pseudoName: normalizedOptions.pseudoName,
+          fundingAmountWei,
         }));
-        setPartialWard({ wardAddress: paddedWardAddress, wardPrivateKey, wardPublicKey, guardianPublicKey, failedAtStep: 6 });
+        setPartialWard({
+          wardAddress: paddedWardAddress,
+          wardPrivateKey,
+          wardPublicKey,
+          guardianPublicKey,
+          failedAtStep: 6,
+          pseudoName: normalizedOptions.pseudoName,
+          fundingAmountWei,
+        });
         throw err;
       }
     }
@@ -419,13 +511,18 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       wardPrivateKey,
       guardianAddress: wallet.keys!.starkAddress,
       network: "sepolia",
+      pseudoName: normalizedOptions.pseudoName,
+      initialFundingAmountWei: fundingAmountWei,
     });
 
     await refreshWards();
     return { wardAddress: paddedWardAddress, wardPrivateKey, qrPayload };
   }, [wallet.keys, refreshWards]);
 
-  const createWard = useCallback(async (onProgress?: WardCreationProgress) => {
+  const createWard = useCallback(async (onProgress?: WardCreationProgress, options: WardCreationOptions = {}) => {
+    const normalizedOptions = normalizeWardCreationOptions(options);
+    const fundingAmountWei = getFundingAmountWei(normalizedOptions);
+    const fundingAmountDisplay = formatWeiToStrk(fundingAmountWei);
     if (!wallet.keys) throw new Error("No wallet keys");
 
     if (isMockMode()) {
@@ -443,14 +540,14 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           step === 1
             ? "Generating ward keys..."
             : step === 2
-              ? "Deploying ward contract..."
-              : step === 3
-                ? "Waiting for deployment confirmation..."
-                : step === 4
-                  ? "Funding ward with 0.5 STRK..."
-                  : step === 5
-                    ? "Adding STRK as known token..."
-                    : "Registering ward in database...";
+                  ? "Deploying ward contract..."
+                  : step === 3
+                    ? "Waiting for deployment confirmation..."
+                    : step === 4
+                      ? `Funding ward with ${fundingAmountDisplay} STRK...`
+                      : step === 5
+                        ? "Adding STRK as known token..."
+                        : "Registering ward in database...";
         onProgress?.(step, WARD_CREATION_TOTAL_STEPS, stepMessage);
       }
 
@@ -473,6 +570,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         wardPrivateKey,
         guardianAddress: wallet.keys.starkAddress,
         network: "sepolia",
+        pseudoName: normalizedOptions.pseudoName,
+        initialFundingAmountWei: fundingAmountWei,
       });
 
       await refreshWards();
@@ -530,16 +629,16 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     // Steps 4-6: Fund, add token, register (with recovery)
     return finishWardCreation(
       provider, guardianAccount, paddedWardAddress,
-      wardPrivateKey, wardPublicKey, guardianPublicKey,
+      wardPrivateKey, wardPublicKey, guardianPublicKey, normalizedOptions,
       4, onProgress,
     );
   }, [wallet.keys, finishWardCreation, refreshWards]);
 
   /** Retry a partially-created ward from where it left off */
-  const retryPartialWard = useCallback(async (onProgress?: WardCreationProgress) => {
+  const retryPartialWard = useCallback(async (onProgress?: WardCreationProgress, options?: WardCreationOptions) => {
     if (!wallet.keys) throw new Error("No wallet keys");
     if (isMockMode()) {
-      return createWard(onProgress);
+      return createWard(onProgress, options);
     }
     const raw = await AsyncStorage.getItem(STORAGE_KEY_PARTIAL_WARD);
     if (!raw) throw new Error("No partial ward state found");
@@ -551,16 +650,26 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       address: wallet.keys.starkAddress,
       signer: wallet.keys.starkPrivateKey,
     });
+    const normalizedRetryFunding = getFundingAmountWei({
+      ...normalizeWardCreationOptions(options),
+      fundingAmountWei: options?.fundingAmountWei || partial.fundingAmountWei,
+    });
+    const retryFundingDisplay = formatWeiToStrk(normalizedRetryFunding);
+    const retryPseudoName = partial.pseudoName || normalizeWardCreationOptions(options).pseudoName;
 
     // Mark steps 1-3 as already done
     onProgress?.(partial.failedAtStep, WARD_CREATION_TOTAL_STEPS,
-      partial.failedAtStep === 4 ? "Retrying: Funding ward with 0.5 STRK..." :
+      partial.failedAtStep === 4 ? `Retrying: Funding ward with ${retryFundingDisplay} STRK...` :
       partial.failedAtStep === 5 ? "Retrying: Adding STRK as known token..." :
       "Retrying: Registering ward in database...");
 
     return finishWardCreation(
       provider, guardianAccount, partial.wardAddress,
       partial.wardPrivateKey, partial.wardPublicKey, partial.guardianPublicKey,
+      {
+        pseudoName: retryPseudoName,
+        fundingAmountWei: normalizedRetryFunding,
+      },
       partial.failedAtStep, onProgress,
     );
   }, [wallet.keys, finishWardCreation, createWard]);

@@ -20,7 +20,7 @@ import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
 import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
-import { useWardContext, type WardEntry, type WardCreationProgress } from "../lib/wardContext";
+import { useWardContext, type WardEntry, type WardCreationProgress, type WardCreationOptions } from "../lib/wardContext";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { testIDs, testProps } from "../testing/testIDs";
@@ -66,10 +66,47 @@ const WARD_STEPS = [
   { step: 1, label: "Generate ward keys" },
   { step: 2, label: "Deploy ward contract" },
   { step: 3, label: "Confirm deployment" },
-  { step: 4, label: "Fund ward (0.5 STRK)" },
+  { step: 4, label: "Fund ward (configured amount)" },
   { step: 5, label: "Add STRK as token" },
   { step: 6, label: "Register in database" },
 ];
+
+const WARD_DECIMALS = 18;
+
+function parseStrkToHexWei(rawAmount: string): string | undefined {
+  const normalized = rawAmount.trim();
+  if (!normalized) return undefined;
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    throw new Error("Invalid STRK amount");
+  }
+
+  const [wholeRaw, fracRaw = ""] = normalized.split(".");
+  if (fracRaw.length > WARD_DECIMALS) {
+    throw new Error("Max 18 decimal places allowed");
+  }
+  const fracPadded = fracRaw.padEnd(WARD_DECIMALS, "0").slice(0, WARD_DECIMALS);
+  const wei = BigInt(wholeRaw || "0") * (10n ** BigInt(WARD_DECIMALS));
+  const frac = BigInt(fracPadded || "0");
+  const total = wei + frac;
+  if (total <= 0n) {
+    throw new Error("Funding amount must be greater than 0");
+  }
+  return `0x${total.toString(16)}`;
+}
+
+function formatWeiToStrkDisplay(rawWei?: string): string {
+  if (!rawWei) return "0.5";
+  try {
+    const wei = BigInt(rawWei);
+    const unit = 10n ** BigInt(WARD_DECIMALS);
+    const whole = wei / unit;
+    const fraction = wei % unit;
+    const fractionText = fraction.toString().padStart(WARD_DECIMALS, "0").replace(/0+$/, "");
+    return fractionText ? `${whole}.${fractionText}` : `${whole}`;
+  } catch {
+    return "0.5";
+  }
+}
 
 function WardStepRow({ step, label, currentStep, totalSteps, failed }: {
   step: number;
@@ -229,6 +266,86 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
   );
 }
 
+function WardCreationSetupModal({
+  visible,
+  pseudoName,
+  initialAmountInput,
+  onPseudoNameChange,
+  onInitialAmountChange,
+  validationError,
+  onStart,
+  onCancel,
+}: {
+  visible: boolean;
+  pseudoName: string;
+  initialAmountInput: string;
+  onPseudoNameChange: (value: string) => void;
+  onInitialAmountChange: (value: string) => void;
+  validationError: string | null;
+  onStart: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={wardModalStyles.overlay}>
+        <View style={wardModalStyles.card}>
+          <Text style={wardModalStyles.title}>New Ward Settings</Text>
+          <Text style={wardModalStyles.subtitle}>
+            Add a pseudo name and fund amount before creating the ward.
+          </Text>
+
+          <View style={styles.wardSetupForm}>
+            <Text style={styles.inputLabel}>Pseudo Name</Text>
+            <TextInput
+              {...testProps(testIDs.settings.wardCreationNameInput)}
+              style={styles.wardSetupInput}
+              placeholder="e.g. Alice's spending wallet"
+              placeholderTextColor={colors.textMuted}
+              value={pseudoName}
+              onChangeText={onPseudoNameChange}
+              autoCapitalize="sentences"
+            />
+
+            <Text style={styles.inputLabel}>Initial STRK funding (default 0.5)</Text>
+            <TextInput
+              {...testProps(testIDs.settings.wardCreationFundingInput)}
+              style={styles.wardSetupInput}
+              placeholder="0.5"
+              placeholderTextColor={colors.textMuted}
+              value={initialAmountInput}
+              onChangeText={onInitialAmountChange}
+              keyboardType="decimal-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+            />
+
+            {validationError && (
+              <Text style={styles.wardSetupError}>{validationError}</Text>
+            )}
+
+            <TouchableOpacity
+              {...testProps(testIDs.settings.wardCreationStart)}
+              style={styles.wardSetupPrimary}
+              onPress={onStart}
+            >
+              <Text style={wardModalStyles.doneBtnText}>Create Ward</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              {...testProps(testIDs.settings.wardCreationCancel)}
+              style={styles.wardSetupSecondary}
+              onPress={onCancel}
+            >
+              <Text style={styles.wardSetupSecondaryText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -337,11 +454,17 @@ export default function SettingsScreen() {
   // Ward management state
   const [isCreatingWard, setIsCreatingWard] = useState(false);
   const [wardModalVisible, setWardModalVisible] = useState(false);
+  const [wardSetupModalVisible, setWardSetupModalVisible] = useState(false);
   const [wardStep, setWardStep] = useState(0);
   const [wardStepMessage, setWardStepMessage] = useState("");
   const [wardFailed, setWardFailed] = useState(false);
   const [wardError, setWardError] = useState<string | null>(null);
+  const [wardSetupError, setWardSetupError] = useState<string | null>(null);
   const [wardResult, setWardResult] = useState<{ wardAddress: string; wardPrivateKey: string; qrPayload: string } | null>(null);
+  const [wardCreatePseudoName, setWardCreatePseudoName] = useState("");
+  const [wardInitialFundingAmount, setWardInitialFundingAmount] = useState("0.5");
+  const [wardRetryMode, setWardRetryMode] = useState(false);
+  const [wardLastOptions, setWardLastOptions] = useState<WardCreationOptions>({});
   const [expandedWard, setExpandedWard] = useState<string | null>(null);
   const [wardAction, setWardAction] = useState<string | null>(null);
 
@@ -360,12 +483,43 @@ export default function SettingsScreen() {
   const wardCreationStepText = `ward.creation.step=${wardStep}`;
   const wardCreationStatusText = `ward.creation.status=${wardCreationStatus}`;
 
-  const startWardCreation = async (isRetry: boolean = false) => {
+  const openWardSetup = (mode: "create" | "retry") => {
+    if (mode === "retry" && ward.partialWard) {
+      setWardCreatePseudoName(ward.partialWard.pseudoName || "");
+      setWardInitialFundingAmount(formatWeiToStrkDisplay(ward.partialWard.fundingAmountWei));
+    } else if (wardLastOptions.pseudoName || wardLastOptions.fundingAmountWei) {
+      setWardCreatePseudoName(wardLastOptions.pseudoName || "");
+      setWardInitialFundingAmount(formatWeiToStrkDisplay(wardLastOptions.fundingAmountWei));
+    } else {
+      setWardCreatePseudoName("");
+      setWardInitialFundingAmount("0.5");
+    }
+    setWardSetupError(null);
+    setWardRetryMode(mode === "retry");
+    setWardSetupModalVisible(true);
+  };
+
+  const resolveWardCreationOptions = (): WardCreationOptions => {
+    const normalizedName = wardCreatePseudoName.trim();
+    let fundingAmountWei: string | undefined;
+    if (wardInitialFundingAmount.trim()) {
+      fundingAmountWei = parseStrkToHexWei(wardInitialFundingAmount);
+    }
+    return {
+      pseudoName: normalizedName || undefined,
+      fundingAmountWei,
+    };
+  };
+
+  const startWardCreation = async (isRetry: boolean = false, options?: WardCreationOptions) => {
+    const resolvedOptions = options || wardLastOptions;
     setWardFailed(false);
     setWardError(null);
     setWardResult(null);
     setIsCreatingWard(true);
     setWardModalVisible(true);
+    setWardLastOptions(resolvedOptions);
+    setWardSetupModalVisible(false);
     if (!isRetry) {
       setWardStep(1);
       setWardStepMessage("Generating ward keys...");
@@ -373,8 +527,8 @@ export default function SettingsScreen() {
 
     try {
       const result = isRetry
-        ? await ward.retryPartialWard(wardProgressCallback)
-        : await ward.createWard(wardProgressCallback);
+        ? await ward.retryPartialWard(wardProgressCallback, resolvedOptions)
+        : await ward.createWard(wardProgressCallback, resolvedOptions);
       setWardResult(result);
       setWardStep(7); // Beyond last step = done
       setWardStepMessage("Done!");
@@ -383,6 +537,18 @@ export default function SettingsScreen() {
       setWardError(e.message || "Ward creation failed");
     } finally {
       setIsCreatingWard(false);
+    }
+  };
+
+  const handleWardSetupSubmit = async () => {
+    setWardSetupError(null);
+    try {
+      const options = resolveWardCreationOptions();
+      setWardLastOptions(options);
+      await startWardCreation(wardRetryMode, options);
+    } catch (e: any) {
+      setWardSetupError(e.message || "Invalid setup");
+      setWardSetupModalVisible(true);
     }
   };
 
@@ -425,6 +591,16 @@ export default function SettingsScreen() {
           onClose={() => setQrModal(null)}
         />
       )}
+      <WardCreationSetupModal
+        visible={wardSetupModalVisible}
+        pseudoName={wardCreatePseudoName}
+        initialAmountInput={wardInitialFundingAmount}
+        validationError={wardSetupError}
+        onPseudoNameChange={setWardCreatePseudoName}
+        onInitialAmountChange={setWardInitialFundingAmount}
+        onStart={handleWardSetupSubmit}
+        onCancel={() => setWardSetupModalVisible(false)}
+      />
       <View pointerEvents="none" style={styles.testMarkerContainer} collapsable={false}>
         <View
           {...testProps(testIDs.markers.wardCreationStep, wardCreationStepText)}
@@ -592,7 +768,7 @@ export default function SettingsScreen() {
             stepMessage={wardStepMessage}
             failed={wardFailed}
             errorMessage={wardError}
-            onRetry={() => startWardCreation(true)}
+            onRetry={() => openWardSetup("retry")}
             onClose={handleWardModalClose}
           />
 
@@ -609,7 +785,7 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   {...testProps(testIDs.settings.wardPartialResume)}
                   style={styles.partialWardRetryBtn}
-                  onPress={() => startWardCreation(true)}
+                  onPress={() => openWardSetup("retry")}
                 >
                   <RefreshCw size={14} color="#fff" />
                   <Text style={styles.partialWardRetryText}>Resume</Text>
@@ -631,12 +807,7 @@ export default function SettingsScreen() {
             style={[styles.wardCreateBtn, (isCreatingWard || !wallet.isDeployed) && { opacity: 0.5 }]}
             disabled={isCreatingWard || !wallet.isDeployed}
             onPress={() => {
-              modal.showConfirm(
-                "Create Ward Account",
-                "This will deploy a new ward contract on-chain, fund it with 0.5 STRK for gas, and generate credentials. This may take 1-2 minutes.",
-                () => startWardCreation(false),
-                { confirmText: "Create Ward" },
-              );
+              openWardSetup("create");
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
@@ -1438,6 +1609,48 @@ const styles = StyleSheet.create({
   },
 
   // Ward Management
+  wardSetupForm: {
+    width: "100%",
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  inputLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  wardSetupInput: {
+    backgroundColor: colors.bg,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    fontSize: fontSize.sm,
+    color: colors.text,
+    fontFamily: "monospace",
+  },
+  wardSetupError: {
+    color: colors.error,
+    fontSize: fontSize.xs,
+  },
+  wardSetupPrimary: {
+    backgroundColor: colors.warning,
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    alignItems: "center",
+  },
+  wardSetupSecondary: {
+    alignItems: "center",
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  wardSetupSecondaryText: {
+    color: colors.textMuted,
+    fontSize: fontSize.sm,
+  },
   wardSection: {
     borderLeftWidth: 3,
     borderLeftColor: colors.warning,
