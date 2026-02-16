@@ -62,9 +62,9 @@ export function KeyboardSafeScreen({
       keyboardVerticalOffset={resolvedOffset}
     >
       {dismissOnBackdrop ? (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      {content}
-    </TouchableWithoutFeedback>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          {content}
+        </TouchableWithoutFeedback>
       ) : (
         content
       )}
@@ -79,6 +79,7 @@ export type KeyboardSafeModalProps = Omit<ModalProps, "children" | "animationTyp
     contentStyle?: StyleProp<ViewStyle>;
     keyboardAvoidingStyle?: StyleProp<ViewStyle>;
     contentMaxHeight?: number | string;
+    contentScrollable?: boolean;
   };
 
 export function KeyboardSafeModal({
@@ -91,6 +92,7 @@ export function KeyboardSafeModal({
   contentStyle,
   keyboardAvoidingStyle,
   contentMaxHeight,
+  contentScrollable = false,
   onRequestClose,
   ...modalProps
 }: KeyboardSafeModalProps) {
@@ -112,12 +114,26 @@ export function KeyboardSafeModal({
       return (percentage / 100) * screenHeight;
     }
 
-    return Number.parseFloat(value);
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : Dimensions.get("window").height * 0.9;
   };
 
   const contentHeightStyle = contentMaxHeight
     ? { maxHeight: resolveMaxHeight(contentMaxHeight) }
     : undefined;
+
+  const modalBody = contentScrollable ? (
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+      contentContainerStyle={styles.modalScrollableContent}
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    children
+  );
 
   return (
     <Modal
@@ -137,7 +153,7 @@ export function KeyboardSafeModal({
           keyboardVerticalOffset={resolvedOffset}
         >
           <View style={[styles.modalContent, contentStyle, contentHeightStyle]}>
-            {children}
+            {modalBody}
           </View>
         </KeyboardAvoidingView>
       </View>
@@ -157,11 +173,16 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalSafeArea: {
+    flex: 1,
     width: "100%",
+    justifyContent: "center",
     alignItems: "center",
   },
   modalContent: {
     width: "100%",
     maxHeight: "100%",
+  },
+  modalScrollableContent: {
+    flexGrow: 1,
   },
 });

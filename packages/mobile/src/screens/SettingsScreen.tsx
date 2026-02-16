@@ -291,6 +291,7 @@ function WardCreationSetupModal({
       overlayStyle={wardModalStyles.overlay}
       contentStyle={wardModalStyles.card}
       contentMaxHeight="90%"
+      contentScrollable
     >
       <Text style={wardModalStyles.title}>New Ward Settings</Text>
       <Text style={wardModalStyles.subtitle}>
