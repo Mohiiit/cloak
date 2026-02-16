@@ -7,17 +7,16 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   RefreshControl,
   ActivityIndicator,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   Linking,
   Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
+import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
 import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ShieldAlert, Info, Camera, ClipboardPaste } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
@@ -465,11 +464,11 @@ export default function HomeScreen({ navigation }: any) {
 
   if (!wallet.isWalletCreated) {
     return (
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={{ flex: 1 }}
+      <KeyboardSafeScreen
+        style={styles.container}
+        contentContainerStyle={styles.center}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView style={styles.container} contentContainerStyle={styles.center} keyboardShouldPersistTaps="handled">
           {modal.ModalComponent}
           <Modal
             visible={wardImportScanVisible}
@@ -685,8 +684,7 @@ export default function HomeScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
           )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScreen>
     );
   }
 
@@ -727,7 +725,7 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   return (
-    <ScrollView
+    <KeyboardSafeScreen
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
@@ -1035,7 +1033,7 @@ export default function HomeScreen({ navigation }: any) {
       </View>
         </>
       )}
-    </ScrollView>
+    </KeyboardSafeScreen>
   );
 }
 

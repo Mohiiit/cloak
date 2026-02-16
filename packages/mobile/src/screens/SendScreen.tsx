@@ -10,7 +10,6 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -26,6 +25,7 @@ import { FeeRetryModal } from "../components/FeeRetryModal";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { triggerMedium } from "../lib/haptics";
 import { testIDs, testProps } from "../testing/testIDs";
+import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
 
 const QUICK_EMOJIS = ["🍕", "🍔", "🍺", "🎵", "🏠", "🚗", "🎮", "💰", "🎉", "🎂"];
 
@@ -150,11 +150,11 @@ export default function SendScreen({ navigation }: any) {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      style={{ flex: 1 }}
+    <KeyboardSafeScreen
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {modal.ModalComponent}
         <FeeRetryModal
           visible={showFeeRetry}
@@ -471,8 +471,7 @@ export default function SendScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardSafeScreen>
   );
 }
 

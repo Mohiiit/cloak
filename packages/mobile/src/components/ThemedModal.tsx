@@ -6,7 +6,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   Linking,
   ScrollView,
@@ -15,6 +14,7 @@ import Clipboard from "@react-native-clipboard/clipboard";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { triggerSuccess, triggerError } from "../lib/haptics";
 import { testIDs, testProps } from "../testing/testIDs";
+import { KeyboardSafeModal } from "./KeyboardSafeContainer";
 
 type ModalType = "success" | "error" | "confirm";
 
@@ -225,85 +225,85 @@ function ThemedModal({
   const borderColor = BORDER_COLORS[config.type];
 
   return (
-    <Modal
+    <KeyboardSafeModal
       visible={visible}
-      transparent
-      animationType="fade"
+      overlayStyle={styles.overlay}
+      contentStyle={[styles.card, { borderColor }]}
+      contentMaxHeight="90%"
       onRequestClose={onClose}
+      dismissOnBackdrop
     >
-      <View style={styles.overlay}>
-        <View style={[styles.card, { borderColor }]}>
-          {/* Icon */}
-          <View
-            style={[
-              styles.iconCircle,
-              { backgroundColor: iconColor + "20", borderColor: iconColor + "40" },
-            ]}
-          >
-            <Text style={[styles.iconText, { color: iconColor }]}>
-              {ICONS[config.type]}
-            </Text>
-          </View>
+      <View style={[styles.card, { borderColor }]}>
+        {/* Icon */}
+        <View
+          style={[
+            styles.iconCircle,
+            { backgroundColor: iconColor + "20", borderColor: iconColor + "40" },
+          ]}
+        >
+          <Text style={[styles.iconText, { color: iconColor }]}>
+            {ICONS[config.type]}
+          </Text>
+        </View>
 
-          {/* Title */}
-          <Text style={styles.title}>{config.title}</Text>
+        {/* Title */}
+        <Text style={styles.title}>{config.title}</Text>
 
-          {/* Message */}
-          <Text style={styles.message}>{config.message}</Text>
+        {/* Message */}
+        <Text style={styles.message}>{config.message}</Text>
 
-          {/* Error Details (expandable) */}
-          {config.type === "error" && config.errorDetails && (
-            <ErrorDetailsSection details={config.errorDetails} />
-          )}
+        {/* Error Details (expandable) */}
+        {config.type === "error" && config.errorDetails && (
+          <ErrorDetailsSection details={config.errorDetails} />
+        )}
 
-          {/* TxHash */}
-          {config.txHash && <TxHashRow txHash={config.txHash} />}
+        {/* TxHash */}
+        {config.txHash && <TxHashRow txHash={config.txHash} />}
 
-          {/* Buttons */}
-          {config.type === "confirm" ? (
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                {...testProps(testIDs.themedModal.cancel)}
-                style={styles.cancelButton}
-                onPress={onClose}
-              >
-                <Text style={styles.cancelButtonText}>
-                  {config.cancelText || "Cancel"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                {...testProps(testIDs.themedModal.confirm)}
-                style={[
-                  styles.confirmButton,
-                  config.destructive && styles.destructiveButton,
-                ]}
-                onPress={() => {
-                  onClose();
-                  config.onConfirm?.();
-                }}
-              >
-                <Text
-                  style={[
-                    styles.confirmButtonText,
-                    config.destructive && styles.destructiveButtonText,
-                  ]}
-                >
-                  {config.confirmText || "Confirm"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
+        {/* Buttons */}
+        {config.type === "confirm" ? (
+          <View style={styles.buttonRow}>
             <TouchableOpacity
-              {...testProps(testIDs.themedModal.ok)}
-              style={[styles.okButton, { backgroundColor: iconColor + "20" }]}
+              {...testProps(testIDs.themedModal.cancel)}
+              style={styles.cancelButton}
               onPress={onClose}
             >
-              <Text style={[styles.okButtonText, { color: iconColor }]}>OK</Text>
+              <Text style={styles.cancelButtonText}>
+                {config.cancelText || "Cancel"}
+              </Text>
             </TouchableOpacity>
-          )}
-        </View>
+            <TouchableOpacity
+              {...testProps(testIDs.themedModal.confirm)}
+              style={[
+                styles.confirmButton,
+                config.destructive && styles.destructiveButton,
+              ]}
+              onPress={() => {
+                onClose();
+                config.onConfirm?.();
+              }}
+            >
+              <Text
+                style={[
+                  styles.confirmButtonText,
+                  config.destructive && styles.destructiveButtonText,
+                ]}
+              >
+                {config.confirmText || "Confirm"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            {...testProps(testIDs.themedModal.ok)}
+            style={[styles.okButton, { backgroundColor: iconColor + "20" }]}
+            onPress={onClose}
+          >
+            <Text style={[styles.okButtonText, { color: iconColor }]}>OK</Text>
+          </TouchableOpacity>
+        )}
       </View>
-    </Modal>
+    </KeyboardSafeModal>
   );
 }
 

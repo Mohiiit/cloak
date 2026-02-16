@@ -7,12 +7,12 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
+import { KeyboardSafeModal } from "./KeyboardSafeContainer";
 
 interface FeeRetryModalProps {
   visible: boolean;
@@ -37,84 +37,89 @@ export function FeeRetryModal({
   const canRetry = retryCount < maxRetries;
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          {/* Icon */}
-          <View style={styles.iconCircle}>
-            <Text style={styles.iconText}>&#x26A0;</Text>
-          </View>
+    <KeyboardSafeModal
+      visible={visible}
+      overlayStyle={styles.overlay}
+      contentStyle={styles.card}
+      contentMaxHeight="90%"
+      onRequestClose={onCancel}
+      dismissOnBackdrop
+    >
+      <View>
+        {/* Icon */}
+        <View style={styles.iconCircle}>
+          <Text style={styles.iconText}>&#x26A0;</Text>
+        </View>
 
-          {/* Title */}
-          <Text style={styles.title}>Insufficient Gas</Text>
+        {/* Title */}
+        <Text style={styles.title}>Insufficient Gas</Text>
 
-          {/* Message */}
-          <Text style={styles.message}>
-            {canRetry
-              ? "The transaction failed because the gas estimate was too low. Would you like to retry with a higher gas limit?"
-              : "Maximum retries reached. The network may be congested. Please try again later."}
-          </Text>
+        {/* Message */}
+        <Text style={styles.message}>
+          {canRetry
+            ? "The transaction failed because the gas estimate was too low. Would you like to retry with a higher gas limit?"
+            : "Maximum retries reached. The network may be congested. Please try again later."}
+        </Text>
 
-          {/* Gas Details */}
-          {gasInfo && (
-            <View style={styles.detailsBox}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Estimated gas:</Text>
-                <Text style={styles.detailValue}>
-                  {gasInfo.maxAmount.toLocaleString()}
-                </Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Actual needed:</Text>
-                <Text style={[styles.detailValue, { color: colors.error }]}>
-                  {gasInfo.actualUsed.toLocaleString()}
-                </Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Safety multiplier:</Text>
-                <Text style={[styles.detailValue, { color: colors.warning }]}>
-                  {gasInfo.suggestedMultiplier}x
-                </Text>
-              </View>
+        {/* Gas Details */}
+        {gasInfo && (
+          <View style={styles.detailsBox}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Estimated gas:</Text>
+              <Text style={styles.detailValue}>
+                {gasInfo.maxAmount.toLocaleString()}
+              </Text>
             </View>
-          )}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Actual needed:</Text>
+              <Text style={[styles.detailValue, { color: colors.error }]}>
+                {gasInfo.actualUsed.toLocaleString()}
+              </Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Safety multiplier:</Text>
+              <Text style={[styles.detailValue, { color: colors.warning }]}>
+                {gasInfo.suggestedMultiplier}x
+              </Text>
+            </View>
+          </View>
+        )}
 
-          {/* Retry count */}
-          {retryCount > 0 && (
-            <Text style={styles.retryCount}>
-              Attempt {retryCount} of {maxRetries}
-            </Text>
-          )}
+        {/* Retry count */}
+        {retryCount > 0 && (
+          <Text style={styles.retryCount}>
+            Attempt {retryCount} of {maxRetries}
+          </Text>
+        )}
 
-          {/* Buttons */}
-          <View style={styles.buttonRow}>
+        {/* Buttons */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={onCancel}
+            disabled={isRetrying}
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+
+          {canRetry && (
             <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={onCancel}
+              style={[styles.retryButton, isRetrying && styles.retryButtonDisabled]}
+              onPress={onRetry}
               disabled={isRetrying}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              {isRetrying ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.retryButtonText}>
+                  Retry with Higher Gas
+                </Text>
+              )}
             </TouchableOpacity>
-
-            {canRetry && (
-              <TouchableOpacity
-                style={[styles.retryButton, isRetrying && styles.retryButtonDisabled]}
-                onPress={onRetry}
-                disabled={isRetrying}
-              >
-                {isRetrying ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.retryButtonText}>
-                    Retry with Higher Gas
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
+          )}
         </View>
       </View>
-    </Modal>
+    </KeyboardSafeModal>
   );
 }
 

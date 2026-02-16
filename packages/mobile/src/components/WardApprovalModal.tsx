@@ -7,7 +7,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -17,6 +16,7 @@ import { useThemedModal } from "./ThemedModal";
 import { promptBiometric } from "../lib/twoFactor";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
+import { KeyboardSafeModal } from "./KeyboardSafeContainer";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -210,44 +210,40 @@ export default function WardApprovalModal() {
   };
 
   return (
-    <Modal
+    <KeyboardSafeModal
       visible={pendingWard2faRequests.length > 0}
-      transparent
-      animationType="slide"
+      overlayStyle={styles.overlay}
+      contentStyle={styles.modalContainer}
+      contentMaxHeight="90%"
       onRequestClose={() => {}}
+      dismissOnBackdrop
     >
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <View style={styles.headerIconCircle}>
-              <Text style={styles.headerIcon}>W</Text>
-            </View>
-            <Text style={styles.modalTitle}>
-              Ward Signing Required
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {pendingWard2faRequests.length} pending{" "}
-              {pendingWard2faRequests.length === 1 ? "request" : "requests"}
-            </Text>
-          </View>
-
-          <ScrollView
-            style={styles.scrollArea}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {pendingWard2faRequests.map((req) => (
-              <WardApprovalCard
-                key={req.id}
-                request={req}
-                onApproved={handleDone}
-                onRejected={handleDone}
-              />
-            ))}
-          </ScrollView>
+      <View style={styles.modalHeader}>
+        <View style={styles.headerIconCircle}>
+          <Text style={styles.headerIcon}>W</Text>
         </View>
+        <Text style={styles.modalTitle}>Ward Signing Required</Text>
+        <Text style={styles.modalSubtitle}>
+          {pendingWard2faRequests.length} pending{" "}
+          {pendingWard2faRequests.length === 1 ? "request" : "requests"}
+        </Text>
       </View>
-    </Modal>
+
+      <ScrollView
+        style={styles.scrollArea}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {pendingWard2faRequests.map((req) => (
+          <WardApprovalCard
+            key={req.id}
+            request={req}
+            onApproved={handleDone}
+            onRejected={handleDone}
+          />
+        ))}
+      </ScrollView>
+    </KeyboardSafeModal>
   );
 }
 

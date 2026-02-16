@@ -9,7 +9,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  ScrollView,
   Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,6 +20,7 @@ import { useToast } from "../components/Toast";
 import { CloakIcon } from "../components/CloakIcon";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
+import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
 
 const FAUCET_URL = "https://starknet-faucet.vercel.app/";
 const VOYAGER_TX_URL = "https://sepolia.voyager.online/tx/";
@@ -76,9 +76,10 @@ export default function DeployScreen() {
   };
 
   return (
-    <ScrollView
+    <KeyboardSafeScreen
       style={[styles.container, { paddingTop: insets.top }]}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
       <View pointerEvents="none" style={styles.markerContainer} collapsable={false}>
         <View
@@ -205,7 +206,7 @@ export default function DeployScreen() {
           )}
         </TouchableOpacity>
       </View>
-    </ScrollView>
+    </KeyboardSafeScreen>
   );
 }
 

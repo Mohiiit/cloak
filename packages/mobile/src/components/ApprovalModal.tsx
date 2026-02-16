@@ -7,7 +7,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -19,6 +18,7 @@ import { useWallet } from "../lib/WalletContext";
 import { useToast } from "./Toast";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
+import { KeyboardSafeModal } from "./KeyboardSafeContainer";
 import {
   ApprovalRequest,
   deserializeCalls,
@@ -277,48 +277,44 @@ export default function ApprovalModal() {
   };
 
   return (
-    <Modal
+    <KeyboardSafeModal
       visible={pendingRequests.length > 0}
-      transparent
-      animationType="slide"
+      overlayStyle={styles.overlay}
+      contentStyle={styles.modalContainer}
+      contentMaxHeight="90%"
       onRequestClose={() => {
         // Don't allow dismissing without action
       }}
+      dismissOnBackdrop
     >
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.modalHeader}>
-            <View style={styles.headerIconCircle}>
-              <Text style={styles.headerIcon}>!</Text>
-            </View>
-            <Text style={styles.modalTitle}>
-              Transaction Approval Required
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {pendingRequests.length} pending{" "}
-              {pendingRequests.length === 1 ? "request" : "requests"}
-            </Text>
-          </View>
-
-          {/* Requests */}
-          <ScrollView
-            style={styles.scrollArea}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {pendingRequests.map((req) => (
-              <ApprovalCard
-                key={req.id}
-                request={req}
-                onApproved={handleDone}
-                onRejected={handleDone}
-              />
-            ))}
-          </ScrollView>
+      {/* Header */}
+      <View style={styles.modalHeader}>
+        <View style={styles.headerIconCircle}>
+          <Text style={styles.headerIcon}>!</Text>
         </View>
+        <Text style={styles.modalTitle}>Transaction Approval Required</Text>
+        <Text style={styles.modalSubtitle}>
+          {pendingRequests.length} pending{" "}
+          {pendingRequests.length === 1 ? "request" : "requests"}
+        </Text>
       </View>
-    </Modal>
+
+      {/* Requests */}
+      <ScrollView
+        style={styles.scrollArea}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {pendingRequests.map((req) => (
+          <ApprovalCard
+            key={req.id}
+            request={req}
+            onApproved={handleDone}
+            onRejected={handleDone}
+          />
+        ))}
+      </ScrollView>
+    </KeyboardSafeModal>
   );
 }
 

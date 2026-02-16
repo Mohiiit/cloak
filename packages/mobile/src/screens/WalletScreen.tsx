@@ -8,9 +8,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -24,6 +22,7 @@ import { FeeRetryModal } from "../components/FeeRetryModal";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { triggerMedium } from "../lib/haptics";
 import { testIDs, testProps } from "../testing/testIDs";
+import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
 
 type Mode = "shield" | "unshield" | null;
 type SuccessInfo = { txHash: string; amount: string; type: "shield" | "unshield" | "claim" };
@@ -119,11 +118,11 @@ export default function WalletScreen({ route }: any) {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      style={{ flex: 1 }}
+    <KeyboardSafeScreen
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {modal.ModalComponent}
         <FeeRetryModal
           visible={showFeeRetry}
@@ -308,8 +307,7 @@ export default function WalletScreen({ route }: any) {
         )}
           </>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardSafeScreen>
   );
 }
 

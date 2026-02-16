@@ -7,7 +7,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -17,6 +16,7 @@ import { useThemedModal } from "./ThemedModal";
 import { promptBiometric } from "../lib/twoFactor";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
+import { KeyboardSafeModal } from "./KeyboardSafeContainer";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -209,44 +209,40 @@ export default function GuardianApprovalModal() {
   };
 
   return (
-    <Modal
+    <KeyboardSafeModal
       visible={pendingGuardianRequests.length > 0}
-      transparent
-      animationType="slide"
+      overlayStyle={styles.overlay}
+      contentStyle={styles.modalContainer}
+      contentMaxHeight="90%"
       onRequestClose={() => {}}
+      dismissOnBackdrop
     >
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <View style={styles.headerIconCircle}>
-              <Text style={styles.headerIcon}>G</Text>
-            </View>
-            <Text style={styles.modalTitle}>
-              Guardian Approval Required
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {pendingGuardianRequests.length} pending{" "}
-              {pendingGuardianRequests.length === 1 ? "request" : "requests"}
-            </Text>
-          </View>
-
-          <ScrollView
-            style={styles.scrollArea}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {pendingGuardianRequests.map((req) => (
-              <GuardianApprovalCard
-                key={req.id}
-                request={req}
-                onApproved={handleDone}
-                onRejected={handleDone}
-              />
-            ))}
-          </ScrollView>
+      <View style={styles.modalHeader}>
+        <View style={styles.headerIconCircle}>
+          <Text style={styles.headerIcon}>G</Text>
         </View>
+        <Text style={styles.modalTitle}>Guardian Approval Required</Text>
+        <Text style={styles.modalSubtitle}>
+          {pendingGuardianRequests.length} pending{" "}
+          {pendingGuardianRequests.length === 1 ? "request" : "requests"}
+        </Text>
       </View>
-    </Modal>
+
+      <ScrollView
+        style={styles.scrollArea}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {pendingGuardianRequests.map((req) => (
+          <GuardianApprovalCard
+            key={req.id}
+            request={req}
+            onApproved={handleDone}
+            onRejected={handleDone}
+          />
+        ))}
+      </ScrollView>
+    </KeyboardSafeModal>
   );
 }
 

@@ -1,18 +1,16 @@
 /**
  * SettingsScreen — Key backup, wallet info, QR codes, and preferences.
  */
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Modal,
   TextInput,
   ActivityIndicator,
 } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
 import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, Snowflake, Sun, ChevronDown, ChevronUp, RefreshCw, X } from "lucide-react-native";
@@ -23,6 +21,7 @@ import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
 import { useWardContext, type WardEntry, type WardCreationProgress, type WardCreationOptions } from "../lib/wardContext";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
+import { KeyboardSafeScreen, KeyboardSafeModal } from "../components/KeyboardSafeContainer";
 import { testIDs, testProps } from "../testing/testIDs";
 
 const TFA_STEP_ORDER: TwoFAStep[] = ["auth", "keygen", "onchain", "register"];
@@ -286,63 +285,65 @@ function WardCreationSetupModal({
   onCancel: () => void;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={wardModalStyles.overlay}>
-        <View style={wardModalStyles.card}>
-          <Text style={wardModalStyles.title}>New Ward Settings</Text>
-          <Text style={wardModalStyles.subtitle}>
-            Add a pseudo name and fund amount before creating the ward.
-          </Text>
+    <KeyboardSafeModal
+      visible={visible}
+      onRequestClose={onCancel}
+      overlayStyle={wardModalStyles.overlay}
+      contentStyle={wardModalStyles.card}
+      contentMaxHeight="90%"
+    >
+      <Text style={wardModalStyles.title}>New Ward Settings</Text>
+      <Text style={wardModalStyles.subtitle}>
+        Add a pseudo name and fund amount before creating the ward.
+      </Text>
 
-          <View style={styles.wardSetupForm}>
-            <Text style={styles.inputLabel}>Pseudo Name</Text>
-            <TextInput
-              {...testProps(testIDs.settings.wardCreationNameInput)}
-              style={styles.wardSetupInput}
-              placeholder="e.g. Alice's spending wallet"
-              placeholderTextColor={colors.textMuted}
-              value={pseudoName}
-              onChangeText={onPseudoNameChange}
-              autoCapitalize="sentences"
-            />
+      <View style={styles.wardSetupForm}>
+        <Text style={styles.inputLabel}>Pseudo Name</Text>
+        <TextInput
+          {...testProps(testIDs.settings.wardCreationNameInput)}
+          style={styles.wardSetupInput}
+          placeholder="e.g. Alice's spending wallet"
+          placeholderTextColor={colors.textMuted}
+          value={pseudoName}
+          onChangeText={onPseudoNameChange}
+          autoCapitalize="sentences"
+        />
 
-            <Text style={styles.inputLabel}>Initial STRK funding (default 0.5)</Text>
-            <TextInput
-              {...testProps(testIDs.settings.wardCreationFundingInput)}
-              style={styles.wardSetupInput}
-              placeholder="0.5"
-              placeholderTextColor={colors.textMuted}
-              value={initialAmountInput}
-              onChangeText={onInitialAmountChange}
-              keyboardType="decimal-pad"
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-            />
+        <Text style={styles.inputLabel}>Initial STRK funding (default 0.5)</Text>
+        <TextInput
+          {...testProps(testIDs.settings.wardCreationFundingInput)}
+          style={styles.wardSetupInput}
+          placeholder="0.5"
+          placeholderTextColor={colors.textMuted}
+          value={initialAmountInput}
+          onChangeText={onInitialAmountChange}
+          keyboardType="decimal-pad"
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+        />
 
-            {validationError && (
-              <Text style={styles.wardSetupError}>{validationError}</Text>
-            )}
+        {validationError && (
+          <Text style={styles.wardSetupError}>{validationError}</Text>
+        )}
 
-            <TouchableOpacity
-              {...testProps(testIDs.settings.wardCreationStart)}
-              style={styles.wardSetupPrimary}
-              onPress={onStart}
-            >
-              <Text style={wardModalStyles.doneBtnText}>Create Ward</Text>
-            </TouchableOpacity>
+        <TouchableOpacity
+          {...testProps(testIDs.settings.wardCreationStart)}
+          style={styles.wardSetupPrimary}
+          onPress={onStart}
+        >
+          <Text style={wardModalStyles.doneBtnText}>Create Ward</Text>
+        </TouchableOpacity>
 
-            <TouchableOpacity
-              {...testProps(testIDs.settings.wardCreationCancel)}
-              style={styles.wardSetupSecondary}
-              onPress={onCancel}
-            >
-              <Text style={styles.wardSetupSecondaryText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <TouchableOpacity
+          {...testProps(testIDs.settings.wardCreationCancel)}
+          style={styles.wardSetupSecondary}
+          onPress={onCancel}
+        >
+          <Text style={styles.wardSetupSecondaryText}>Cancel</Text>
+        </TouchableOpacity>
       </View>
-    </Modal>
+    </KeyboardSafeModal>
   );
 }
 
@@ -444,7 +445,6 @@ export default function SettingsScreen() {
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactName, setNewContactName] = useState("");
   const [newContactAddr, setNewContactAddr] = useState("");
-  const scrollRef = useRef<ScrollView>(null);
   const [qrModal, setQrModal] = useState<{ label: string; value: string } | null>(null);
 
   // 2FA state
@@ -565,13 +565,6 @@ export default function SettingsScreen() {
     setWardResult(null);
   };
 
-  // Reset scroll on focus
-  useFocusEffect(
-    React.useCallback(() => {
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }, []),
-  );
-
   if (!wallet.keys) {
     return (
       <View style={styles.center}>
@@ -621,8 +614,7 @@ export default function SettingsScreen() {
           <Text style={styles.testMarkerText}>{wardCreationStatusText}</Text>
         </View>
       </View>
-      <ScrollView
-        ref={scrollRef}
+      <KeyboardSafeScreen
         style={styles.scrollContainer}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -1132,7 +1124,7 @@ export default function SettingsScreen() {
         <Text style={styles.aboutText}>Built for Re{"{define}"} Hackathon</Text>
         <Text style={styles.aboutText}>Privacy Track</Text>
       </View>
-      </ScrollView>
+      </KeyboardSafeScreen>
     </View>
   );
 }
