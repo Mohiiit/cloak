@@ -153,3 +153,20 @@ Optional:
 
 - Required on PRs: `mobile:test:unit` + Android/iOS mock matrix suites.
 - Non-blocking: nightly live smoke jobs.
+
+## Screen Parity Snapshots
+
+Captured after successful simulator run and manual sanity check.
+These screenshots intentionally exclude private keys and secret material.
+
+### 2026-02-17
+
+- `Cloak - Dashboard` (`7Vrpd`) parity run:
+  - `packages/mobile/e2e/screenshots/2026-02-17/ios-dashboard-7Vrpd.png`
+
+![iOS Dashboard Parity](./screenshots/2026-02-17/ios-dashboard-7Vrpd.png)
+
+- `Settings -> Network` verification (home removed nonce/chain, settings contains nonce/chain):
+  - `packages/mobile/e2e/screenshots/2026-02-17/ios-settings-network.png`
+
+![iOS Settings Network](./screenshots/2026-02-17/ios-settings-network.png)

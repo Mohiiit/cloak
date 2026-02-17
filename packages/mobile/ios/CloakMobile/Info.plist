@@ -34,7 +34,7 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string/>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -55,5 +55,12 @@
 	<string>Cloak uses Face ID to authenticate transactions</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Cloak uses the camera to scan ward invite QR codes during onboarding</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Geist-Regular.ttf</string>
+		<string>JetBrainsMono-Regular.ttf</string>
+		<string>JetBrainsMono-SemiBold.ttf</string>
+		<string>Geist-SemiBold.ttf</string>
+	</array>
 </dict>
 </plist>

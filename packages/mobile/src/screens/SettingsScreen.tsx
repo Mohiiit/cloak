@@ -436,7 +436,7 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
   );
 }
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }: any) {
   const wallet = useWallet();
   const modal = useThemedModal();
   const twoFactor = useTwoFactor();
@@ -778,7 +778,7 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   {...testProps(testIDs.settings.wardPartialResume)}
                   style={styles.partialWardRetryBtn}
-                  onPress={() => openWardSetup("retry")}
+                  onPress={() => navigation.getParent()?.navigate("WardSetup")}
                 >
                   <RefreshCw size={14} color="#fff" />
                   <Text style={styles.partialWardRetryText}>Resume</Text>
@@ -800,7 +800,7 @@ export default function SettingsScreen() {
             style={[styles.wardCreateBtn, (isCreatingWard || !wallet.isDeployed) && { opacity: 0.5 }]}
             disabled={isCreatingWard || !wallet.isDeployed}
             onPress={() => {
-              openWardSetup("create");
+              navigation.getParent()?.navigate("WardSetup");
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
@@ -935,14 +935,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             {...testProps(testIDs.settings.keyBackupReveal)}
             style={styles.revealBtn}
-            onPress={() => {
-              modal.showConfirm(
-                "Show Private Keys?",
-                "Make sure no one is looking at your screen.",
-                () => setShowPrivateKey(true),
-                { confirmText: "Show" },
-              );
-            }}
+            onPress={() => navigation.getParent()?.navigate("KeyBackup")}
           >
             <Text style={styles.revealBtnText}>Reveal Private Keys</Text>
           </TouchableOpacity>
@@ -1085,6 +1078,10 @@ export default function SettingsScreen() {
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Chain</Text>
           <Text style={styles.infoValue}>Starknet Sepolia</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Account Nonce</Text>
+          <Text style={styles.infoValue}>{wallet.nonce}</Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Bridge</Text>

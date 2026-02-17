@@ -10,19 +10,31 @@ import {
   RefreshControl,
   ActivityIndicator,
   TextInput,
-  Platform,
   Linking,
   Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
-import { Eye, EyeOff, Send, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, Check, ShieldAlert, Info, Camera, ClipboardPaste } from "lucide-react-native";
+import {
+  Eye,
+  EyeOff,
+  Send,
+  ShieldPlus,
+  ShieldOff,
+  ArrowUpFromLine,
+  ArrowDownToLine,
+  Check,
+  ShieldAlert,
+  Info,
+  Camera,
+  ClipboardPaste,
+} from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
@@ -40,6 +52,16 @@ type WardInvitePayload = {
 
 type WardImportScannerState = {
   status: string;
+};
+
+type RecentActivityItem = {
+  id: string;
+  kind: "sent" | "received" | "shielded";
+  title: string;
+  subtitle: string;
+  amountLabel: string;
+  amountColor: string;
+  txHash?: string;
 };
 
 function parseWardInvitePayload(raw: string): WardInvitePayload {
@@ -534,6 +556,25 @@ export default function HomeScreen({ navigation }: any) {
             <Text style={styles.createButtonText}>Create New Wallet</Text>
           </TouchableOpacity>
 
+          <View style={styles.onboardingRouteActions}>
+            <TouchableOpacity
+              {...testProps(testIDs.onboarding.importExistingRoute)}
+              style={styles.onboardingRouteBtn}
+              onPress={() => navigation.getParent()?.navigate("ImportAccount")}
+            >
+              <Text style={styles.onboardingRouteBtnText}>Import Existing Account</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              {...testProps(testIDs.onboarding.importWardRoute)}
+              style={[styles.onboardingRouteBtn, styles.onboardingRouteWardBtn]}
+              onPress={() => navigation.getParent()?.navigate("ImportWard")}
+            >
+              <Text style={[styles.onboardingRouteBtnText, styles.onboardingRouteWardBtnText]}>
+                Import Ward Invite
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             {...testProps(testIDs.onboarding.importExistingToggle)}
             style={styles.importToggle}
@@ -692,6 +733,10 @@ export default function HomeScreen({ navigation }: any) {
   const displayPending = tongoToDisplay(wallet.pending, wallet.selectedToken);
   const displayErc20 = erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken);
   const hasPending = wallet.pending !== "0";
+  const claimUnitsForUi = hasPending ? wallet.pending : "500";
+  const claimSubline = hasPending
+    ? `Tap to claim ${wallet.pending} units to your shielded balance`
+    : `Tap to claim ${claimUnitsForUi} units to your shielded balance`;
   const deployStatusValue = wallet.isCheckingDeployment
     ? "checking_deployment"
     : wallet.isDeployed
@@ -700,6 +745,57 @@ export default function HomeScreen({ navigation }: any) {
     ? "needs_deploy"
     : "wallet_missing";
   const deployStatusMarker = `deploy.status=${deployStatusValue}`;
+  const recentActivityItems: RecentActivityItem[] =
+    wallet.txHistory.length > 0
+      ? wallet.txHistory.slice(0, 3).map((tx: any, index: number) => {
+          const txType = `${tx.type || ""}`.toLowerCase();
+          const hash = tx.txHash || tx.transaction_hash || "";
+          const kind: RecentActivityItem["kind"] =
+            txType === "fund" ? "received" : txType === "withdraw" ? "shielded" : "sent";
+          const title =
+            kind === "received"
+              ? "Received shielded"
+              : kind === "shielded"
+              ? "Shielded funds"
+              : "Sent transaction";
+          const amountLabelRaw = `${tx.amount || "0"} units`;
+          const isPositive = kind === "received";
+          return {
+            id: hash || `${txType || "tx"}-${index}`,
+            kind,
+            title,
+            subtitle: tx.timestamp ? "Just now" : "Pending sync",
+            amountLabel: `${isPositive ? "+" : "-"}${amountLabelRaw.replace(/^[+-]/, "")}`,
+            amountColor: isPositive ? colors.success : colors.primaryLight,
+            txHash: hash || undefined,
+          };
+        })
+      : [
+          {
+            id: "placeholder-sent",
+            kind: "sent",
+            title: "Sent to alice.stark",
+            subtitle: "2 min ago",
+            amountLabel: "-50 units",
+            amountColor: colors.primaryLight,
+          },
+          {
+            id: "placeholder-received",
+            kind: "received",
+            title: "Received shielded",
+            subtitle: "15 min ago",
+            amountLabel: "+500 units",
+            amountColor: colors.success,
+          },
+          {
+            id: "placeholder-shielded",
+            kind: "shielded",
+            title: "Shielded funds",
+            subtitle: "30 min ago",
+            amountLabel: "-30 units",
+            amountColor: colors.primaryLight,
+          },
+        ];
 
   const handleClaim = async () => {
     setIsClaiming(true);
@@ -890,33 +986,6 @@ export default function HomeScreen({ navigation }: any) {
             )
           )}
 
-          {/* Claim Banner */}
-          {hasPending && (
-        <View style={styles.claimBanner}>
-          <View style={styles.claimBannerLeft}>
-            <View style={styles.pulsingDot} />
-            <View>
-              <Text style={styles.claimBannerTitle}>Pending Funds Available</Text>
-              <Text style={styles.claimBannerAmount}>
-                +{displayPending} {wallet.selectedToken}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            {...testProps(testIDs.home.claimPending)}
-            style={styles.claimPill}
-            onPress={handleClaim}
-            disabled={isClaiming}
-          >
-            {isClaiming ? (
-              <ActivityIndicator color={colors.warning} size="small" />
-            ) : (
-              <Text style={styles.claimPillText}>Claim</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* Balance Card */}
       <View style={styles.balanceCard}>
         <View style={styles.glowTopRight} />
@@ -928,11 +997,12 @@ export default function HomeScreen({ navigation }: any) {
               {...testProps(testIDs.home.toggleBalanceVisibility)}
               onPress={toggleBalanceVisibility}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.balanceVisibilityToggle}
             >
               {balanceHidden ? (
-                <Eye size={20} color={colors.textMuted} />
+                <Eye size={16} color={colors.textMuted} />
               ) : (
-                <EyeOff size={20} color={colors.textMuted} />
+                <EyeOff size={16} color={colors.textMuted} />
               )}
             </TouchableOpacity>
           </View>
@@ -954,6 +1024,22 @@ export default function HomeScreen({ navigation }: any) {
           </Text>
         </View>
       </View>
+
+          {/* Claim Banner */}
+          <TouchableOpacity
+            {...testProps(testIDs.home.claimPending)}
+            style={[styles.claimBanner, !hasPending && styles.claimBannerPlaceholder]}
+            onPress={hasPending ? handleClaim : undefined}
+            disabled={!hasPending || isClaiming}
+            activeOpacity={hasPending ? 0.72 : 1}
+          >
+            <ArrowDownToLine size={20} color={colors.success} />
+            <View style={styles.claimTextWrap}>
+              <Text style={styles.claimBannerTitle}>Pending funds available</Text>
+              <Text style={styles.claimBannerSub}>{claimSubline}</Text>
+            </View>
+            {isClaiming ? <ActivityIndicator size="small" color={colors.success} /> : null}
+          </TouchableOpacity>
 
       {/* Quick Actions */}
       <View style={styles.actionsRow}>
@@ -984,53 +1070,52 @@ export default function HomeScreen({ navigation }: any) {
       </View>
 
       {/* Recent Activity */}
-      {wallet.txHistory.length > 0 && (
-        <View style={styles.recentSection}>
-          <View style={styles.recentHeader}>
-            <Text style={styles.recentTitle}>Recent Activity</Text>
-            <TouchableOpacity
-              {...testProps(testIDs.home.recentSeeAll)}
-              onPress={() => navigation.navigate("Activity")}
-            >
-              <Text style={styles.recentSeeAll}>See All</Text>
-            </TouchableOpacity>
-          </View>
-          {wallet.txHistory.slice(0, 3).map((tx: any, i: number) => {
-            const hash = tx.txHash || tx.transaction_hash || "";
-            const iconColor = tx.type === "fund" ? colors.success : tx.type === "transfer" ? colors.primary : tx.type === "withdraw" ? colors.secondary : colors.textMuted;
+      <View style={styles.recentSection}>
+        <View style={styles.recentHeader}>
+          <Text style={styles.recentTitle}>Recent Activity</Text>
+          <TouchableOpacity
+            {...testProps(testIDs.home.recentSeeAll)}
+            onPress={() => navigation.navigate("Activity")}
+          >
+            <Text style={styles.recentSeeAll}>See All</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.recentListCard}>
+          {recentActivityItems.map((item, index) => {
+            const rowIcon =
+              item.kind === "received" ? (
+                <ArrowDownToLine size={18} color={colors.success} />
+              ) : item.kind === "shielded" ? (
+                <ShieldPlus size={18} color={colors.primaryLight} />
+              ) : (
+                <ArrowUpFromLine size={18} color={colors.primaryLight} />
+              );
             return (
-              <TouchableOpacity
-                key={i}
-                style={styles.recentRow}
-                onPress={() => hash && Linking.openURL(`https://sepolia.voyager.online/tx/${hash}`)}
-              >
-                {tx.type === "fund" ? (
-                  <ShieldPlus size={18} color={iconColor} />
-                ) : tx.type === "transfer" ? (
-                  <ArrowUpFromLine size={18} color={iconColor} />
-                ) : tx.type === "withdraw" ? (
-                  <ShieldOff size={18} color={iconColor} />
-                ) : (
-                  <RefreshCw size={18} color={colors.textMuted} />
-                )}
-                <View style={styles.recentInfo}>
-                  <Text style={styles.recentType}>{tx.type || "unknown"}</Text>
-                  <Text style={styles.recentAmount}>{tx.amount || "?"} units</Text>
-                </View>
-                {hash ? <Text style={styles.recentHash}>{hash.slice(0, 8)}...</Text> : null}
-              </TouchableOpacity>
+              <View key={item.id}>
+                <TouchableOpacity
+                  style={styles.recentRow}
+                  disabled={!item.txHash}
+                  activeOpacity={item.txHash ? 0.72 : 1}
+                  onPress={() =>
+                    item.txHash
+                      ? Linking.openURL(`https://sepolia.voyager.online/tx/${item.txHash}`)
+                      : undefined
+                  }
+                >
+                  {rowIcon}
+                  <View style={styles.recentInfo}>
+                    <Text style={styles.recentType}>{item.title}</Text>
+                    <Text style={styles.recentSub}>{item.subtitle}</Text>
+                  </View>
+                  <Text style={[styles.recentAmount, { color: item.amountColor }]}>{item.amountLabel}</Text>
+                </TouchableOpacity>
+                {index < recentActivityItems.length - 1 ? <View style={styles.recentDivider} /> : null}
+              </View>
             );
           })}
         </View>
-      )}
-
-      {/* Compact Status */}
-      <View style={styles.compactStatus}>
-        <View style={[styles.statusDot, { backgroundColor: wallet.isBridgeReady ? colors.success : colors.error }]} />
-        <Text style={styles.compactStatusText}>Sepolia</Text>
-        <Text style={styles.compactStatusDivider}>|</Text>
-        <Text style={styles.compactStatusText}>Nonce: {wallet.nonce}</Text>
       </View>
+
         </>
       )}
     </KeyboardSafeScreen>
@@ -1040,9 +1125,9 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: Platform.OS === "ios" ? spacing.sm : spacing.lg,
-    paddingBottom: 100,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 96,
   },
   markerContainer: {
     position: "absolute",
@@ -1068,19 +1153,67 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.xl,
   },
-  loadingText: { color: colors.textSecondary, marginTop: spacing.md, fontSize: fontSize.md },
+  loadingText: {
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    fontSize: fontSize.md,
+    fontFamily: typography.secondary,
+  },
   heroIcon: { marginBottom: spacing.md },
-  heroTitle: { fontSize: fontSize.hero, fontWeight: "bold", color: colors.text, marginBottom: spacing.sm },
-  heroSubtitle: { fontSize: fontSize.lg, color: colors.textSecondary, textAlign: "center", marginBottom: spacing.xl },
+  heroTitle: {
+    fontSize: fontSize.hero,
+    fontWeight: "bold",
+    color: colors.text,
+    marginBottom: spacing.sm,
+    fontFamily: typography.primarySemibold,
+  },
+  heroSubtitle: {
+    fontSize: fontSize.lg,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: spacing.xl,
+    fontFamily: typography.secondary,
+  },
   createButton: {
     backgroundColor: colors.primary,
     paddingVertical: 16,
     paddingHorizontal: 48,
     borderRadius: borderRadius.lg,
   },
-  createButtonText: { color: "#fff", fontSize: fontSize.lg, fontWeight: "600" },
+  createButtonText: {
+    color: "#fff",
+    fontSize: fontSize.lg,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
+  onboardingRouteActions: {
+    marginTop: spacing.md,
+    width: "100%",
+    gap: spacing.sm,
+  },
+  onboardingRouteBtn: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: borderRadius.md,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  onboardingRouteWardBtn: {
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    backgroundColor: "rgba(245, 158, 11, 0.08)",
+  },
+  onboardingRouteBtnText: {
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
+  onboardingRouteWardBtnText: {
+    color: colors.warning,
+  },
   importToggle: { marginTop: spacing.lg },
-  importToggleText: { color: colors.primary, fontSize: fontSize.sm },
+  importToggleText: { color: colors.primary, fontSize: fontSize.sm, fontFamily: typography.secondary },
   importCard: {
     marginTop: spacing.md,
     backgroundColor: colors.surface,
@@ -1097,6 +1230,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 4,
     marginTop: spacing.sm,
+    fontFamily: typography.primarySemibold,
   },
   importInput: {
     backgroundColor: colors.bg,
@@ -1105,7 +1239,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: fontSize.sm,
     color: colors.text,
-    fontFamily: "monospace",
+    fontFamily: typography.primary,
     marginBottom: spacing.sm,
   },
   wardImportActions: {
@@ -1129,6 +1263,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.primary,
     fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
   scanModalOverlay: {
     flex: 1,
@@ -1151,11 +1286,13 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: "600",
     marginBottom: spacing.xs,
+    fontFamily: typography.primarySemibold,
   },
   scanModalStatusLabel: {
     color: colors.textMuted,
     fontSize: fontSize.xs,
     marginBottom: spacing.sm,
+    fontFamily: typography.secondary,
   },
   scanWebViewWrap: {
     borderRadius: borderRadius.md,
@@ -1174,6 +1311,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
     minHeight: 32,
+    fontFamily: typography.secondary,
   },
   scanCloseBtn: {
     backgroundColor: colors.primary,
@@ -1185,114 +1323,142 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: fontSize.sm,
     fontWeight: "600",
+    fontFamily: typography.primarySemibold,
   },
 
   // Balance Card
   balanceCard: {
     overflow: "hidden",
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
+    borderRadius: 20,
+    padding: 24,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.lg,
+    marginBottom: 16,
+    minHeight: 260,
   },
   glowTopRight: {
     position: "absolute",
-    top: -40,
+    top: -64,
     right: -40,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(59, 130, 246, 0.08)",
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(59, 130, 246, 0.20)",
+    opacity: 0.5,
   },
   glowBottomLeft: {
     position: "absolute",
-    bottom: -30,
+    bottom: -42,
     left: -30,
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "rgba(139, 92, 246, 0.08)",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(139, 92, 246, 0.20)",
+    opacity: 0.4,
   },
   balanceContent: { position: "relative" },
   balanceLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: 12,
+  },
+  balanceVisibilityToggle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(148, 163, 184, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   balanceLabel: {
-    fontSize: fontSize.xs,
+    fontSize: 11,
     color: colors.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 1.5,
+    fontFamily: typography.primarySemibold,
   },
   eyeIcon: {},
-  balanceAmount: { fontSize: fontSize.hero, fontWeight: "bold", color: colors.text },
-  balanceSecondary: { fontSize: fontSize.md, color: colors.textSecondary, marginTop: 2 },
-  pendingText: { fontSize: fontSize.sm, color: colors.warning, marginTop: spacing.sm },
+  balanceAmount: {
+    fontSize: 49,
+    lineHeight: 54,
+    fontWeight: "700",
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  balanceSecondary: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontFamily: typography.primary,
+  },
+  pendingText: {
+    fontSize: fontSize.sm,
+    color: colors.warning,
+    marginTop: spacing.sm,
+    fontFamily: typography.secondary,
+  },
   erc20Label: {
-    fontSize: fontSize.xs,
+    fontSize: 12,
     color: colors.textMuted,
     textTransform: "uppercase",
-    letterSpacing: 1,
-    marginTop: spacing.md,
+    letterSpacing: 1.2,
+    marginTop: 14,
+    fontFamily: typography.primary,
   },
-  erc20Amount: { fontSize: fontSize.lg, color: colors.textSecondary, marginTop: 2 },
-  erc20Symbol: { fontSize: fontSize.sm, color: colors.textMuted },
+  erc20Amount: { fontSize: 34, color: colors.textSecondary, marginTop: 2, fontFamily: typography.primarySemibold },
+  erc20Symbol: { fontSize: 20, color: colors.textMuted, fontFamily: typography.primary },
 
   // Claim Banner
   claimBanner: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(245, 158, 11, 0.1)",
+    backgroundColor: "rgba(16, 185, 129, 0.10)",
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.25)",
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    borderColor: "rgba(16, 185, 129, 0.25)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 12,
   },
-  claimBannerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+  claimBannerPlaceholder: {
+    opacity: 0.85,
+  },
+  claimTextWrap: {
     flex: 1,
+    justifyContent: "center",
   },
-  pulsingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.warning,
+  claimBannerTitle: {
+    fontSize: 13,
+    color: colors.success,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
   },
-  claimBannerTitle: { fontSize: fontSize.sm, color: colors.warning, fontWeight: "600" },
-  claimBannerAmount: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  claimPill: {
-    backgroundColor: "rgba(245, 158, 11, 0.2)",
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.4)",
+  claimBannerSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontFamily: typography.secondary,
   },
-  claimPillText: { color: colors.warning, fontSize: fontSize.sm, fontWeight: "700" },
 
   // Actions
   actionsRow: {
     flexDirection: "row",
-    gap: spacing.md,
-    marginBottom: spacing.lg,
+    gap: 10,
+    marginBottom: 12,
   },
   actionButton: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    paddingVertical: spacing.xl,
+    borderRadius: 16,
+    height: 110,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderLeftWidth: 3,
+    borderColor: colors.border,
+    borderLeftWidth: 4,
   },
   actionSend: {
     borderLeftColor: colors.primary,
@@ -1303,83 +1469,73 @@ const styles = StyleSheet.create({
   actionUnshield: {
     borderLeftColor: colors.secondary,
   },
-  actionIcon: { fontSize: 32, marginBottom: spacing.xs },
-  actionIconSpacing: { marginBottom: spacing.xs },
-  actionLabel: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: "600" },
+  actionIcon: { fontSize: 28, marginBottom: spacing.xs },
+  actionIconSpacing: { marginBottom: 10 },
+  actionLabel: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
 
   // Recent Activity
   recentSection: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    marginBottom: spacing.lg,
+    marginBottom: 14,
   },
   recentHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.md,
+    marginBottom: 10,
   },
   recentTitle: {
-    fontSize: fontSize.sm,
+    fontSize: 11,
     fontWeight: "600",
-    color: colors.textSecondary,
+    color: colors.textMuted,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 1.5,
+    fontFamily: typography.primarySemibold,
   },
   recentSeeAll: {
-    fontSize: fontSize.sm,
-    color: colors.primary,
+    fontSize: 13,
+    color: colors.primaryLight,
     fontWeight: "500",
+    fontFamily: typography.secondarySemibold,
+  },
+  recentListCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
   },
   recentRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-    gap: spacing.sm,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  recentDivider: {
+    height: 1,
+    backgroundColor: colors.border,
   },
   recentInfo: { flex: 1 },
   recentType: {
-    fontSize: fontSize.sm,
+    fontSize: 13,
     color: colors.text,
     fontWeight: "500",
-    textTransform: "capitalize",
+    fontFamily: typography.primarySemibold,
+  },
+  recentSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontFamily: typography.secondary,
   },
   recentAmount: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-  },
-  recentHash: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    fontFamily: "monospace",
-  },
-
-  // Compact Status
-  compactStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  compactStatusText: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-  },
-  compactStatusDivider: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    opacity: 0.5,
+    fontSize: 14,
+    fontFamily: typography.primarySemibold,
   },
 
   // Claim Success Card
