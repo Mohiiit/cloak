@@ -47,7 +47,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return <Text style={[styles.icon, focused && styles.iconActive]}>{"•"}</Text>;
 }
 
-function HeaderTitle() {
+function HeaderTitle({ routeName }: { routeName?: string }) {
   let isWard = false;
   try {
     const wardCtx = useWardContext();
@@ -56,10 +56,12 @@ function HeaderTitle() {
     // WardProvider not available yet
   }
 
+  const isWardHome = isWard && routeName === "Home";
+
   return (
     <View style={styles.headerTitleRow}>
       <CloakIcon size={24} />
-      <Text style={styles.headerBrand}>Cloak</Text>
+      <Text style={styles.headerBrand}>{isWardHome ? "Ward Account" : "Cloak"}</Text>
       {isWard && (
         <View style={styles.wardHeaderBadge}>
           <ShieldAlert size={12} color="#F59E0B" />
@@ -72,6 +74,7 @@ function HeaderTitle() {
 
 export default function AppNavigator() {
   const wallet = useWallet();
+  const ward = useWardContext();
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, Platform.OS === "android" ? 12 : 24);
 
@@ -116,18 +119,20 @@ export default function AppNavigator() {
         <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={{ headerTitle: () => <HeaderTitle /> }}
+          options={{ headerTitle: () => <HeaderTitle routeName="Home" /> }}
         />
         <Tab.Screen
           name="Send"
           component={SendScreen}
           options={{ headerTitle: "Send Payment" }}
         />
-        <Tab.Screen
-          name="Wallet"
-          component={WalletScreen}
-          options={{ headerTitle: "Wallet" }}
-        />
+        {!ward.isWard && (
+          <Tab.Screen
+            name="Wallet"
+            component={WalletScreen}
+            options={{ headerTitle: "Wallet" }}
+          />
+        )}
         <Tab.Screen
           name="Activity"
           component={ActivityScreen}

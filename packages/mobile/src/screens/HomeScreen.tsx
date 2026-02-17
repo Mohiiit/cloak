@@ -28,6 +28,9 @@ import {
   Check,
   ShieldAlert,
   Info,
+  Snowflake,
+  MessageCircle,
+  Gauge,
   Camera,
   ClipboardPaste,
 } from "lucide-react-native";
@@ -755,6 +758,12 @@ export default function HomeScreen({ navigation }: any) {
   const displayBalance = tongoToDisplay(wallet.balance, wallet.selectedToken);
   const displayPending = tongoToDisplay(wallet.pending, wallet.selectedToken);
   const displayErc20 = erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken);
+  const isWardFrozen = ward.isWard && !!ward.wardInfo?.isFrozen;
+  const guardianAddress = ward.wardInfo?.guardianAddress || "";
+  const guardianShort = guardianAddress
+    ? `${guardianAddress.slice(0, 8)}...${guardianAddress.slice(-4)}`
+    : "0x2563...8f3a";
+  const wardDisplayedBalance = displayErc20;
   const hasPending = wallet.pending !== "0";
   const claimUnitsForUi = hasPending ? wallet.pending : "500";
   const claimSubline = hasPending
@@ -843,6 +852,113 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
+  const wardFrozenContent = (
+    <>
+      <View style={styles.wardFrozenBanner}>
+        <View style={styles.wardFrozenIconWrap}>
+          <Snowflake size={20} color={colors.error} />
+        </View>
+        <View style={styles.wardFrozenInfo}>
+          <Text style={styles.wardFrozenTitle}>Account Frozen</Text>
+          <Text style={styles.wardFrozenDesc}>
+            Your guardian has frozen this account. Contact them to restore access.
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.wardGuardianCard}>
+        <View style={styles.wardGuardianAvatar}>
+          <Text style={styles.wardGuardianAvatarText}>G</Text>
+        </View>
+        <View style={styles.wardGuardianInfo}>
+          <Text style={styles.wardGuardianLabel}>GUARDIAN</Text>
+          <Text style={styles.wardGuardianAddress}>{guardianShort}</Text>
+        </View>
+        <View style={styles.wardGuardianAction}>
+          <MessageCircle size={16} color={colors.textMuted} />
+        </View>
+      </View>
+
+      <View style={styles.wardFrozenBalanceCard}>
+        <Text style={styles.wardFrozenBalanceLabel}>AVAILABLE BALANCE</Text>
+        <View style={styles.wardFrozenBalanceRow}>
+          <Text style={styles.wardFrozenBalanceValue}>{wardDisplayedBalance}</Text>
+          <Text style={styles.wardFrozenBalanceToken}>{wallet.selectedToken}</Text>
+        </View>
+        <Text style={styles.wardFrozenBalanceHint}>Transfers disabled while frozen</Text>
+      </View>
+
+      <View style={styles.wardLimitsCard}>
+        <View style={styles.wardLimitsHeader}>
+          <Gauge size={16} color={colors.primaryLight} />
+          <Text style={styles.wardLimitsTitle}>Spending Limits</Text>
+        </View>
+
+        <View style={styles.wardLimitBlock}>
+          <View style={styles.wardLimitRow}>
+            <Text style={styles.wardLimitLabel}>Daily Limit</Text>
+            <Text style={styles.wardLimitValue}>15 / 100 STRK</Text>
+          </View>
+          <View style={styles.wardLimitTrack}>
+            <View style={[styles.wardLimitFill, styles.wardLimitFillDaily]} />
+          </View>
+        </View>
+
+        <View style={styles.wardLimitBlock}>
+          <View style={styles.wardLimitRow}>
+            <Text style={styles.wardLimitLabel}>Monthly Limit</Text>
+            <Text style={styles.wardLimitValue}>150 / 500 STRK</Text>
+          </View>
+          <View style={styles.wardLimitTrack}>
+            <View style={[styles.wardLimitFill, styles.wardLimitFillMonthly]} />
+          </View>
+        </View>
+
+        <View style={styles.wardAllowedTokenRow}>
+          <Text style={styles.wardAllowedTokenLabel}>Allowed Tokens</Text>
+          <View style={styles.wardAllowedTokenBadge}>
+            <Text style={styles.wardAllowedTokenBadgeText}>STRK</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.wardDisabledActionsRow}>
+        <View style={styles.wardDisabledActionCard}>
+          <Send size={20} color={colors.textMuted} />
+          <Text style={styles.wardDisabledActionLabel}>Send</Text>
+        </View>
+        <View style={styles.wardDisabledActionCard}>
+          <ShieldPlus size={20} color={colors.textMuted} />
+          <Text style={styles.wardDisabledActionLabel}>Shield</Text>
+        </View>
+      </View>
+
+      <View style={styles.wardFrozenRecentSection}>
+        <Text style={styles.wardFrozenRecentTitle}>RECENT ACTIVITY</Text>
+        <View style={styles.wardFrozenRecentRow}>
+          <View style={styles.wardFrozenRecentLeft}>
+            <ArrowUpFromLine size={16} color={colors.primaryLight} />
+            <View>
+              <Text style={styles.wardFrozenRecentType}>Transfer blocked</Text>
+              <Text style={styles.wardFrozenRecentSub}>2 min ago</Text>
+            </View>
+          </View>
+          <Text style={styles.wardFrozenRecentNegative}>-10 STRK</Text>
+        </View>
+        <View style={styles.wardFrozenRecentRow}>
+          <View style={styles.wardFrozenRecentLeft}>
+            <ArrowDownToLine size={16} color={colors.success} />
+            <View>
+              <Text style={styles.wardFrozenRecentType}>Guardian top-up</Text>
+              <Text style={styles.wardFrozenRecentSub}>15 min ago</Text>
+            </View>
+          </View>
+          <Text style={styles.wardFrozenRecentPositive}>+50 STRK</Text>
+        </View>
+      </View>
+    </>
+  );
+
   return (
     <KeyboardSafeScreen
       style={styles.container}
@@ -919,6 +1035,9 @@ export default function HomeScreen({ navigation }: any) {
       )}
 
       {!claimSuccess && (
+        isWardFrozen ? (
+          wardFrozenContent
+        ) : (
         <>
           {/* Ward Badge Banner */}
           {ward.isWard && (
@@ -1140,6 +1259,7 @@ export default function HomeScreen({ navigation }: any) {
       </View>
 
         </>
+        )
       )}
     </KeyboardSafeScreen>
   );
@@ -1696,4 +1816,286 @@ const styles = StyleSheet.create({
   wardStatusText: { fontSize: fontSize.xs, fontWeight: "600" },
   wardStatusTextActive: { color: colors.success },
   wardStatusTextFrozen: { color: colors.error },
+
+  // Ward Frozen Variant (Sap4z)
+  wardFrozenBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.25)",
+    backgroundColor: "rgba(239, 68, 68, 0.10)",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  wardFrozenIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "rgba(239, 68, 68, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wardFrozenInfo: {
+    flex: 1,
+  },
+  wardFrozenTitle: {
+    fontSize: 14,
+    color: colors.error,
+    fontFamily: typography.primarySemibold,
+    fontWeight: "700",
+  },
+  wardFrozenDesc: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: "rgba(239, 68, 68, 0.64)",
+    marginTop: 2,
+    fontFamily: typography.secondary,
+  },
+  wardGuardianCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  wardGuardianAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(139, 92, 246, 0.20)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wardGuardianAvatarText: {
+    fontSize: 16,
+    color: colors.secondary,
+    fontFamily: typography.primarySemibold,
+    fontWeight: "600",
+  },
+  wardGuardianInfo: {
+    flex: 1,
+  },
+  wardGuardianLabel: {
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: colors.textMuted,
+    fontFamily: typography.primarySemibold,
+  },
+  wardGuardianAddress: {
+    fontSize: 13,
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+    marginTop: 2,
+  },
+  wardGuardianAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.inputBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wardFrozenBalanceCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    marginBottom: 10,
+  },
+  wardFrozenBalanceLabel: {
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: colors.textMuted,
+    fontFamily: typography.primarySemibold,
+  },
+  wardFrozenBalanceRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    marginTop: 8,
+  },
+  wardFrozenBalanceValue: {
+    fontSize: 36,
+    lineHeight: 40,
+    color: colors.text,
+    opacity: 0.45,
+    fontFamily: typography.primarySemibold,
+    fontWeight: "700",
+  },
+  wardFrozenBalanceToken: {
+    fontSize: 16,
+    color: colors.textMuted,
+    marginBottom: 6,
+    fontFamily: typography.primary,
+  },
+  wardFrozenBalanceHint: {
+    fontSize: 11,
+    color: colors.error,
+    opacity: 0.72,
+    marginTop: 6,
+    fontFamily: typography.primary,
+  },
+  wardLimitsCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+    marginBottom: 10,
+  },
+  wardLimitsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  wardLimitsTitle: {
+    fontSize: 14,
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+    fontWeight: "600",
+  },
+  wardLimitBlock: {
+    gap: 6,
+  },
+  wardLimitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  wardLimitLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.primary,
+  },
+  wardLimitValue: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontFamily: typography.primarySemibold,
+  },
+  wardLimitTrack: {
+    width: "100%",
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.inputBg,
+    overflow: "hidden",
+  },
+  wardLimitFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  wardLimitFillDaily: {
+    width: "15%",
+    backgroundColor: colors.primary,
+  },
+  wardLimitFillMonthly: {
+    width: "30%",
+    backgroundColor: colors.secondary,
+  },
+  wardAllowedTokenRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 4,
+  },
+  wardAllowedTokenLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontFamily: typography.primary,
+  },
+  wardAllowedTokenBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: colors.inputBg,
+  },
+  wardAllowedTokenBadgeText: {
+    fontSize: 11,
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  wardDisabledActionsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 10,
+  },
+  wardDisabledActionCard: {
+    flex: 1,
+    height: 70,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    opacity: 0.35,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  wardDisabledActionLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.primarySemibold,
+    fontWeight: "600",
+  },
+  wardFrozenRecentSection: {
+    marginBottom: 16,
+  },
+  wardFrozenRecentTitle: {
+    fontSize: 10,
+    color: colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: 10,
+    fontFamily: typography.primarySemibold,
+  },
+  wardFrozenRecentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  wardFrozenRecentLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  wardFrozenRecentType: {
+    fontSize: 12,
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  wardFrozenRecentSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 1,
+    fontFamily: typography.secondary,
+  },
+  wardFrozenRecentNegative: {
+    fontSize: 13,
+    color: colors.error,
+    fontFamily: typography.primarySemibold,
+  },
+  wardFrozenRecentPositive: {
+    fontSize: 13,
+    color: colors.success,
+    fontFamily: typography.primarySemibold,
+  },
 });
