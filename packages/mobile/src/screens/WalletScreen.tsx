@@ -15,7 +15,7 @@ import {
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { Check, ShieldOff, ShieldPlus } from "lucide-react-native";
+import { Check, Shield, ShieldOff, ShieldPlus } from "lucide-react-native";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
@@ -86,6 +86,9 @@ export default function WalletScreen() {
 
   const activeKeyboardCard: RetryAction | null =
     keyboardVisible && shieldFocused ? "shield" : keyboardVisible && unshieldFocused ? "unshield" : null;
+
+  const isShieldKeyboard = activeKeyboardCard === "shield";
+  const isUnshieldKeyboard = activeKeyboardCard === "unshield";
 
   const showShieldCard = !activeKeyboardCard || activeKeyboardCard === "shield";
   const showUnshieldCard = !activeKeyboardCard || activeKeyboardCard === "unshield";
@@ -273,23 +276,41 @@ export default function WalletScreen() {
         <View style={styles.cards}>
           {showShieldCard ? (
             <View style={[styles.card, styles.shieldCard]}>
-              <View style={styles.cardHeader}>
-                <View style={[styles.iconBox, styles.iconBoxShield]}>
-                  <ShieldPlus size={22} color={colors.success} />
-                </View>
-                <View style={styles.headerText}>
-                  <Text style={styles.cardTitle}>Shield Tokens</Text>
+              {isShieldKeyboard ? (
+                <View style={styles.cardHeaderKeyboard}>
+                  <View style={styles.headerRowKeyboard}>
+                    <Shield size={20} color={colors.success} />
+                    <Text style={[styles.cardTitle, styles.cardTitleKeyboard]}>Shield Tokens</Text>
+                  </View>
                   <Text style={styles.cardDesc}>Move tokens into your shielded balance</Text>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconBox, styles.iconBoxShield]}>
+                    <ShieldPlus size={22} color={colors.success} />
+                  </View>
+                  <View style={styles.headerText}>
+                    <Text style={styles.cardTitle}>Shield Tokens</Text>
+                    <Text style={styles.cardDesc}>Move tokens into your shielded balance</Text>
+                  </View>
+                </View>
+              )}
 
-              <View style={styles.inputRow}>
+              <View
+                style={[
+                  styles.inputRow,
+                  isShieldKeyboard && styles.inputRowActiveShield,
+                ]}
+              >
                 <TextInput
                   {...testProps(testIDs.wallet.amountInput)}
-                  style={styles.inputAmount}
+                  style={[
+                    styles.inputAmount,
+                    isShieldKeyboard && styles.inputAmountKeyboard,
+                  ]}
                   placeholder="0"
                   placeholderTextColor={colors.textMuted}
-                  keyboardType="decimal-pad"
+                  keyboardType="default"
                   value={shieldAmountToken}
                   onChangeText={(t) => {
                     if (/^\d*(?:\.\d*)?$/.test(t)) {
@@ -303,12 +324,23 @@ export default function WalletScreen() {
                   }}
                   onBlur={() => setShieldFocused(false)}
                 />
-                <Text style={styles.inputUnit}>{token}</Text>
+                <Text style={[styles.inputUnit, isShieldKeyboard && styles.inputUnitKeyboard]}>
+                  {token}
+                </Text>
               </View>
 
               <View style={styles.availabilityRow}>
-                <Text style={styles.availLabel}>On-chain balance:</Text>
-                <Text style={[styles.availValue, styles.availValueShield]}>{onChainBalanceLabel}</Text>
+                <Text style={[styles.availLabel, isShieldKeyboard && styles.availLabelKeyboard]}>
+                  On-chain balance:
+                </Text>
+                <Text
+                  style={[
+                    styles.availValue,
+                    isShieldKeyboard ? styles.availValueKeyboard : styles.availValueShield,
+                  ]}
+                >
+                  {onChainBalanceLabel}
+                </Text>
               </View>
               {shieldError ? <Text style={styles.errorText}>{shieldError}</Text> : null}
 
@@ -325,8 +357,10 @@ export default function WalletScreen() {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <ShieldPlus size={18} color="#fff" />
-                    <Text style={styles.ctaText}>{shieldBtnLabel}</Text>
+                    <ShieldPlus size={isShieldKeyboard ? 16 : 18} color="#fff" />
+                    <Text style={[styles.ctaText, isShieldKeyboard && styles.ctaTextKeyboard]}>
+                      {shieldBtnLabel}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -335,23 +369,41 @@ export default function WalletScreen() {
 
           {showUnshieldCard ? (
             <View style={[styles.card, styles.unshieldCard]}>
-              <View style={styles.cardHeader}>
-                <View style={[styles.iconBox, styles.iconBoxUnshield]}>
-                  <ShieldOff size={22} color={colors.secondary} />
-                </View>
-                <View style={styles.headerText}>
-                  <Text style={styles.cardTitle}>Unshield Tokens</Text>
+              {isUnshieldKeyboard ? (
+                <View style={styles.cardHeaderKeyboard}>
+                  <View style={styles.headerRowKeyboard}>
+                    <ShieldOff size={20} color={colors.secondary} />
+                    <Text style={[styles.cardTitle, styles.cardTitleKeyboard]}>Unshield Tokens</Text>
+                  </View>
                   <Text style={styles.cardDesc}>Move tokens back to your public balance</Text>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconBox, styles.iconBoxUnshield]}>
+                    <ShieldOff size={22} color={colors.secondary} />
+                  </View>
+                  <View style={styles.headerText}>
+                    <Text style={styles.cardTitle}>Unshield Tokens</Text>
+                    <Text style={styles.cardDesc}>Move tokens back to your public balance</Text>
+                  </View>
+                </View>
+              )}
 
-              <View style={styles.inputRow}>
+              <View
+                style={[
+                  styles.inputRow,
+                  isUnshieldKeyboard && styles.inputRowActiveUnshield,
+                ]}
+              >
                 <TextInput
                   {...testProps(testIDs.wallet.unshieldAmountInput)}
-                  style={styles.inputAmount}
+                  style={[
+                    styles.inputAmount,
+                    isUnshieldKeyboard && styles.inputAmountKeyboard,
+                  ]}
                   placeholder="0"
                   placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
+                  keyboardType="default"
                   value={unshieldAmountUnits}
                   onChangeText={(t) => {
                     if (/^\d*$/.test(t)) {
@@ -365,12 +417,21 @@ export default function WalletScreen() {
                   }}
                   onBlur={() => setUnshieldFocused(false)}
                 />
-                <Text style={styles.inputUnit}>units</Text>
+                <Text style={[styles.inputUnit, isUnshieldKeyboard && styles.inputUnitKeyboard]}>
+                  units
+                </Text>
               </View>
 
               <View style={styles.availabilityRow}>
-                <Text style={styles.availLabel}>Shielded balance:</Text>
-                <Text style={[styles.availValue, styles.availValueUnshield]}>
+                <Text style={[styles.availLabel, isUnshieldKeyboard && styles.availLabelKeyboard]}>
+                  Shielded balance:
+                </Text>
+                <Text
+                  style={[
+                    styles.availValue,
+                    isUnshieldKeyboard ? styles.availValueKeyboard : styles.availValueUnshield,
+                  ]}
+                >
                   {shieldedBalanceUnitsLabel}
                 </Text>
               </View>
@@ -389,8 +450,10 @@ export default function WalletScreen() {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <ShieldOff size={18} color="#fff" />
-                    <Text style={styles.ctaText}>{unshieldBtnLabel}</Text>
+                    <ShieldOff size={isUnshieldKeyboard ? 16 : 18} color="#fff" />
+                    <Text style={[styles.ctaText, isUnshieldKeyboard && styles.ctaTextKeyboard]}>
+                      {unshieldBtnLabel}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -431,6 +494,14 @@ const styles = StyleSheet.create({
     gap: 12,
     alignItems: "center",
   },
+  cardHeaderKeyboard: {
+    gap: 6,
+  },
+  headerRowKeyboard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   iconBox: {
     width: 40,
     height: 40,
@@ -454,6 +525,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.primarySemibold,
   },
+  cardTitleKeyboard: {
+    fontSize: 15,
+  },
   cardDesc: {
     fontSize: 12,
     color: colors.textSecondary,
@@ -470,6 +544,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  inputRowActiveShield: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
+  inputRowActiveUnshield: {
+    borderColor: colors.secondary,
+    borderWidth: 2,
+  },
   inputAmount: {
     flex: 1,
     fontSize: 18,
@@ -478,11 +560,18 @@ const styles = StyleSheet.create({
     fontFamily: typography.primarySemibold,
     paddingVertical: 0,
   },
+  inputAmountKeyboard: {
+    fontSize: 16,
+  },
   inputUnit: {
     fontSize: 13,
     fontWeight: "500",
     color: colors.textMuted,
     fontFamily: typography.primary,
+  },
+  inputUnitKeyboard: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   availabilityRow: {
     flexDirection: "row",
@@ -494,6 +583,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: typography.secondary,
   },
+  availLabelKeyboard: {
+    fontSize: 11,
+  },
   availValue: {
     fontSize: 12,
     fontWeight: "600",
@@ -501,6 +593,10 @@ const styles = StyleSheet.create({
   },
   availValueShield: { color: colors.success },
   availValueUnshield: { color: colors.secondary },
+  availValueKeyboard: {
+    fontSize: 11,
+    color: colors.primaryLight,
+  },
   cta: {
     height: 44,
     borderRadius: borderRadius.md,
@@ -516,6 +612,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     fontFamily: typography.primarySemibold,
+  },
+  ctaTextKeyboard: {
+    fontSize: 13,
   },
   ctaDisabled: { opacity: 0.7 },
   errorText: {
