@@ -179,4 +179,4 @@ These screenshots intentionally exclude private keys and secret material.
 | 02 | `Gyt7Z` | Deploy Account | `packages/mobile/src/screens/DeployScreen.tsx` | `4945647` | `packages/mobile/e2e/screenshots/2026-02-17/02-Gyt7Z-ios.png` | pending | n/a | passed |
 | 03 | `7Vrpd` | Dashboard (non-ward) | `packages/mobile/src/screens/HomeScreen.tsx` | `562b3eb` | `packages/mobile/e2e/screenshots/2026-02-17/03-7Vrpd-ios.png` | pending | n/a | passed |
 | 04 | `Sap4z` | Ward Dashboard (frozen) | `packages/mobile/src/screens/HomeScreen.tsx`, `packages/mobile/src/navigation/AppNavigator.tsx` | `8a38601` | `packages/mobile/e2e/screenshots/2026-02-17/04-Sap4z-ios.png` | pending | n/a | passed |
-| 05 | `Grp6y` | Send (default) | `packages/mobile/src/screens/SendScreen.tsx`, `packages/mobile/src/navigation/AppNavigator.tsx` | pending | `packages/mobile/e2e/screenshots/2026-02-17/05-Grp6y-ios.png` | pending | n/a | passed |
+| 05 | `Grp6y` | Send (default) | `packages/mobile/src/screens/SendScreen.tsx`, `packages/mobile/src/navigation/AppNavigator.tsx` | `da66385` | `packages/mobile/e2e/screenshots/2026-02-17/05-Grp6y-ios.png` | pending | n/a | passed |
