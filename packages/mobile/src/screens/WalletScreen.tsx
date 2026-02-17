@@ -1,7 +1,10 @@
 /**
- * WalletScreen — Shield and unshield funds.
+ * WalletScreen — Shield and unshield funds (O3kob parity).
+ *
+ * Note: Shield input is in token units (e.g. STRK). It is converted to Tongo units before execution.
+ * Unshield input is in Tongo units ("units").
  */
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,109 +15,192 @@ import {
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { ShieldPlus, ShieldOff, Check } from "lucide-react-native";
+import { Check, ShieldOff, ShieldPlus } from "lucide-react-native";
+import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoToDisplay, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { TOKENS, type TokenKey, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
+import { triggerMedium } from "../lib/haptics";
+import { colors, spacing, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { FeeRetryModal } from "../components/FeeRetryModal";
-import { parseInsufficientGasError } from "@cloak-wallet/sdk";
-import { triggerMedium } from "../lib/haptics";
-import { testIDs, testProps } from "../testing/testIDs";
 import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
+import { useKeyboardVisible } from "../hooks/useKeyboardVisible";
+import { testIDs, testProps } from "../testing/testIDs";
 
-type Mode = "shield" | "unshield" | null;
-type SuccessInfo = { txHash: string; amount: string; type: "shield" | "unshield" | "claim" };
+type SuccessInfo = { txHash: string; amountUnits: string; type: "shield" | "unshield" };
+type RetryAction = "shield" | "unshield";
 
-export default function WalletScreen({ route }: any) {
+function formatIntWithCommas(intStr: string): string {
+  const sanitized = (intStr || "0").replace(/\D/g, "");
+  if (!sanitized) return "0";
+  return sanitized.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function parseDecimalToWei(value: string, decimals: number): bigint | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  const [wholeRaw, fracRaw = ""] = trimmed.split(".");
+  if (fracRaw.length > decimals) return null;
+
+  const whole = BigInt(wholeRaw || "0");
+  const fracPadded = (fracRaw + "0".repeat(decimals)).slice(0, decimals);
+  const frac = BigInt(fracPadded || "0");
+
+  return whole * 10n ** BigInt(decimals) + frac;
+}
+
+export default function WalletScreen() {
   const wallet = useWallet();
   const { execute } = useTransactionRouter();
   const modal = useThemedModal();
-  const [mode, setMode] = useState<Mode>(null);
-  const [amount, setAmount] = useState("");
+  const keyboardVisible = useKeyboardVisible();
+
+  const token = wallet.selectedToken as TokenKey;
+  const tokenConfig = TOKENS[token];
+
+  const onChainBalanceLabel = useMemo(() => {
+    return `${erc20ToDisplay(wallet.erc20Balance, token)} ${token}`;
+  }, [wallet.erc20Balance, token]);
+
+  const shieldedBalanceUnitsLabel = useMemo(() => {
+    return `${formatIntWithCommas(wallet.balance)} units`;
+  }, [wallet.balance]);
+
+  const [shieldAmountToken, setShieldAmountToken] = useState("");
+  const [unshieldAmountUnits, setUnshieldAmountUnits] = useState("");
+  const [shieldError, setShieldError] = useState("");
+  const [unshieldError, setUnshieldError] = useState("");
+  const [shieldFocused, setShieldFocused] = useState(false);
+  const [unshieldFocused, setUnshieldFocused] = useState(false);
+
   const [isPending, setIsPending] = useState(false);
-  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
-  const [copiedTx, setCopiedTx] = useState(false);
+  const [pendingRetryAction, setPendingRetryAction] = useState<RetryAction>("shield");
   const [showFeeRetry, setShowFeeRetry] = useState(false);
   const [gasErrorMsg, setGasErrorMsg] = useState("");
   const [feeRetryCount, setFeeRetryCount] = useState(0);
-  const [pendingRetryAction, setPendingRetryAction] = useState<"submit" | "rollover">("submit");
 
-  // Accept route params to auto-open shield/unshield mode
-  useEffect(() => {
-    if (route?.params?.mode) {
-      setMode(route.params.mode);
+  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
+  const [copiedTx, setCopiedTx] = useState(false);
+
+  const activeKeyboardCard: RetryAction | null =
+    keyboardVisible && shieldFocused ? "shield" : keyboardVisible && unshieldFocused ? "unshield" : null;
+
+  const showShieldCard = !activeKeyboardCard || activeKeyboardCard === "shield";
+  const showUnshieldCard = !activeKeyboardCard || activeKeyboardCard === "unshield";
+
+  const shieldBtnLabel = shieldAmountToken.trim()
+    ? `Shield ${shieldAmountToken.trim()} ${token}`
+    : `Shield ${token}`;
+  const unshieldBtnLabel = unshieldAmountUnits.trim()
+    ? `Unshield ${unshieldAmountUnits.trim()} Units`
+    : "Unshield Units";
+
+  const handleCopyTx = (hash: string) => {
+    Clipboard.setString(hash);
+    setCopiedTx(true);
+    setTimeout(() => setCopiedTx(false), 2000);
+  };
+
+  const validateShield = (): { units: string } | null => {
+    setShieldError("");
+    const wei = parseDecimalToWei(shieldAmountToken, tokenConfig.decimals);
+    if (wei === null) {
+      setShieldError(`Enter a valid ${token} amount`);
+      return null;
     }
-  }, [route?.params?.mode]);
+    if (wei <= 0n) {
+      setShieldError(`Amount must be greater than 0`);
+      return null;
+    }
 
-  const displayBalance = tongoToDisplay(wallet.balance, wallet.selectedToken);
-  const displayPending = tongoToDisplay(wallet.pending, wallet.selectedToken);
-  const displayErc20 = erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken);
-  const hasPending = wallet.pending !== "0";
-  const conversionHint = `1 unit = ${tongoUnitToErc20Display("1", wallet.selectedToken)}`;
+    const rate = tokenConfig.rate; // wei per Tongo unit
+    if (wei % rate !== 0n) {
+      const unitStep = tongoUnitToErc20Display("1", token);
+      setShieldError(`Amount must be a multiple of ${unitStep}`);
+      return null;
+    }
 
-  const handleSubmit = async () => {
-    if (!amount || isPending) return;
+    const units = wei / rate;
+    if (units <= 0n) {
+      setShieldError(`Amount is too small`);
+      return null;
+    }
+    return { units: units.toString() };
+  };
+
+  const validateUnshield = (): { units: string } | null => {
+    setUnshieldError("");
+    const trimmed = unshieldAmountUnits.trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) {
+      setUnshieldError("Enter a valid unit amount");
+      return null;
+    }
+    const units = BigInt(trimmed);
+    if (units <= 0n) {
+      setUnshieldError("Amount must be greater than 0");
+      return null;
+    }
+    return { units: units.toString() };
+  };
+
+  const submitShield = async () => {
+    const parsed = validateShield();
+    if (!parsed || isPending) return;
     triggerMedium();
     setIsPending(true);
     try {
-      const action = mode === "shield" ? "fund" : "withdraw";
-      const result = await execute({
-        action,
-        token: wallet.selectedToken,
-        amount,
-      });
-      setSuccessInfo({ txHash: result.txHash, amount, type: mode! });
+      const result = await execute({ action: "fund", token, amount: parsed.units });
+      setSuccessInfo({ txHash: result.txHash, amountUnits: parsed.units, type: "shield" });
+      setShieldAmountToken("");
       wallet.refreshBalance();
-      setAmount("");
-      setMode(null);
     } catch (e: any) {
       const gasInfo = parseInsufficientGasError(e.message || "");
       if (gasInfo && feeRetryCount < 3) {
         setGasErrorMsg(e.message);
-        setPendingRetryAction("submit");
+        setPendingRetryAction("shield");
         setShowFeeRetry(true);
       } else {
-        modal.showError("Error", e.message || "Transaction failed", e.message);
+        modal.showError("Error", e.message || "Shield failed", e.message);
       }
     } finally {
       setIsPending(false);
     }
   };
 
-  const handleRollover = async () => {
+  const submitUnshield = async () => {
+    const parsed = validateUnshield();
+    if (!parsed || isPending) return;
+    triggerMedium();
+    setIsPending(true);
     try {
-      const pendingAmount = wallet.pending;
-      const result = await execute({ action: "rollover", token: wallet.selectedToken });
-      setSuccessInfo({ txHash: result.txHash, amount: pendingAmount, type: "claim" });
+      const result = await execute({ action: "withdraw", token, amount: parsed.units });
+      setSuccessInfo({ txHash: result.txHash, amountUnits: parsed.units, type: "unshield" });
+      setUnshieldAmountUnits("");
       wallet.refreshBalance();
     } catch (e: any) {
       const gasInfo = parseInsufficientGasError(e.message || "");
       if (gasInfo && feeRetryCount < 3) {
         setGasErrorMsg(e.message);
-        setPendingRetryAction("rollover");
+        setPendingRetryAction("unshield");
         setShowFeeRetry(true);
       } else {
-        modal.showError("Error", e.message || "Claim failed", e.message);
+        modal.showError("Error", e.message || "Unshield failed", e.message);
       }
+    } finally {
+      setIsPending(false);
     }
   };
 
   const handleFeeRetry = () => {
-    setFeeRetryCount(prev => prev + 1);
+    setFeeRetryCount((prev) => prev + 1);
     setShowFeeRetry(false);
-    if (pendingRetryAction === "rollover") {
-      handleRollover();
+    if (pendingRetryAction === "unshield") {
+      submitUnshield();
     } else {
-      handleSubmit();
+      submitShield();
     }
-  };
-
-  const handleCopyTx = (hash: string) => {
-    Clipboard.setString(hash);
-    setCopiedTx(true);
-    setTimeout(() => setCopiedTx(false), 2000);
   };
 
   return (
@@ -123,318 +209,326 @@ export default function WalletScreen({ route }: any) {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-        {modal.ModalComponent}
-        <FeeRetryModal
-          visible={showFeeRetry}
-          errorMessage={gasErrorMsg}
-          retryCount={feeRetryCount}
-          maxRetries={3}
-          isRetrying={isPending}
-          onRetry={handleFeeRetry}
-          onCancel={() => { setShowFeeRetry(false); setIsPending(false); }}
-        />
+      {modal.ModalComponent}
+      <FeeRetryModal
+        visible={showFeeRetry}
+        errorMessage={gasErrorMsg}
+        retryCount={feeRetryCount}
+        maxRetries={3}
+        isRetrying={isPending}
+        onRetry={handleFeeRetry}
+        onCancel={() => {
+          setShowFeeRetry(false);
+          setIsPending(false);
+        }}
+      />
 
-        {successInfo && (
-          <View style={styles.successCard}>
-            <View style={styles.successIconCircle}>
-              <Check size={32} color={colors.success} />
-            </View>
-            <Text style={styles.successTitle}>
-              {successInfo.type === "shield" ? "Shielded!" :
-               successInfo.type === "unshield" ? "Unshielded!" : "Claimed!"}
-            </Text>
-            <Text style={styles.successAmount}>
-              {successInfo.amount} units
-            </Text>
-            <Text style={styles.successEquiv}>
-              {tongoToDisplay(successInfo.amount, wallet.selectedToken)} {wallet.selectedToken}
-            </Text>
-            <Text style={styles.successDesc}>
-              {successInfo.type === "shield"
-                ? "Funds deposited into your private pool."
-                : successInfo.type === "unshield"
-                ? "Funds withdrawn to your public wallet."
-                : "Pending funds added to your balance."}
-            </Text>
+      {successInfo ? (
+        <View style={styles.successCard}>
+          <View style={styles.successIconCircle}>
+            <Check size={32} color={colors.success} />
+          </View>
+          <Text style={styles.successTitle}>
+            {successInfo.type === "shield" ? "Shielded!" : "Unshielded!"}
+          </Text>
+          <Text style={styles.successAmount}>{successInfo.amountUnits} units</Text>
+          <Text style={styles.successDesc}>
+            {successInfo.type === "shield"
+              ? "Funds deposited into your shielded balance."
+              : "Funds withdrawn to your public wallet."}
+          </Text>
 
-            <View style={styles.successTxSection}>
-              <Text style={styles.successTxLabel}>Transaction Hash</Text>
-              <Text style={styles.successTxHash} numberOfLines={2} selectable>
-                {successInfo.txHash}
-              </Text>
-              <View style={styles.successTxActions}>
+          <View style={styles.successTxSection}>
+            <Text style={styles.successTxLabel}>Transaction Hash</Text>
+            <Text style={styles.successTxHash} numberOfLines={2} selectable>
+              {successInfo.txHash}
+            </Text>
+            <View style={styles.successTxActions}>
               <TouchableOpacity
                 {...testProps(testIDs.wallet.successCopyTx)}
                 style={styles.successTxBtn}
                 onPress={() => handleCopyTx(successInfo.txHash)}
               >
-                  <Text style={styles.successTxBtnText}>
-                    {copiedTx ? "Copied!" : "Copy Tx Hash"}
-                  </Text>
-                </TouchableOpacity>
+                <Text style={styles.successTxBtnText}>{copiedTx ? "Copied!" : "Copy Tx Hash"}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 {...testProps(testIDs.wallet.successViewVoyager)}
                 style={styles.successTxBtn}
                 onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${successInfo.txHash}`)}
               >
-                  <Text style={styles.successTxBtnText}>View on Voyager</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              {...testProps(testIDs.wallet.successDone)}
-              style={styles.successDoneBtn}
-              onPress={() => setSuccessInfo(null)}
-            >
-              <Text style={styles.successDoneBtnText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {!successInfo && (
-          <>
-            {/* Balance Card */}
-            <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Shielded Balance</Text>
-          <Text style={styles.balanceAmount}>
-            {displayBalance}{" "}
-            <Text style={styles.balanceSymbol}>{wallet.selectedToken}</Text>
-          </Text>
-
-          {hasPending && (
-            <View style={styles.pendingSection}>
-              <View style={styles.pendingRow}>
-                <Text style={styles.pendingLabel}>Pending</Text>
-                <Text style={styles.pendingAmount}>
-                  +{displayPending} {wallet.selectedToken}
-                </Text>
-              </View>
-              <TouchableOpacity
-                {...testProps(testIDs.wallet.claimPending)}
-                style={styles.claimFullButton}
-                onPress={handleRollover}
-              >
-                <Text style={styles.claimFullButtonText}>Claim Pending</Text>
+                <Text style={styles.successTxBtnText}>View on Voyager</Text>
               </TouchableOpacity>
             </View>
-          )}
-
-          <View style={styles.erc20Section}>
-            <Text style={styles.erc20Label}>Unshielded (On-chain)</Text>
-            <Text style={styles.erc20Amount}>
-              {displayErc20}{" "}
-              <Text style={styles.erc20Symbol}>{wallet.selectedToken}</Text>
-            </Text>
           </View>
+
+          <TouchableOpacity
+            {...testProps(testIDs.wallet.successDone)}
+            style={styles.successDoneBtn}
+            onPress={() => setSuccessInfo(null)}
+          >
+            <Text style={styles.successDoneBtnText}>Done</Text>
+          </TouchableOpacity>
         </View>
+      ) : (
+        <View style={styles.cards}>
+          {showShieldCard ? (
+            <View style={[styles.card, styles.shieldCard]}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.iconBox, styles.iconBoxShield]}>
+                  <ShieldPlus size={22} color={colors.success} />
+                </View>
+                <View style={styles.headerText}>
+                  <Text style={styles.cardTitle}>Shield Tokens</Text>
+                  <Text style={styles.cardDesc}>Move tokens into your shielded balance</Text>
+                </View>
+              </View>
 
-        {/* Action Buttons */}
-        {!mode && (
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              {...testProps(testIDs.wallet.modeShield)}
-              style={[styles.actionBtn, styles.shieldBtn]}
-              onPress={() => setMode("shield")}
-            >
-              <ShieldPlus size={28} color={colors.primary} style={styles.actionBtnIconSpacing} />
-              <Text style={styles.actionBtnText}>Shield</Text>
-              <Text style={styles.actionBtnDesc}>Deposit into private pool</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              {...testProps(testIDs.wallet.modeUnshield)}
-              style={[styles.actionBtn, styles.unshieldBtn]}
-              onPress={() => setMode("unshield")}
-            >
-              <ShieldOff size={28} color={colors.secondary} style={styles.actionBtnIconSpacing} />
-              <Text style={styles.actionBtnText}>Unshield</Text>
-              <Text style={styles.actionBtnDesc}>Withdraw to public wallet</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+              <View style={styles.inputRow}>
+                <TextInput
+                  {...testProps(testIDs.wallet.amountInput)}
+                  style={styles.inputAmount}
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
+                  value={shieldAmountToken}
+                  onChangeText={(t) => {
+                    if (/^\d*(?:\.\d*)?$/.test(t)) {
+                      setShieldAmountToken(t);
+                      setShieldError("");
+                    }
+                  }}
+                  onFocus={() => {
+                    setShieldFocused(true);
+                    setUnshieldFocused(false);
+                  }}
+                  onBlur={() => setShieldFocused(false)}
+                />
+                <Text style={styles.inputUnit}>{token}</Text>
+              </View>
 
-        {/* Amount Input */}
-        {mode && (
-          <View style={styles.inputCard}>
-            <Text style={styles.inputTitle}>
-              {mode === "shield" ? "Shield Funds" : "Unshield Funds"}
-            </Text>
-            <Text style={styles.inputSubtitle}>
-              {mode === "shield"
-                ? "Enter Tongo units to deposit"
-                : `Available: ${wallet.balance} units`}
-            </Text>
+              <View style={styles.availabilityRow}>
+                <Text style={styles.availLabel}>On-chain balance:</Text>
+                <Text style={[styles.availValue, styles.availValueShield]}>{onChainBalanceLabel}</Text>
+              </View>
+              {shieldError ? <Text style={styles.errorText}>{shieldError}</Text> : null}
 
-            <View style={styles.inputRow}>
-              <TextInput
-                {...testProps(testIDs.wallet.amountInput)}
-                style={styles.input}
-                placeholder="0"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={(t) => { if (/^\d*$/.test(t)) setAmount(t); }}
-                autoFocus
-              />
-              <Text style={styles.inputSymbol}>units</Text>
-            </View>
-            <Text style={styles.conversionHint}>{conversionHint}</Text>
-
-            <View style={styles.buttonRow}>
               <TouchableOpacity
-                {...testProps(testIDs.wallet.inputCancel)}
-                style={styles.cancelBtn}
-                onPress={() => { setMode(null); setAmount(""); }}
+                {...testProps(testIDs.wallet.modeShield)}
+                style={[styles.cta, styles.ctaShield, isPending && styles.ctaDisabled]}
+                onPress={() => {
+                  setFeeRetryCount(0);
+                  submitShield();
+                }}
+                disabled={isPending}
               >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                {...testProps(testIDs.wallet.inputSubmit)}
-                style={[styles.submitBtn, !amount && styles.submitBtnDisabled]}
-                onPress={() => { setFeeRetryCount(0); handleSubmit(); }}
-                disabled={!amount || isPending}
-              >
-                {isPending ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                {isPending && pendingRetryAction === "shield" ? (
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.submitBtnText}>
-                    {mode === "shield" ? "Shield" : "Unshield"}
-                  </Text>
+                  <>
+                    <ShieldPlus size={18} color="#fff" />
+                    <Text style={styles.ctaText}>{shieldBtnLabel}</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        )}
-          </>
-        )}
-      </KeyboardSafeScreen>
+          ) : null}
+
+          {showUnshieldCard ? (
+            <View style={[styles.card, styles.unshieldCard]}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.iconBox, styles.iconBoxUnshield]}>
+                  <ShieldOff size={22} color={colors.secondary} />
+                </View>
+                <View style={styles.headerText}>
+                  <Text style={styles.cardTitle}>Unshield Tokens</Text>
+                  <Text style={styles.cardDesc}>Move tokens back to your public balance</Text>
+                </View>
+              </View>
+
+              <View style={styles.inputRow}>
+                <TextInput
+                  {...testProps(testIDs.wallet.unshieldAmountInput)}
+                  style={styles.inputAmount}
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="numeric"
+                  value={unshieldAmountUnits}
+                  onChangeText={(t) => {
+                    if (/^\d*$/.test(t)) {
+                      setUnshieldAmountUnits(t);
+                      setUnshieldError("");
+                    }
+                  }}
+                  onFocus={() => {
+                    setUnshieldFocused(true);
+                    setShieldFocused(false);
+                  }}
+                  onBlur={() => setUnshieldFocused(false)}
+                />
+                <Text style={styles.inputUnit}>units</Text>
+              </View>
+
+              <View style={styles.availabilityRow}>
+                <Text style={styles.availLabel}>Shielded balance:</Text>
+                <Text style={[styles.availValue, styles.availValueUnshield]}>
+                  {shieldedBalanceUnitsLabel}
+                </Text>
+              </View>
+              {unshieldError ? <Text style={styles.errorText}>{unshieldError}</Text> : null}
+
+              <TouchableOpacity
+                {...testProps(testIDs.wallet.modeUnshield)}
+                style={[styles.cta, styles.ctaUnshield, isPending && styles.ctaDisabled]}
+                onPress={() => {
+                  setFeeRetryCount(0);
+                  submitUnshield();
+                }}
+                disabled={isPending}
+              >
+                {isPending && pendingRetryAction === "unshield" ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <ShieldOff size={18} color="#fff" />
+                    <Text style={styles.ctaText}>{unshieldBtnLabel}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+      )}
+    </KeyboardSafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: 100 },
-
-  balanceCard: {
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 100,
+    gap: 20,
+  },
+  cards: {
+    gap: 20,
+  },
+  card: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    padding: 20,
+    gap: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.lg,
   },
-  balanceLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-    marginBottom: spacing.sm,
+  shieldCard: {
+    borderColor: "rgba(16, 185, 129, 0.25)",
   },
-  balanceAmount: { fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text },
-  balanceSymbol: { fontSize: fontSize.lg, color: colors.textSecondary },
-
-  pendingSection: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+  unshieldCard: {
+    borderColor: "rgba(139, 92, 246, 0.25)",
   },
-  pendingRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.sm },
-  pendingLabel: { fontSize: fontSize.sm, color: colors.warning },
-  pendingAmount: { fontSize: fontSize.sm, color: colors.warning, fontWeight: "600" },
-  claimFullButton: {
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
-    paddingVertical: 10,
-    borderRadius: borderRadius.md,
+  cardHeader: {
+    flexDirection: "row",
+    gap: 12,
     alignItems: "center",
   },
-  claimFullButtonText: { color: colors.warning, fontWeight: "600", fontSize: fontSize.sm },
-
-  erc20Section: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  erc20Label: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  iconBoxShield: {
+    backgroundColor: "rgba(16, 185, 129, 0.125)",
   },
-  erc20Amount: { fontSize: fontSize.lg, color: colors.textSecondary, marginTop: 2 },
-  erc20Symbol: { fontSize: fontSize.sm, color: colors.textMuted },
-
-  actionRow: { flexDirection: "row", gap: spacing.md },
-  actionBtn: {
+  iconBoxUnshield: {
+    backgroundColor: "rgba(139, 92, 246, 0.125)",
+  },
+  headerText: {
     flex: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    alignItems: "center",
-    borderWidth: 1,
+    gap: 2,
   },
-  shieldBtn: { backgroundColor: colors.primaryDim, borderColor: colors.border },
-  unshieldBtn: { backgroundColor: colors.secondaryDim, borderColor: "rgba(139, 92, 246, 0.2)" },
-  actionBtnIcon: { fontSize: 28, marginBottom: spacing.sm },
-  actionBtnIconSpacing: { marginBottom: spacing.sm },
-  actionBtnText: { fontSize: fontSize.lg, fontWeight: "600", color: colors.text, marginBottom: 4 },
-  actionBtnDesc: { fontSize: fontSize.xs, color: colors.textSecondary, textAlign: "center" },
-
-  inputCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  cardDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: typography.secondary,
+  },
+  inputRow: {
+    height: 48,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  inputTitle: { fontSize: fontSize.lg, fontWeight: "600", color: colors.text, marginBottom: 4 },
-  inputSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.lg },
-  inputRow: {
+    backgroundColor: colors.inputBg,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.xs,
+    gap: 8,
   },
-  input: {
+  inputAmount: {
     flex: 1,
-    fontSize: fontSize.xxl,
-    fontWeight: "bold",
+    fontSize: 18,
+    fontWeight: "600",
     color: colors.text,
-    paddingVertical: spacing.md,
+    fontFamily: typography.primarySemibold,
+    paddingVertical: 0,
   },
-  inputSymbol: { fontSize: fontSize.lg, color: colors.textSecondary, marginLeft: spacing.sm },
-  conversionHint: {
-    fontSize: fontSize.xs,
+  inputUnit: {
+    fontSize: 13,
+    fontWeight: "500",
     color: colors.textMuted,
-    marginBottom: spacing.lg,
-    marginLeft: spacing.xs,
+    fontFamily: typography.primary,
   },
-  buttonRow: { flexDirection: "row", gap: spacing.md },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
+  availabilityRow: {
+    flexDirection: "row",
+    gap: 4,
     alignItems: "center",
   },
-  cancelBtnText: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: "600" },
-  submitBtn: {
-    flex: 2,
-    paddingVertical: 14,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-    alignItems: "center",
+  availLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
   },
-  submitBtnDisabled: { opacity: 0.4 },
-  submitBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
+  availValue: {
+    fontSize: 12,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
+  availValueShield: { color: colors.success },
+  availValueUnshield: { color: colors.secondary },
+  cta: {
+    height: 44,
+    borderRadius: borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  ctaShield: { backgroundColor: colors.success },
+  ctaUnshield: { backgroundColor: colors.secondary },
+  ctaText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
+  ctaDisabled: { opacity: 0.7 },
+  errorText: {
+    marginTop: -8,
+    fontSize: 12,
+    color: colors.error,
+    fontFamily: typography.secondary,
+  },
 
-  // Success Card (shared for Shield, Unshield, Claim)
+  // Success UI (will be replaced by modal parity later; kept for functional feedback)
   successCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     padding: spacing.xl,
     alignItems: "center",
     borderWidth: 1,
@@ -451,10 +545,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: spacing.md,
   },
-  successTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.success, marginBottom: spacing.sm },
-  successAmount: { fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text },
-  successEquiv: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.xs },
-  successDesc: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.lg, textAlign: "center" },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: colors.success,
+    marginBottom: spacing.sm,
+    fontFamily: typography.primarySemibold,
+  },
+  successAmount: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  successDesc: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+    textAlign: "center",
+    fontFamily: typography.secondary,
+  },
   successTxSection: {
     width: "100%",
     backgroundColor: colors.bg,
@@ -463,16 +573,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   successTxLabel: {
-    fontSize: fontSize.xs,
+    fontSize: 11,
     color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.xs,
+    fontFamily: typography.primarySemibold,
   },
   successTxHash: {
-    fontSize: fontSize.xs,
+    fontSize: 11,
     color: colors.text,
-    fontFamily: "monospace",
+    fontFamily: typography.primary,
     marginBottom: spacing.sm,
   },
   successTxActions: { flexDirection: "row", gap: spacing.sm },
@@ -486,9 +597,10 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
   },
   successTxBtnText: {
-    fontSize: fontSize.xs,
+    fontSize: 11,
     color: colors.primary,
     fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
   successDoneBtn: {
     backgroundColor: colors.primary,
@@ -498,5 +610,10 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
-  successDoneBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
+  successDoneBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
 });
