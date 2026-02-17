@@ -29,6 +29,7 @@ type KeyboardSafeContainerProps = {
 export type KeyboardSafeScreenProps = ScrollViewProps &
   KeyboardSafeContainerProps & {
     containerStyle?: StyleProp<ViewStyle>;
+    scrollRef?: React.RefObject<ScrollView | null>;
   };
 
 export function KeyboardSafeScreen({
@@ -37,6 +38,7 @@ export function KeyboardSafeScreen({
   keyboardVerticalOffset,
   dismissOnBackdrop = true,
   containerStyle,
+  scrollRef,
   keyboardShouldPersistTaps = "handled",
   ...scrollProps
 }: KeyboardSafeScreenProps) {
@@ -48,6 +50,7 @@ export function KeyboardSafeScreen({
 
   const content = (
     <ScrollView
+      ref={scrollRef}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       {...scrollProps}
     >

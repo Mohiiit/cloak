@@ -59,6 +59,7 @@ export default function SendScreen({ navigation }: any) {
   const { execute } = useTransactionRouter();
   const modal = useThemedModal();
   const keyboardVisible = useKeyboardVisible();
+  const scrollRef = React.useRef<ScrollView>(null);
 
   const [step, setStep] = useState<Step>(1);
   const [recipient, setRecipient] = useState("");
@@ -185,8 +186,9 @@ export default function SendScreen({ navigation }: any) {
 
   return (
     <KeyboardSafeScreen
+      scrollRef={scrollRef}
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, sendKeyboardMode && styles.contentKeyboard]}
       keyboardShouldPersistTaps="handled"
     >
       {modal.ModalComponent}
@@ -242,39 +244,41 @@ export default function SendScreen({ navigation }: any) {
                 <Text style={styles.pasteText}>Paste</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.contactRow}
-            >
-              {visibleContacts.map((c, index) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.contactChip}
-                  onPress={() => {
-                    setRecipient(c.address);
-                    setAddressError("");
-                  }}
-                >
-                  <View
-                    style={[
-                      styles.contactDot,
-                      index % 2 === 0 ? styles.contactDotBlue : styles.contactDotGreen,
-                    ]}
-                  />
-                  <Text style={styles.contactChipText}>{c.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {!sendKeyboardMode ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.contactRow}
+              >
+                {visibleContacts.map((c, index) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.contactChip}
+                    onPress={() => {
+                      setRecipient(c.address);
+                      setAddressError("");
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.contactDot,
+                        index % 2 === 0 ? styles.contactDotBlue : styles.contactDotGreen,
+                      ]}
+                    />
+                    <Text style={styles.contactChipText}>{c.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : null}
             {addressError ? <Text style={styles.errorText}>{addressError}</Text> : null}
           </View>
 
           <View style={[styles.section, styles.amountSection, sendKeyboardMode && styles.sectionCompact]}>
             <Text style={styles.sectionLabel}>AMOUNT</Text>
-            <View style={styles.amountCard}>
+            <View style={[styles.amountCard, sendKeyboardMode && styles.amountCardKeyboard]}>
               <TextInput
                 {...testProps(testIDs.send.amountInput)}
-                style={styles.amountInput}
+                style={[styles.amountInput, sendKeyboardMode && styles.amountInputKeyboard]}
                 placeholder="0"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
@@ -286,13 +290,15 @@ export default function SendScreen({ navigation }: any) {
                   }
                 }}
               />
-              <Text style={styles.amountSub}>
+              <Text style={[styles.amountSub, sendKeyboardMode && styles.amountSubKeyboard]}>
                 units ({amount ? tongoUnitToErc20Display(amount, wallet.selectedToken) : "0.00 STRK"})
               </Text>
-              <Text style={styles.availableText}>Available: {wallet.balance} units MAX</Text>
+              {!sendKeyboardMode ? (
+                <Text style={styles.availableText}>Available: {wallet.balance} units MAX</Text>
+              ) : null}
             </View>
             {amountError ? <Text style={styles.errorText}>{amountError}</Text> : null}
-            <Text style={styles.conversionHint}>{conversionHint}</Text>
+            {!sendKeyboardMode ? <Text style={styles.conversionHint}>{conversionHint}</Text> : null}
           </View>
 
           <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
@@ -326,7 +332,7 @@ export default function SendScreen({ navigation }: any) {
             </View>
           </View>
 
-          <View style={styles.formSpacer} />
+          {!sendKeyboardMode ? <View style={styles.formSpacer} /> : null}
 
           <TouchableOpacity
             {...testProps(testIDs.send.confirmSend)}
@@ -409,6 +415,9 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 100,
     flexGrow: 1,
+  },
+  contentKeyboard: {
+    paddingBottom: 140,
   },
   progressRow: {
     flexDirection: "row",
@@ -502,6 +511,10 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: "center",
   },
+  amountCardKeyboard: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
   amountInput: {
     color: colors.text,
     fontSize: 48,
@@ -512,11 +525,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
     minWidth: 120,
   },
+  amountInputKeyboard: {
+    fontSize: 40,
+    lineHeight: 44,
+  },
   amountSub: {
     color: colors.textSecondary,
     fontSize: 13,
     fontFamily: typography.primary,
     marginTop: 2,
+  },
+  amountSubKeyboard: {
+    marginTop: 0,
   },
   availableText: {
     color: colors.success,
