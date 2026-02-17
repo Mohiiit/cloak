@@ -1,7 +1,7 @@
 /**
- * SendScreen — 3-step shielded payment wizard.
+ * SendScreen — single-page shielded transfer form + success state.
  */
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -13,39 +13,64 @@ import {
   Linking,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { ShieldPlus, ShieldOff, ArrowUpFromLine, Check, ClipboardPaste } from "lucide-react-native";
+import {
+  Car,
+  Check,
+  Coffee,
+  Gamepad2,
+  Gift,
+  House,
+  Music2,
+  Search,
+  Send as SendIcon,
+  UtensilsCrossed,
+  WalletCards,
+} from "lucide-react-native";
+import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoUnitToErc20Display } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { triggerMedium } from "../lib/haptics";
+import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { FeeRetryModal } from "../components/FeeRetryModal";
-import { parseInsufficientGasError } from "@cloak-wallet/sdk";
-import { triggerMedium } from "../lib/haptics";
-import { testIDs, testProps } from "../testing/testIDs";
 import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
+import { useKeyboardVisible } from "../hooks/useKeyboardVisible";
+import { testIDs, testProps } from "../testing/testIDs";
 
-const QUICK_EMOJIS = ["🍕", "🍔", "🍺", "🎵", "🏠", "🚗", "🎮", "💰", "🎉", "🎂"];
+type Step = 1 | 4;
 
-type Step = 1 | 2 | 3 | 4;
+const QUICK_NOTE_CHIPS = [
+  { key: "coffee", label: "Coffee money", Icon: Coffee },
+  { key: "food", label: "Food", Icon: UtensilsCrossed },
+  { key: "music", label: "Music", Icon: Music2 },
+  { key: "home", label: "Home", Icon: House },
+  { key: "ride", label: "Ride", Icon: Car },
+  { key: "gaming", label: "Gaming", Icon: Gamepad2 },
+  { key: "salary", label: "Salary", Icon: WalletCards },
+  { key: "gift", label: "Gift", Icon: Gift },
+] as const;
 
 export default function SendScreen({ navigation }: any) {
   const wallet = useWallet();
+  const { contacts } = useContacts();
   const { execute } = useTransactionRouter();
   const modal = useThemedModal();
-  const { contacts } = useContacts();
+  const keyboardVisible = useKeyboardVisible();
+
   const [step, setStep] = useState<Step>(1);
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
-  const [amountError, setAmountError] = useState("");
   const [note, setNote] = useState("");
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState("");
   const [txCopied, setTxCopied] = useState(false);
   const [addressError, setAddressError] = useState("");
-  const [isValidating, setIsValidating] = useState(false);
+  const [amountError, setAmountError] = useState("");
+  const [isNoteFocused, setIsNoteFocused] = useState(false);
+
   const [showFeeRetry, setShowFeeRetry] = useState(false);
   const [gasErrorMsg, setGasErrorMsg] = useState("");
   const [feeRetryCount, setFeeRetryCount] = useState(0);
@@ -54,45 +79,54 @@ export default function SendScreen({ navigation }: any) {
     wallet.refreshTxHistory();
   }, [wallet]);
 
+  const sendKeyboardMode = isNoteFocused && keyboardVisible;
   const conversionHint = `1 unit = ${tongoUnitToErc20Display("1", wallet.selectedToken)}`;
 
-  const handleNextRecipient = async () => {
+  const visibleContacts =
+    contacts.length > 0
+      ? contacts.slice(0, 2).map((c) => ({
+          id: c.id,
+          label: c.nickname || `${c.tongoAddress.slice(0, 6)}...`,
+          address: c.tongoAddress,
+        }))
+      : [
+          { id: "fallback-alice", label: "alice.stark", address: "alice.stark" },
+          { id: "fallback-bob", label: "bob.g.stark", address: "bob.g.stark" },
+        ];
+
+  const validateAmount = (): boolean => {
+    const parsed = parseInt(amount, 10);
+    if (!amount || Number.isNaN(parsed) || parsed <= 0) {
+      setAmountError("Enter a valid amount greater than 0");
+      return false;
+    }
+    const balanceInt = parseInt(wallet.balance, 10);
+    if (parsed > balanceInt) {
+      setAmountError(`Insufficient balance (max: ${wallet.balance} units)`);
+      return false;
+    }
+    setAmountError("");
+    return true;
+  };
+
+  const handleSend = async () => {
     setAddressError("");
-    setIsValidating(true);
+    if (!recipient.trim()) {
+      setAddressError("Recipient is required.");
+      return;
+    }
+    if (!validateAmount()) return;
+
+    triggerMedium();
+    setIsPending(true);
+
     try {
       const valid = await wallet.validateAddress(recipient.trim());
       if (!valid) {
         setAddressError("Invalid Cloak address. Please check and try again.");
         return;
       }
-      setStep(2);
-    } catch {
-      setAddressError("Could not validate address. Try again.");
-    } finally {
-      setIsValidating(false);
-    }
-  };
 
-  const validateAndNext = () => {
-    const parsed = parseInt(amount, 10);
-    if (!amount || isNaN(parsed) || parsed <= 0) {
-      setAmountError("Enter a valid amount greater than 0");
-      return;
-    }
-    const bal = parseInt(wallet.balance, 10);
-    if (parsed > bal) {
-      setAmountError(`Insufficient balance (max: ${wallet.balance} units)`);
-      return;
-    }
-    setAmountError("");
-    setStep(3);
-  };
-
-  const handleSend = async () => {
-    if (!recipient || !amount) return;
-    triggerMedium();
-    setIsPending(true);
-    try {
       const result = await execute({
         action: "transfer",
         token: wallet.selectedToken,
@@ -109,7 +143,7 @@ export default function SendScreen({ navigation }: any) {
         timestamp: Date.now(),
         type: "send",
         token: wallet.selectedToken,
-        amount: amount,
+        amount,
       });
       setStep(4);
       await wallet.refreshBalance();
@@ -127,20 +161,9 @@ export default function SendScreen({ navigation }: any) {
   };
 
   const handleFeeRetry = () => {
-    setFeeRetryCount(prev => prev + 1);
+    setFeeRetryCount((prev) => prev + 1);
     setShowFeeRetry(false);
     handleSend();
-  };
-
-  const reset = () => {
-    setStep(1);
-    setRecipient("");
-    setAmount("");
-    setAmountError("");
-    setAddressError("");
-    setNote("");
-    setTxHash("");
-    setTxCopied(false);
   };
 
   const handleCopyTx = () => {
@@ -149,170 +172,106 @@ export default function SendScreen({ navigation }: any) {
     setTimeout(() => setTxCopied(false), 2000);
   };
 
+  const reset = () => {
+    setStep(1);
+    setRecipient("");
+    setAmount("");
+    setNote("");
+    setTxHash("");
+    setAddressError("");
+    setAmountError("");
+    setTxCopied(false);
+  };
+
   return (
     <KeyboardSafeScreen
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-        {modal.ModalComponent}
-        <FeeRetryModal
-          visible={showFeeRetry}
-          errorMessage={gasErrorMsg}
-          retryCount={feeRetryCount}
-          maxRetries={3}
-          isRetrying={isPending}
-          onRetry={handleFeeRetry}
-          onCancel={() => { setShowFeeRetry(false); setIsPending(false); }}
-        />
-        {/* Progress Bar */}
-        {step < 4 && (
-          <View style={styles.progressRow}>
-            {[
-              { num: 1, label: "To" },
-              { num: 2, label: "Amount" },
-              { num: 3, label: "Confirm" },
-            ].map(({ num, label }, index) => (
-              <React.Fragment key={num}>
-                <View style={styles.progressItem}>
-                  <View
-                    style={[
-                      styles.progressDot,
-                      step >= num && styles.progressDotActive,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.progressLabel,
-                      step >= num && styles.progressLabelActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                </View>
-                {index < 2 && (
-                  <View
-                    style={[
-                      styles.progressLine,
-                      step > num && styles.progressLineActive,
-                    ]}
-                  />
-                )}
-              </React.Fragment>
-            ))}
-          </View>
-        )}
+      {modal.ModalComponent}
+      <FeeRetryModal
+        visible={showFeeRetry}
+        errorMessage={gasErrorMsg}
+        retryCount={feeRetryCount}
+        maxRetries={3}
+        isRetrying={isPending}
+        onRetry={handleFeeRetry}
+        onCancel={() => {
+          setShowFeeRetry(false);
+          setIsPending(false);
+        }}
+      />
 
-        {/* Step 1: Recipient */}
-        {step === 1 && (
-          <View style={styles.stepCard}>
-            <Text style={styles.stepTitle}>Send to</Text>
-            <Text style={styles.stepSubtitle}>Enter recipient's Cloak address (base58)</Text>
-            {contacts.length > 0 && (
-              <View style={styles.contactsSection}>
-                <Text style={styles.contactsLabel}>From Contacts</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.contactsScroll}>
-                  {contacts.slice(0, 6).map((c) => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={styles.contactChip}
-                      onPress={() => setRecipient(c.tongoAddress)}
-                    >
-                      <Text style={styles.contactChipText}>
-                        {c.nickname || c.tongoAddress.slice(0, 8) + "..."}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-            <View style={styles.addressInputRow}>
+      {step !== 4 ? (
+        <>
+          <View style={styles.progressRow}>
+            <View style={[styles.progressSegment, styles.progressSegmentActive]} />
+            <View style={[styles.progressSegment, styles.progressSegmentActive]} />
+            <View style={styles.progressSegment} />
+          </View>
+
+          <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
+            <Text style={styles.sectionLabel}>TO</Text>
+            <View style={styles.inputRow}>
+              <Search size={16} color={colors.textMuted} />
               <TextInput
                 {...testProps(testIDs.send.recipientInput)}
-                style={styles.addressInput}
-                placeholder="Enter recipient's Cloak address"
+                style={styles.recipientInput}
+                placeholder="alice.stark or 0x..."
                 placeholderTextColor={colors.textMuted}
                 value={recipient}
-                onChangeText={(t) => { setRecipient(t.replace(/\s/g, "")); setAddressError(""); }}
+                onChangeText={(t) => {
+                  setRecipient(t.replace(/\s/g, ""));
+                  setAddressError("");
+                }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 spellCheck={false}
-                autoComplete="off"
-                multiline
-                numberOfLines={2}
               />
               <TouchableOpacity
                 {...testProps(testIDs.send.recipientPaste)}
-                style={styles.pasteBtn}
                 onPress={async () => {
                   const text = await Clipboard.getString();
-                  if (text) { setRecipient(text.trim()); setAddressError(""); }
+                  if (text) {
+                    setRecipient(text.trim());
+                    setAddressError("");
+                  }
                 }}
               >
-                <ClipboardPaste size={16} color={colors.primary} />
+                <Text style={styles.pasteText}>Paste</Text>
               </TouchableOpacity>
             </View>
-            {addressError ? (
-              <Text style={styles.errorText}>{addressError}</Text>
-            ) : null}
-            <TouchableOpacity
-              {...testProps(testIDs.send.recipientNext)}
-              style={[styles.nextBtn, (!recipient || isValidating) && styles.nextBtnDisabled]}
-              onPress={handleNextRecipient}
-              disabled={!recipient || isValidating}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.contactRow}
             >
-              {isValidating ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.nextBtnText}>Next</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Recent Transactions */}
-        {step === 1 && wallet.txHistory.length > 0 && (
-          <View style={styles.historyCard}>
-            <Text style={styles.historyTitle}>Recent Transactions</Text>
-            {wallet.txHistory.slice(0, 5).map((tx: any, i: number) => {
-              const hash = tx.txHash || tx.transaction_hash || "";
-              const iconColor = tx.type === "fund" ? colors.success : tx.type === "transfer" ? colors.primary : tx.type === "withdraw" ? colors.secondary : colors.textMuted;
-              return (
+              {visibleContacts.map((c, index) => (
                 <TouchableOpacity
-                  key={i}
-                  style={styles.historyRow}
-                  onPress={() => hash && Linking.openURL(`https://sepolia.voyager.online/tx/${hash}`)}
+                  key={c.id}
+                  style={styles.contactChip}
+                  onPress={() => {
+                    setRecipient(c.address);
+                    setAddressError("");
+                  }}
                 >
-                  {tx.type === "fund" ? (
-                    <ShieldPlus size={18} color={iconColor} />
-                  ) : tx.type === "transfer" ? (
-                    <ArrowUpFromLine size={18} color={iconColor} />
-                  ) : tx.type === "withdraw" ? (
-                    <ShieldOff size={18} color={iconColor} />
-                  ) : (
-                    <Text style={styles.historyIcon}>?</Text>
-                  )}
-                  <View style={styles.historyInfo}>
-                    <Text style={styles.historyType}>{tx.type || "unknown"}</Text>
-                    <Text style={styles.historyAmount}>{tx.amount || "?"} units</Text>
-                  </View>
-                  {hash ? (
-                    <Text style={styles.historyHash}>{hash.slice(0, 8)}...</Text>
-                  ) : null}
+                  <View
+                    style={[
+                      styles.contactDot,
+                      index % 2 === 0 ? styles.contactDotBlue : styles.contactDotGreen,
+                    ]}
+                  />
+                  <Text style={styles.contactChipText}>{c.label}</Text>
                 </TouchableOpacity>
-              );
-            })}
+              ))}
+            </ScrollView>
+            {addressError ? <Text style={styles.errorText}>{addressError}</Text> : null}
           </View>
-        )}
 
-        {/* Step 2: Amount */}
-        {step === 2 && (
-          <View style={styles.stepCard}>
-            <Text style={styles.stepTitle}>Amount</Text>
-            <Text style={styles.stepSubtitle}>
-              Available: {wallet.balance} units
-            </Text>
-            <View style={styles.amountInputRow}>
+          <View style={[styles.section, styles.amountSection, sendKeyboardMode && styles.sectionCompact]}>
+            <Text style={styles.sectionLabel}>AMOUNT</Text>
+            <View style={styles.amountCard}>
               <TextInput
                 {...testProps(testIDs.send.amountInput)}
                 style={styles.amountInput}
@@ -321,310 +280,311 @@ export default function SendScreen({ navigation }: any) {
                 keyboardType="numeric"
                 value={amount}
                 onChangeText={(t) => {
-                  if (/^\d*$/.test(t)) { setAmount(t); setAmountError(""); }
+                  if (/^\d*$/.test(t)) {
+                    setAmount(t);
+                    setAmountError("");
+                  }
                 }}
-                autoFocus
               />
-              <Text style={styles.amountSymbol}>units</Text>
+              <Text style={styles.amountSub}>
+                units ({amount ? tongoUnitToErc20Display(amount, wallet.selectedToken) : "0.00 STRK"})
+              </Text>
+              <Text style={styles.availableText}>Available: {wallet.balance} units MAX</Text>
             </View>
+            {amountError ? <Text style={styles.errorText}>{amountError}</Text> : null}
             <Text style={styles.conversionHint}>{conversionHint}</Text>
-            {amountError ? (
-              <Text style={styles.errorText}>{amountError}</Text>
-            ) : null}
-            <View style={styles.navRow}>
-              <TouchableOpacity
-                {...testProps(testIDs.send.amountBack)}
-                style={styles.backBtn}
-                onPress={() => setStep(1)}
-              >
-                <Text style={styles.backBtnText}>Back</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                {...testProps(testIDs.send.amountNext)}
-                style={[styles.nextBtn, { flex: 2 }, !amount && styles.nextBtnDisabled]}
-                onPress={validateAndNext}
-                disabled={!amount}
-              >
-                <Text style={styles.nextBtnText}>Next</Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        )}
 
-        {/* Step 3: Confirm */}
-        {step === 3 && (
-          <View style={styles.stepCard}>
-            <Text style={styles.stepTitle}>Confirm Payment</Text>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>To</Text>
-              <Text style={styles.summaryValue} numberOfLines={1}>
-                {recipient.slice(0, 20)}...
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Amount</Text>
-              <Text style={styles.summaryValueBold}>
-                {amount} units ({tongoUnitToErc20Display(amount, wallet.selectedToken)})
-              </Text>
-            </View>
-
-            {/* Note */}
-            <Text style={styles.noteLabel}>Add a note (optional)</Text>
+          <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
+            <Text style={styles.sectionLabel}>NOTE (OPTIONAL)</Text>
             <TextInput
               {...testProps(testIDs.send.noteInput)}
               style={styles.noteInput}
-              placeholder="Pizza night!"
+              placeholder="Coffee money!"
               placeholderTextColor={colors.textMuted}
               value={note}
               onChangeText={setNote}
+              onFocus={() => setIsNoteFocused(true)}
+              onBlur={() => setIsNoteFocused(false)}
               maxLength={100}
             />
-            <View style={styles.emojiRow}>
-              {QUICK_EMOJIS.map((emoji) => (
+            <View style={styles.quickChipRow}>
+              {QUICK_NOTE_CHIPS.slice(0, 5).map(({ key, label, Icon }) => (
                 <TouchableOpacity
-                  key={emoji}
-                  style={styles.emojiBtn}
-                  onPress={() => setNote((prev) => prev + emoji)}
+                  key={key}
+                  style={styles.quickChip}
+                  onPress={() => {
+                    setNote((prev) => {
+                      const trimmed = prev.trim();
+                      return trimmed.length === 0 ? label : `${trimmed} · ${label}`;
+                    });
+                  }}
                 >
-                  <Text style={styles.emojiText}>{emoji}</Text>
+                  <Icon size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
               ))}
             </View>
+          </View>
 
-            <View style={styles.navRow}>
+          <View style={styles.formSpacer} />
+
+          <TouchableOpacity
+            {...testProps(testIDs.send.confirmSend)}
+            style={[styles.sendButton, isPending && styles.sendButtonDisabled]}
+            onPress={() => {
+              setFeeRetryCount(0);
+              handleSend();
+            }}
+            disabled={isPending}
+          >
+            {isPending ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <SendIcon size={18} color="#fff" />
+                <Text style={styles.sendButtonText}>
+                  {`Send ${amount && parseInt(amount, 10) > 0 ? amount : "0"} Units`}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </>
+      ) : (
+        <View style={styles.successCard}>
+          <Check size={48} color={colors.success} style={styles.successIconSpacing} />
+          <Text style={styles.successTitle}>Payment Sent!</Text>
+          <Text style={styles.successAmount}>{amount} units</Text>
+          <Text style={styles.successEquiv}>
+            ({tongoUnitToErc20Display(amount, wallet.selectedToken)})
+          </Text>
+          <Text style={styles.successRecipient}>to {recipient.slice(0, 16)}...</Text>
+          {note ? <Text style={styles.successNote}>{note}</Text> : null}
+
+          <View style={styles.txSection}>
+            <Text style={styles.txLabel}>Transaction Hash</Text>
+            <Text style={styles.txHashFull} numberOfLines={2} selectable>
+              {txHash}
+            </Text>
+            <View style={styles.txActionRow}>
               <TouchableOpacity
-                {...testProps(testIDs.send.confirmBack)}
-                style={styles.backBtn}
-                onPress={() => setStep(2)}
+                {...testProps(testIDs.send.successCopyTx)}
+                style={styles.txActionBtn}
+                onPress={handleCopyTx}
               >
-                <Text style={styles.backBtnText}>Back</Text>
+                <Text style={styles.txActionBtnText}>{txCopied ? "Copied!" : "Copy Tx Hash"}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                {...testProps(testIDs.send.confirmSend)}
-                style={[styles.sendBtn, { flex: 2 }]}
-                onPress={() => { setFeeRetryCount(0); handleSend(); }}
-                disabled={isPending}
+                {...testProps(testIDs.send.successViewVoyager)}
+                style={styles.txActionBtn}
+                onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${txHash}`)}
               >
-                {isPending ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.sendBtnText}>Send Payment</Text>
-                )}
+                <Text style={styles.txActionBtnText}>View on Voyager</Text>
               </TouchableOpacity>
             </View>
           </View>
-        )}
 
-        {/* Step 4: Success */}
-        {step === 4 && (
-          <View style={styles.successCard}>
-            <Check size={48} color={colors.success} style={styles.successIconSpacing} />
-            <Text style={styles.successTitle}>Payment Sent!</Text>
-            <Text style={styles.successAmount}>
-              {amount} units
-            </Text>
-            <Text style={styles.successEquiv}>
-              ({tongoUnitToErc20Display(amount, wallet.selectedToken)})
-            </Text>
-            <Text style={styles.successRecipient}>
-              to {recipient.slice(0, 16)}...
-            </Text>
-            {note && <Text style={styles.successNote}>{note}</Text>}
-
-            {/* Tx Hash */}
-            <View style={styles.txSection}>
-              <Text style={styles.txLabel}>Transaction Hash</Text>
-              <Text style={styles.txHashFull} numberOfLines={2} selectable>
-                {txHash}
-              </Text>
-              <View style={styles.txActionRow}>
-                <TouchableOpacity
-                  {...testProps(testIDs.send.successCopyTx)}
-                  style={styles.txActionBtn}
-                  onPress={handleCopyTx}
-                >
-                  <Text style={styles.txActionBtnText}>{txCopied ? "Copied!" : "Copy Tx Hash"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  {...testProps(testIDs.send.successViewVoyager)}
-                  style={styles.txActionBtn}
-                  onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${txHash}`)}
-                >
-                  <Text style={styles.txActionBtnText}>View on Voyager</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              {...testProps(testIDs.send.successSendAnother)}
-              style={styles.doneBtn}
-              onPress={reset}
-            >
-              <Text style={styles.doneBtnText}>Send Another</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              {...testProps(testIDs.send.successGoHome)}
-              onPress={() => navigation.navigate("Home")}
-            >
-              <Text style={styles.goHomeText}>Go Home</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </KeyboardSafeScreen>
+          <TouchableOpacity
+            {...testProps(testIDs.send.successSendAnother)}
+            style={styles.doneBtn}
+            onPress={reset}
+          >
+            <Text style={styles.doneBtnText}>Send Another</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            {...testProps(testIDs.send.successGoHome)}
+            onPress={() => navigation.navigate("Home")}
+          >
+            <Text style={styles.goHomeText}>Go Home</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </KeyboardSafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: 100 },
-
-  // Progress
-  progressRow: { flexDirection: "row", justifyContent: "center", alignItems: "flex-start", marginBottom: spacing.xl },
-  progressItem: { alignItems: "center", gap: 6 },
-  progressDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 100,
+    flexGrow: 1,
+  },
+  progressRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 20,
+  },
+  progressSegment: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
     backgroundColor: colors.surfaceLight,
   },
-  progressDotActive: { backgroundColor: colors.primary },
-  progressLine: {
-    height: 2,
-    flex: 1,
-    backgroundColor: colors.surfaceLight,
-    marginTop: 4,
-    marginHorizontal: spacing.sm,
+  progressSegmentActive: {
+    backgroundColor: colors.primary,
   },
-  progressLineActive: { backgroundColor: colors.primary },
-  progressLabel: { fontSize: fontSize.xs, color: colors.textMuted },
-  progressLabelActive: { color: colors.primary },
-
-  // Step Card
-  stepCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
+  section: {
+    marginBottom: 16,
   },
-  stepTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.text, marginBottom: 4 },
-  stepSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.lg },
-
-  textInput: {
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    fontSize: fontSize.md,
-    color: colors.text,
-    marginBottom: spacing.lg,
+  sectionCompact: {
+    marginBottom: 12,
   },
-  addressInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.lg,
-  },
-  addressInput: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    fontSize: fontSize.md,
-    color: colors.text,
-  },
-  pasteBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  amountInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  amountInput: { flex: 1, fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text, paddingVertical: spacing.md },
-  amountSymbol: { fontSize: fontSize.lg, color: colors.textSecondary },
-  conversionHint: {
-    fontSize: fontSize.xs,
+  sectionLabel: {
+    fontSize: 11,
+    letterSpacing: 2,
     color: colors.textMuted,
-    marginBottom: spacing.sm,
-    marginLeft: spacing.xs,
+    marginBottom: 8,
+    fontFamily: typography.primarySemibold,
   },
-  errorText: {
-    fontSize: fontSize.xs,
-    color: colors.error,
-    marginBottom: spacing.md,
-    marginLeft: spacing.xs,
+  inputRow: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-
-  navRow: { flexDirection: "row", gap: spacing.md },
-  nextBtn: {
+  recipientInput: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: borderRadius.md,
+    color: colors.text,
+    fontSize: 14,
+    fontFamily: typography.secondary,
+    paddingVertical: 0,
+  },
+  pasteText: {
+    color: colors.primaryLight,
+    fontSize: 12,
+    fontFamily: typography.primarySemibold,
+  },
+  contactRow: {
+    gap: 8,
+    marginTop: 8,
+  },
+  contactChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 36,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  contactDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  contactDotBlue: {
+    backgroundColor: colors.primaryLight,
+  },
+  contactDotGreen: {
+    backgroundColor: colors.success,
+  },
+  contactChipText: {
+    color: colors.text,
+    fontSize: 12,
+    fontFamily: typography.primary,
+  },
+  amountSection: {
+    marginTop: 2,
+  },
+  amountCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 16,
+    alignItems: "center",
+  },
+  amountInput: {
+    color: colors.text,
+    fontSize: 48,
+    lineHeight: 54,
+    fontFamily: typography.primarySemibold,
+    fontWeight: "700",
+    paddingVertical: 0,
+    textAlign: "center",
+    minWidth: 120,
+  },
+  amountSub: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontFamily: typography.primary,
+    marginTop: 2,
+  },
+  availableText: {
+    color: colors.success,
+    fontSize: 11,
+    marginTop: 8,
+    fontFamily: typography.primary,
+  },
+  conversionHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 6,
+    marginLeft: 2,
+    fontFamily: typography.primary,
+  },
+  noteInput: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontSize: 14,
+    fontFamily: typography.secondary,
+    paddingHorizontal: 16,
+    paddingVertical: 0,
+  },
+  quickChipRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  quickChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  formSpacer: {
+    flex: 1,
+  },
+  sendButton: {
+    height: 52,
+    borderRadius: 14,
     backgroundColor: colors.primary,
     alignItems: "center",
-  },
-  nextBtnDisabled: { opacity: 0.4 },
-  nextBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
-  backBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    alignItems: "center",
-  },
-  backBtnText: { color: colors.textSecondary, fontSize: fontSize.md },
-
-  // Summary
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-    marginBottom: spacing.sm,
-  },
-  summaryLabel: { fontSize: fontSize.md, color: colors.textSecondary },
-  summaryValue: { fontSize: fontSize.md, color: colors.text, maxWidth: "60%" },
-  summaryValueBold: { fontSize: fontSize.md, color: colors.text, fontWeight: "bold" },
-
-  // Note
-  noteLabel: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm },
-  noteInput: {
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    fontSize: fontSize.md,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.lg },
-  emojiBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.bg,
-    alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
   },
-  emojiText: { fontSize: 18 },
-
-  sendBtn: {
-    paddingVertical: 14,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.success,
-    alignItems: "center",
+  sendButtonDisabled: {
+    opacity: 0.6,
   },
-  sendBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
+  sendButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: typography.primarySemibold,
+    fontWeight: "600",
+  },
+  errorText: {
+    fontSize: 12,
+    color: colors.error,
+    marginTop: 8,
+    fontFamily: typography.secondary,
+  },
 
   // Success
   successCard: {
@@ -635,20 +595,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(16, 185, 129, 0.3)",
   },
-  successIcon: {
-    fontSize: 48,
-    color: colors.success,
-    marginBottom: spacing.md,
-  },
   successIconSpacing: {
     marginBottom: spacing.md,
   },
-  successTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.success, marginBottom: spacing.sm },
-  successAmount: { fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text },
-  successEquiv: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.xs },
-  successRecipient: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.sm },
-  successNote: { fontSize: fontSize.md, color: colors.text, marginBottom: spacing.md },
-
+  successTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: "bold",
+    color: colors.success,
+    marginBottom: spacing.sm,
+    fontFamily: typography.primarySemibold,
+  },
+  successAmount: {
+    fontSize: fontSize.xxl,
+    fontWeight: "bold",
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  successEquiv: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    fontFamily: typography.primary,
+  },
+  successRecipient: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    fontFamily: typography.secondary,
+  },
+  successNote: {
+    fontSize: fontSize.md,
+    color: colors.text,
+    marginBottom: spacing.md,
+    fontFamily: typography.secondary,
+  },
   txSection: {
     width: "100%",
     backgroundColor: colors.bg,
@@ -662,11 +642,12 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.xs,
+    fontFamily: typography.primarySemibold,
   },
   txHashFull: {
     fontSize: fontSize.xs,
     color: colors.text,
-    fontFamily: "monospace",
+    fontFamily: typography.primary,
     marginBottom: spacing.sm,
   },
   txActionRow: {
@@ -686,67 +667,8 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.primary,
     fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
-
-  // History
-  historyCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    marginTop: spacing.lg,
-  },
-  historyTitle: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: spacing.md,
-  },
-  historyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-    gap: spacing.sm,
-  },
-  historyIcon: { fontSize: 18 },
-  historyInfo: { flex: 1 },
-  historyType: { fontSize: fontSize.sm, color: colors.text, fontWeight: "500", textTransform: "capitalize" },
-  historyAmount: { fontSize: fontSize.xs, color: colors.textSecondary },
-  historyHash: { fontSize: fontSize.xs, color: colors.textMuted, fontFamily: "monospace" },
-
-  // Contacts
-  contactsSection: {
-    marginBottom: spacing.md,
-  },
-  contactsLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
-  },
-  contactsScroll: {
-    flexDirection: "row",
-  },
-  contactChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    marginRight: spacing.sm,
-  },
-  contactChipText: {
-    fontSize: fontSize.sm,
-    color: colors.text,
-  },
-
   doneBtn: {
     backgroundColor: colors.primary,
     paddingVertical: 14,
@@ -754,6 +676,15 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     marginBottom: spacing.md,
   },
-  doneBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
-  goHomeText: { color: colors.textSecondary, fontSize: fontSize.sm },
+  doneBtnText: {
+    color: "#fff",
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
+  goHomeText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondary,
+  },
 });
