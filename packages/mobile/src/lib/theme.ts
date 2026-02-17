@@ -1,11 +1,12 @@
 /**
- * Cloak design tokens — matches the web app's dark theme.
+ * Cloak design tokens mirrored from cloak.pen variables.
  */
 export const colors = {
-  bg: "#0F172A",
+  bg: "#0A0F1C",
   surface: "#1E293B",
   surfaceLight: "#334155",
   primary: "#3B82F6",
+  primaryLight: "#60A5FA",
   primaryDim: "rgba(59, 130, 246, 0.15)",
   secondary: "#8B5CF6",
   secondaryDim: "rgba(139, 92, 246, 0.15)",
@@ -15,8 +16,9 @@ export const colors = {
   text: "#F8FAFC",
   textSecondary: "#94A3B8",
   textMuted: "#64748B",
-  border: "rgba(59, 130, 246, 0.2)",
-  borderLight: "rgba(148, 163, 184, 0.1)",
+  border: "#2D3B4D",
+  borderLight: "rgba(45, 59, 77, 0.7)",
+  inputBg: "#0F172A",
 };
 
 export const spacing = {
@@ -44,4 +46,11 @@ export const borderRadius = {
   lg: 16,
   xl: 24,
   full: 999,
+};
+
+export const typography = {
+  primary: "JetBrainsMono-Regular",
+  primarySemibold: "JetBrainsMono-SemiBold",
+  secondary: "Geist-Regular",
+  secondarySemibold: "Geist-SemiBold",
 };
