@@ -1071,7 +1071,7 @@ export default function HomeScreen({ navigation }: any) {
           style={[styles.actionButton, styles.actionSend]}
           onPress={() => navigation.navigate("Send")}
         >
-          <Send size={32} color={colors.primary} style={styles.actionIconSpacing} />
+          <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Send</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1079,7 +1079,7 @@ export default function HomeScreen({ navigation }: any) {
           style={[styles.actionButton, styles.actionShield]}
           onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
         >
-          <ShieldPlus size={32} color={colors.success} style={styles.actionIconSpacing} />
+          <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Shield</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1087,7 +1087,7 @@ export default function HomeScreen({ navigation }: any) {
           style={[styles.actionButton, styles.actionUnshield]}
           onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
         >
-          <ShieldOff size={32} color={colors.secondary} style={styles.actionIconSpacing} />
+          <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Unshield</Text>
         </TouchableOpacity>
       </View>
@@ -1100,7 +1100,7 @@ export default function HomeScreen({ navigation }: any) {
             {...testProps(testIDs.home.recentSeeAll)}
             onPress={() => navigation.navigate("Activity")}
           >
-            <Text style={styles.recentSeeAll}>See All</Text>
+            <Text style={styles.recentSeeAll}>View All</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.recentListCard}>

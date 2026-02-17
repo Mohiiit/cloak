@@ -177,3 +177,4 @@ These screenshots intentionally exclude private keys and secret material.
 |---|---|---|---|---|---|---|---|---|
 | 01 | `7iu2u` | Onboarding (Home no-wallet state) | `packages/mobile/src/screens/HomeScreen.tsx` | `a6870c7` | `packages/mobile/e2e/screenshots/2026-02-17/01-7iu2u-ios.png` | pending | n/a | passed |
 | 02 | `Gyt7Z` | Deploy Account | `packages/mobile/src/screens/DeployScreen.tsx` | `4945647` | `packages/mobile/e2e/screenshots/2026-02-17/02-Gyt7Z-ios.png` | pending | n/a | passed |
+| 03 | `7Vrpd` | Dashboard (non-ward) | `packages/mobile/src/screens/HomeScreen.tsx` | pending | `packages/mobile/e2e/screenshots/2026-02-17/03-7Vrpd-ios.png` | pending | n/a | passed |
