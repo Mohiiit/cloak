@@ -170,3 +170,9 @@ These screenshots intentionally exclude private keys and secret material.
   - `packages/mobile/e2e/screenshots/2026-02-17/ios-settings-network.png`
 
 ![iOS Settings Network](./screenshots/2026-02-17/ios-settings-network.png)
+
+## Parity Tracker
+
+| Step | Frame | Screen/Modal | Files Updated | Commit | iOS Screenshot | Android Screenshot | Extension Screenshot | Sensitive Check |
+|---|---|---|---|---|---|---|---|---|
+| 01 | `7iu2u` | Onboarding (Home no-wallet state) | `packages/mobile/src/screens/HomeScreen.tsx` | pending | `packages/mobile/e2e/screenshots/2026-02-17/01-7iu2u-ios.png` | pending | n/a | passed |

@@ -365,6 +365,7 @@ export default function HomeScreen({ navigation }: any) {
   const ward = useWardContext();
   const { execute } = useTransactionRouter();
   const modal = useThemedModal();
+  const showLegacyInlineOnboardingForms = false;
   const [showImport, setShowImport] = useState(false);
   const [showWardImport, setShowWardImport] = useState(false);
   const [importPK, setImportPK] = useState("");
@@ -575,155 +576,159 @@ export default function HomeScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            {...testProps(testIDs.onboarding.importExistingToggle)}
-            style={styles.importToggle}
-            onPress={() => { setShowImport(!showImport); setShowWardImport(false); }}
-          >
-            <Text style={styles.importToggleText}>
-              {showImport ? "Hide Import" : "Import Existing Account"}
-            </Text>
-          </TouchableOpacity>
-
-          {showImport && (
-            <View style={styles.importCard}>
-              <Text style={styles.importLabel}>Stark Private Key</Text>
-              <TextInput
-                {...testProps(testIDs.home.importExistingPrivateKeyInput)}
-                style={styles.importInput}
-                placeholder="0x..."
-                placeholderTextColor={colors.textMuted}
-                value={importPK}
-                onChangeText={setImportPK}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <Text style={styles.importLabel}>Starknet Address</Text>
-              <TextInput
-                {...testProps(testIDs.home.importExistingAddressInput)}
-                style={styles.importInput}
-                placeholder="0x..."
-                placeholderTextColor={colors.textMuted}
-                value={importAddr}
-                onChangeText={setImportAddr}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-                autoComplete="off"
-              />
+          {showLegacyInlineOnboardingForms && (
+            <>
               <TouchableOpacity
-                {...testProps(testIDs.onboarding.importExistingSubmit)}
-                style={[styles.createButton, (!importPK || !importAddr || isImporting) && { opacity: 0.4 }]}
-                disabled={!importPK || !importAddr || isImporting}
-                onPress={async () => {
-                  setIsImporting(true);
-                  try {
-                    await AsyncStorage.multiRemove([
-                      "cloak_is_ward",
-                      "cloak_guardian_address",
-                      "cloak_ward_info_cache",
-                    ]);
-                    await wallet.importWallet(importPK.trim(), importAddr.trim());
-                    modal.showSuccess("Success", "Wallet imported!");
-                  } catch (e: any) {
-                    modal.showError("Error", e.message || "Import failed", e.message);
-                  } finally {
-                    setIsImporting(false);
-                  }
-                }}
+                {...testProps(testIDs.onboarding.importExistingToggle)}
+                style={styles.importToggle}
+                onPress={() => { setShowImport(!showImport); setShowWardImport(false); }}
               >
-                {isImporting ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.createButtonText}>Import Wallet</Text>
-                )}
+                <Text style={styles.importToggleText}>
+                  {showImport ? "Hide Import" : "Import Existing Account"}
+                </Text>
               </TouchableOpacity>
-            </View>
-          )}
 
-          <TouchableOpacity
-            {...testProps(testIDs.onboarding.importWardToggle)}
-            style={styles.importToggle}
-            onPress={() => { setShowWardImport(!showWardImport); setShowImport(false); }}
-          >
-            <Text style={[styles.importToggleText, { color: colors.warning }]}>
-              {showWardImport ? "Hide Ward Invite Form" : "Open Ward Invite Form"}
-            </Text>
-          </TouchableOpacity>
+              {showImport && (
+                <View style={styles.importCard}>
+                  <Text style={styles.importLabel}>Stark Private Key</Text>
+                  <TextInput
+                    {...testProps(testIDs.home.importExistingPrivateKeyInput)}
+                    style={styles.importInput}
+                    placeholder="0x..."
+                    placeholderTextColor={colors.textMuted}
+                    value={importPK}
+                    onChangeText={setImportPK}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <Text style={styles.importLabel}>Starknet Address</Text>
+                  <TextInput
+                    {...testProps(testIDs.home.importExistingAddressInput)}
+                    style={styles.importInput}
+                    placeholder="0x..."
+                    placeholderTextColor={colors.textMuted}
+                    value={importAddr}
+                    onChangeText={setImportAddr}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <TouchableOpacity
+                    {...testProps(testIDs.onboarding.importExistingSubmit)}
+                    style={[styles.createButton, (!importPK || !importAddr || isImporting) && { opacity: 0.4 }]}
+                    disabled={!importPK || !importAddr || isImporting}
+                    onPress={async () => {
+                      setIsImporting(true);
+                      try {
+                        await AsyncStorage.multiRemove([
+                          "cloak_is_ward",
+                          "cloak_guardian_address",
+                          "cloak_ward_info_cache",
+                        ]);
+                        await wallet.importWallet(importPK.trim(), importAddr.trim());
+                        modal.showSuccess("Success", "Wallet imported!");
+                      } catch (e: any) {
+                        modal.showError("Error", e.message || "Import failed", e.message);
+                      } finally {
+                        setIsImporting(false);
+                      }
+                    }}
+                  >
+                    {isImporting ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.createButtonText}>Import Wallet</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
 
-          {showWardImport && (
-            <View style={[styles.importCard, { borderColor: "rgba(245, 158, 11, 0.3)" }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
-                <ShieldAlert size={18} color={colors.warning} />
-                <Text style={{ color: colors.text, fontSize: fontSize.sm, fontWeight: "600" }}>Ward Account</Text>
-              </View>
-              <Text style={{ color: colors.textSecondary, fontSize: fontSize.xs, marginBottom: spacing.md, lineHeight: 18 }}>
-                Paste the QR invite JSON from your guardian to import a ward account. This account will be managed by the guardian.
-              </Text>
-              <Text style={styles.importLabel}>Ward Invite JSON</Text>
-              <TextInput
-                {...testProps(testIDs.home.importWardJsonInput)}
-                style={[styles.importInput, { minHeight: 80, textAlignVertical: "top" }]}
-                placeholder='{"type":"cloak_ward_invite","wardAddress":"0x...","wardPrivateKey":"0x...","guardianAddress":"0x..."}'
-                placeholderTextColor={colors.textMuted}
-                value={wardInviteJson}
-                onChangeText={setWardInviteJson}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-                autoComplete="off"
-                multiline
-                numberOfLines={4}
-              />
-              <View style={styles.wardImportActions}>
-                <TouchableOpacity
-                  {...testProps(testIDs.home.importWardPaste)}
-                  style={styles.wardImportActionBtn}
-                  disabled={isImporting}
-                  onPress={async () => {
-                    try {
-                      const clipboardText = await Clipboard.getString();
-                      await importWardAccount(clipboardText, "paste");
-                    } catch (e: any) {
-                      modal.showError("Import Failed", e.message || "Invalid clipboard invite", e.message || "Invalid clipboard invite");
-                    }
-                  }}
-                >
-                  <ClipboardPaste size={16} color={colors.primary} />
-                  <Text style={styles.wardImportActionText}>Paste from Clipboard</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  {...testProps(testIDs.home.importWardScan)}
-                  style={[styles.wardImportActionBtn, { borderColor: "rgba(245, 158, 11, 0.4)" }]}
-                  disabled={isImporting}
-                  onPress={() => {
-                    setWardImportScannerState({
-                      status: "Starting scanner…",
-                    });
-                    setWardImportScanVisible(true);
-                  }}
-                >
-                  <Camera size={16} color={colors.warning} />
-                  <Text style={[styles.wardImportActionText, { color: colors.warning }]}>Scan with Camera</Text>
-                </TouchableOpacity>
-              </View>
               <TouchableOpacity
-                {...testProps(testIDs.onboarding.importWardSubmit)}
-                style={[styles.createButton, { backgroundColor: colors.warning }, (!wardInviteJson.trim() || isImporting) && { opacity: 0.4 }]}
-                disabled={!wardInviteJson.trim() || isImporting}
-                onPress={async () => {
-                  await importWardAccount(wardInviteJson, "paste");
-                }}
+                {...testProps(testIDs.onboarding.importWardToggle)}
+                style={styles.importToggle}
+                onPress={() => { setShowWardImport(!showWardImport); setShowImport(false); }}
               >
-                {isImporting ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.createButtonText}>Import Ward Account</Text>
-                )}
+                <Text style={[styles.importToggleText, { color: colors.warning }]}>
+                  {showWardImport ? "Hide Ward Invite Form" : "Open Ward Invite Form"}
+                </Text>
               </TouchableOpacity>
-            </View>
+
+              {showWardImport && (
+                <View style={[styles.importCard, { borderColor: "rgba(245, 158, 11, 0.3)" }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
+                    <ShieldAlert size={18} color={colors.warning} />
+                    <Text style={{ color: colors.text, fontSize: fontSize.sm, fontWeight: "600" }}>Ward Account</Text>
+                  </View>
+                  <Text style={{ color: colors.textSecondary, fontSize: fontSize.xs, marginBottom: spacing.md, lineHeight: 18 }}>
+                    Paste the QR invite JSON from your guardian to import a ward account. This account will be managed by the guardian.
+                  </Text>
+                  <Text style={styles.importLabel}>Ward Invite JSON</Text>
+                  <TextInput
+                    {...testProps(testIDs.home.importWardJsonInput)}
+                    style={[styles.importInput, { minHeight: 80, textAlignVertical: "top" }]}
+                    placeholder='{"type":"cloak_ward_invite","wardAddress":"0x...","wardPrivateKey":"0x...","guardianAddress":"0x..."}'
+                    placeholderTextColor={colors.textMuted}
+                    value={wardInviteJson}
+                    onChangeText={setWardInviteJson}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    spellCheck={false}
+                    autoComplete="off"
+                    multiline
+                    numberOfLines={4}
+                  />
+                  <View style={styles.wardImportActions}>
+                    <TouchableOpacity
+                      {...testProps(testIDs.home.importWardPaste)}
+                      style={styles.wardImportActionBtn}
+                      disabled={isImporting}
+                      onPress={async () => {
+                        try {
+                          const clipboardText = await Clipboard.getString();
+                          await importWardAccount(clipboardText, "paste");
+                        } catch (e: any) {
+                          modal.showError("Import Failed", e.message || "Invalid clipboard invite", e.message || "Invalid clipboard invite");
+                        }
+                      }}
+                    >
+                      <ClipboardPaste size={16} color={colors.primary} />
+                      <Text style={styles.wardImportActionText}>Paste from Clipboard</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      {...testProps(testIDs.home.importWardScan)}
+                      style={[styles.wardImportActionBtn, { borderColor: "rgba(245, 158, 11, 0.4)" }]}
+                      disabled={isImporting}
+                      onPress={() => {
+                        setWardImportScannerState({
+                          status: "Starting scanner…",
+                        });
+                        setWardImportScanVisible(true);
+                      }}
+                    >
+                      <Camera size={16} color={colors.warning} />
+                      <Text style={[styles.wardImportActionText, { color: colors.warning }]}>Scan with Camera</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    {...testProps(testIDs.onboarding.importWardSubmit)}
+                    style={[styles.createButton, { backgroundColor: colors.warning }, (!wardInviteJson.trim() || isImporting) && { opacity: 0.4 }]}
+                    disabled={!wardInviteJson.trim() || isImporting}
+                    onPress={async () => {
+                      await importWardAccount(wardInviteJson, "paste");
+                    }}
+                  >
+                    {isImporting ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.createButtonText}>Import Ward Account</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
           )}
         </KeyboardSafeScreen>
     );
