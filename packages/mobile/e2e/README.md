@@ -186,3 +186,4 @@ These screenshots intentionally exclude private keys and secret material.
 | 09 | `FEfix` | Wallet (unshield keyboard) | `packages/mobile/src/screens/WalletScreen.tsx` | `5410515` | `packages/mobile/e2e/screenshots/2026-02-17/09-FEfix-ios.png` | pending | n/a | passed |
 | 10 | `09FBd` | Activity | `packages/mobile/src/screens/ActivityScreen.tsx` | `2a8c0dc` | `packages/mobile/e2e/screenshots/2026-02-17/10-09FBd-ios.png` | pending | n/a | passed |
 | 11 | `XzS0q` | Transaction Detail | `packages/mobile/src/screens/activity/TransactionDetailScreen.tsx`, `packages/mobile/src/navigation/RootNavigator.tsx` | `ecca20d` | `packages/mobile/e2e/screenshots/2026-02-17/11-XzS0q-ios.png` | pending | n/a | passed |
+| 12 | `1uUTh` | Settings (top) | `packages/mobile/src/screens/SettingsScreen.tsx` | pending | `packages/mobile/e2e/screenshots/2026-02-17/12-1uUTh-ios.png` | pending | n/a | passed |
