@@ -16,6 +16,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import {
   Eye,
   EyeOff,
@@ -360,6 +361,25 @@ const WARD_WELCOME_SCANNER_HTML = `<!doctype html>
 </body>
 </html>`;
 
+function OnboardingLogoBadge() {
+  return (
+    <View style={styles.onboardingLogoBadge}>
+      <Svg width={96} height={96} viewBox="0 0 96 96">
+        <Defs>
+          <LinearGradient id="onboardingBadgeGradient" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+            <Stop offset="0" stopColor="#3B82F6" />
+            <Stop offset="1" stopColor="#8B5CF6" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="96" height="96" rx="24" fill="url(#onboardingBadgeGradient)" />
+      </Svg>
+      <View style={styles.onboardingLogoIcon}>
+        <CloakIcon size={50} color="#FFFFFF" />
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen({ navigation }: any) {
   const wallet = useWallet();
   const ward = useWardContext();
@@ -489,7 +509,7 @@ export default function HomeScreen({ navigation }: any) {
     return (
       <KeyboardSafeScreen
         style={styles.container}
-        contentContainerStyle={styles.center}
+        contentContainerStyle={styles.onboardingContent}
         keyboardShouldPersistTaps="handled"
       >
           {modal.ModalComponent}
@@ -533,14 +553,14 @@ export default function HomeScreen({ navigation }: any) {
             </View>
           </Modal>
 
-          <CloakIcon size={64} />
+          <OnboardingLogoBadge />
           <Text style={styles.heroTitle}>Cloak</Text>
           <Text style={styles.heroSubtitle}>
             Shielded payments on Starknet
           </Text>
           <TouchableOpacity
             {...testProps(testIDs.onboarding.createWallet)}
-            style={styles.createButton}
+            style={styles.onboardingCreateButton}
             onPress={async () => {
               try {
                 await AsyncStorage.multiRemove([
@@ -554,25 +574,23 @@ export default function HomeScreen({ navigation }: any) {
               }
             }}
           >
-            <Text style={styles.createButtonText}>Create New Wallet</Text>
+            <Text style={styles.onboardingCreateButtonText}>+ Create New Wallet</Text>
           </TouchableOpacity>
 
           <View style={styles.onboardingRouteActions}>
             <TouchableOpacity
               {...testProps(testIDs.onboarding.importExistingRoute)}
-              style={styles.onboardingRouteBtn}
+              style={styles.onboardingRouteLink}
               onPress={() => navigation.getParent()?.navigate("ImportAccount")}
             >
-              <Text style={styles.onboardingRouteBtnText}>Import Existing Account</Text>
+              <Text style={styles.onboardingRouteLinkText}>Import Existing Account</Text>
             </TouchableOpacity>
             <TouchableOpacity
               {...testProps(testIDs.onboarding.importWardRoute)}
-              style={[styles.onboardingRouteBtn, styles.onboardingRouteWardBtn]}
+              style={styles.onboardingRouteLink}
               onPress={() => navigation.getParent()?.navigate("ImportWard")}
             >
-              <Text style={[styles.onboardingRouteBtnText, styles.onboardingRouteWardBtnText]}>
-                Import Ward Invite
-              </Text>
+              <Text style={[styles.onboardingRouteLinkText, styles.onboardingRouteWardLinkText]}>Import Ward Account</Text>
             </TouchableOpacity>
           </View>
 
@@ -1158,6 +1176,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.xl,
   },
+  onboardingContent: {
+    flexGrow: 1,
+    backgroundColor: colors.bg,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+    paddingBottom: spacing.xl,
+  },
   loadingText: {
     color: colors.textSecondary,
     marginTop: spacing.md,
@@ -1165,19 +1191,49 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondary,
   },
   heroIcon: { marginBottom: spacing.md },
+  onboardingLogoBadge: {
+    width: 96,
+    height: 96,
+    position: "relative",
+    marginBottom: spacing.xl,
+  },
+  onboardingLogoIcon: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   heroTitle: {
-    fontSize: fontSize.hero,
-    fontWeight: "bold",
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: "700",
     color: colors.text,
-    marginBottom: spacing.sm,
+    marginBottom: 8,
     fontFamily: typography.primarySemibold,
   },
   heroSubtitle: {
-    fontSize: fontSize.lg,
+    fontSize: 16,
     color: colors.textSecondary,
     textAlign: "center",
     marginBottom: spacing.xl,
     fontFamily: typography.secondary,
+  },
+  onboardingCreateButton: {
+    width: "100%",
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  onboardingCreateButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
   },
   createButton: {
     backgroundColor: colors.primary,
@@ -1194,27 +1250,19 @@ const styles = StyleSheet.create({
   onboardingRouteActions: {
     marginTop: spacing.md,
     width: "100%",
-    gap: spacing.sm,
-  },
-  onboardingRouteBtn: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderRadius: borderRadius.md,
-    paddingVertical: 12,
+    gap: spacing.md,
     alignItems: "center",
   },
-  onboardingRouteWardBtn: {
-    borderColor: "rgba(245, 158, 11, 0.35)",
-    backgroundColor: "rgba(245, 158, 11, 0.08)",
+  onboardingRouteLink: {
+    paddingVertical: 2,
   },
-  onboardingRouteBtnText: {
-    color: colors.primary,
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    fontFamily: typography.primarySemibold,
+  onboardingRouteLinkText: {
+    color: colors.primaryLight,
+    fontSize: 15,
+    fontWeight: "500",
+    fontFamily: typography.secondarySemibold,
   },
-  onboardingRouteWardBtnText: {
+  onboardingRouteWardLinkText: {
     color: colors.warning,
   },
   importToggle: { marginTop: spacing.lg },
