@@ -175,4 +175,4 @@ These screenshots intentionally exclude private keys and secret material.
 
 | Step | Frame | Screen/Modal | Files Updated | Commit | iOS Screenshot | Android Screenshot | Extension Screenshot | Sensitive Check |
 |---|---|---|---|---|---|---|---|---|
-| 01 | `7iu2u` | Onboarding (Home no-wallet state) | `packages/mobile/src/screens/HomeScreen.tsx` | pending | `packages/mobile/e2e/screenshots/2026-02-17/01-7iu2u-ios.png` | pending | n/a | passed |
+| 01 | `7iu2u` | Onboarding (Home no-wallet state) | `packages/mobile/src/screens/HomeScreen.tsx` | `a6870c7` | `packages/mobile/e2e/screenshots/2026-02-17/01-7iu2u-ios.png` | pending | n/a | passed |
