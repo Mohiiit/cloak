@@ -183,4 +183,4 @@ These screenshots intentionally exclude private keys and secret material.
 | 06 | `CUfLL` | Send (keyboard) | `packages/mobile/src/screens/SendScreen.tsx`, `packages/mobile/src/components/KeyboardSafeContainer.tsx` | `db522d9` | `packages/mobile/e2e/screenshots/2026-02-17/06-CUfLL-ios.png` | pending | n/a | passed |
 | 07 | `O3kob` | Wallet (default) | `packages/mobile/src/screens/WalletScreen.tsx`, `packages/mobile/src/testing/testIDs.ts` | `f007a8d` | `packages/mobile/e2e/screenshots/2026-02-17/07-O3kob-ios.png` | pending | n/a | passed |
 | 08 | `UhCeU` | Wallet (shield keyboard) | `packages/mobile/src/screens/WalletScreen.tsx` | `12eb3ce` | `packages/mobile/e2e/screenshots/2026-02-17/08-UhCeU-ios.png` | pending | n/a | passed |
-| 09 | `FEfix` | Wallet (unshield keyboard) | `packages/mobile/src/screens/WalletScreen.tsx` | pending | `packages/mobile/e2e/screenshots/2026-02-17/09-FEfix-ios.png` | pending | n/a | passed |
+| 09 | `FEfix` | Wallet (unshield keyboard) | `packages/mobile/src/screens/WalletScreen.tsx` | `5410515` | `packages/mobile/e2e/screenshots/2026-02-17/09-FEfix-ios.png` | pending | n/a | passed |
