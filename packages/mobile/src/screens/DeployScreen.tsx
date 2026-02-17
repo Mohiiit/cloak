@@ -14,16 +14,36 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { ExternalLink, Copy, Check, RefreshCw } from "lucide-react-native";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import { ExternalLink, Copy, RefreshCw } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useToast } from "../components/Toast";
 import { CloakIcon } from "../components/CloakIcon";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
 import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
 
 const FAUCET_URL = "https://starknet-faucet.vercel.app/";
 const VOYAGER_TX_URL = "https://sepolia.voyager.online/tx/";
+
+function DeployLogoBadge() {
+  return (
+    <View style={styles.logoFrame}>
+      <Svg width={64} height={64} viewBox="0 0 64 64">
+        <Defs>
+          <LinearGradient id="deployLogoGradient" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+            <Stop offset="0" stopColor="#3B82F6" />
+            <Stop offset="1" stopColor="#8B5CF6" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="64" height="64" rx="16" fill="url(#deployLogoGradient)" />
+      </Svg>
+      <View style={styles.logoIcon}>
+        <CloakIcon size={36} color="#FFFFFF" />
+      </View>
+    </View>
+  );
+}
 
 export default function DeployScreen() {
   const wallet = useWallet();
@@ -94,9 +114,7 @@ export default function DeployScreen() {
       </View>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.iconWrapper}>
-          <CloakIcon size={32} />
-        </View>
+        <DeployLogoBadge />
         <Text style={styles.title}>Deploy Your Account</Text>
         <Text style={styles.subtitle}>
           Your CloakAccount address has been computed. Fund it and deploy on-chain to start using Cloak.
@@ -122,14 +140,10 @@ export default function DeployScreen() {
           style={styles.addressRow}
           onPress={handleCopy}
         >
-          <Text style={styles.addressText} numberOfLines={2}>
+          <Text style={styles.addressText} numberOfLines={1}>
             {address}
           </Text>
-          {copied ? (
-            <Check size={16} color={colors.success} />
-          ) : (
-            <Copy size={16} color={colors.primary} />
-          )}
+          <Copy size={16} color={copied ? colors.success : colors.primaryLight} />
         </TouchableOpacity>
       </View>
 
@@ -189,22 +203,23 @@ export default function DeployScreen() {
             <Text style={styles.deployBtnText}>Deploy Account</Text>
           )}
         </TouchableOpacity>
-
-        <TouchableOpacity
-          {...testProps(testIDs.deploy.checkIfDeployed)}
-          style={[styles.checkBtn, wallet.isCheckingDeployment && { opacity: 0.5 }]}
-          disabled={wallet.isCheckingDeployment}
-          onPress={handleCheckDeployed}
-        >
-          {wallet.isCheckingDeployment ? (
-            <ActivityIndicator size="small" color={colors.textSecondary} />
-          ) : (
-            <View style={styles.checkBtnRow}>
-              <RefreshCw size={14} color={colors.textSecondary} />
-              <Text style={styles.checkBtnText}>Check if Deployed</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        {txHash || error ? (
+          <TouchableOpacity
+            {...testProps(testIDs.deploy.checkIfDeployed)}
+            style={[styles.checkBtnLink, wallet.isCheckingDeployment && styles.checkBtnLinkDisabled]}
+            disabled={wallet.isCheckingDeployment}
+            onPress={handleCheckDeployed}
+          >
+            {wallet.isCheckingDeployment ? (
+              <ActivityIndicator size="small" color={colors.textSecondary} />
+            ) : (
+              <View style={styles.checkBtnRow}>
+                <RefreshCw size={13} color={colors.textSecondary} />
+                <Text style={styles.checkBtnText}>Check if deployed</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ) : null}
       </View>
     </KeyboardSafeScreen>
   );
@@ -216,124 +231,139 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   content: {
-    padding: spacing.lg,
-    paddingBottom: 60,
+    padding: 24,
+    paddingBottom: 30,
+    gap: 18,
   },
   header: {
     alignItems: "center",
-    marginBottom: spacing.xl,
-    marginTop: spacing.lg,
+    marginTop: 4,
+    gap: 8,
   },
-  iconWrapper: {
-    width: 56,
-    height: 56,
+  logoFrame: {
+    width: 64,
+    height: 64,
     borderRadius: 16,
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    position: "relative",
+  },
+  logoIcon: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.md,
   },
   title: {
-    fontSize: fontSize.xl,
-    fontWeight: "bold",
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "700",
     color: colors.text,
-    marginBottom: spacing.sm,
+    fontFamily: typography.primarySemibold,
+    textAlign: "center",
   },
   subtitle: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
+    lineHeight: 20,
     color: colors.textSecondary,
     textAlign: "center",
-    lineHeight: 20,
-    paddingHorizontal: spacing.md,
+    fontFamily: typography.secondary,
+    paddingHorizontal: 8,
   },
 
   // Address Card
   addressCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+    borderRadius: 16,
+    padding: 20,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
+    gap: 14,
   },
   addressLabel: {
-    fontSize: fontSize.xs,
+    fontSize: 11,
     color: colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: spacing.md,
+    letterSpacing: 2,
+    fontFamily: typography.primarySemibold,
   },
   qrContainer: {
     position: "relative",
     alignItems: "center",
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    justifyContent: "center",
+    width: 180,
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+    padding: 10,
   },
   qrGlow: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    opacity: 0.15,
-    backgroundColor: colors.primary,
+    width: 160,
+    height: 160,
+    borderRadius: 10,
+    opacity: 1,
+    backgroundColor: "#E2E8F0",
   },
   qrWhiteBg: {
     backgroundColor: "#FFFFFF",
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
+    padding: 10,
+    borderRadius: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.04,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 2,
   },
   addressRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.inputBg,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     width: "100%",
     gap: spacing.sm,
   },
   addressText: {
     flex: 1,
-    fontSize: fontSize.xs,
-    color: colors.text,
-    fontFamily: "monospace",
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: typography.primary,
   },
 
   // Warning Card
   warningCard: {
-    backgroundColor: "rgba(245, 158, 11, 0.08)",
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: "rgba(245, 158, 11, 0.2)",
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+    borderRadius: 12,
+    padding: 16,
+    gap: 8,
   },
   warningTitle: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     fontWeight: "600",
     color: colors.warning,
-    marginBottom: spacing.xs,
+    fontFamily: typography.primarySemibold,
   },
   warningDesc: {
-    fontSize: fontSize.xs,
-    color: "rgba(245, 158, 11, 0.7)",
-    lineHeight: 18,
-    marginBottom: spacing.sm,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
+    fontFamily: typography.secondary,
   },
   faucetLink: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: 4,
   },
   faucetLinkText: {
-    fontSize: fontSize.xs,
-    color: colors.primary,
-    textDecorationLine: "underline",
+    fontSize: 13,
+    color: colors.primaryLight,
+    fontFamily: typography.secondarySemibold,
   },
 
   // Success Card
@@ -350,6 +380,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.success,
     marginBottom: spacing.xs,
+    fontFamily: typography.primarySemibold,
   },
   successHash: {
     fontSize: fontSize.xs,
@@ -360,7 +391,7 @@ const styles = StyleSheet.create({
   successLink: {
     fontSize: fontSize.xs,
     color: colors.primary,
-    textDecorationLine: "underline",
+    fontFamily: typography.secondarySemibold,
   },
 
   // Error Card
@@ -375,18 +406,20 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: fontSize.xs,
     color: colors.error,
+    fontFamily: typography.secondary,
   },
 
   // Actions
   actions: {
-    marginTop: spacing.md,
+    marginTop: 0,
     gap: spacing.sm,
   },
   deployBtn: {
     backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: borderRadius.lg,
+    height: 52,
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
   deployBtnDisabled: {
     opacity: 0.6,
@@ -394,29 +427,30 @@ const styles = StyleSheet.create({
   deployBtnText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: fontSize.md,
+    fontSize: 16,
+    fontFamily: typography.primarySemibold,
   },
   deployingRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
   },
-  checkBtn: {
-    backgroundColor: colors.surface,
-    paddingVertical: 14,
-    borderRadius: borderRadius.lg,
+  checkBtnLink: {
+    paddingVertical: 8,
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.borderLight,
+  },
+  checkBtnLinkDisabled: {
+    opacity: 0.5,
   },
   checkBtnRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: 6,
   },
   checkBtnText: {
     color: colors.textSecondary,
-    fontSize: fontSize.sm,
+    fontSize: 12,
+    fontFamily: typography.secondary,
   },
   markerContainer: {
     position: "absolute",

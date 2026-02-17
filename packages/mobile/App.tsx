@@ -16,7 +16,12 @@ LogBox.ignoreLogs([
   "[WardContext]",
   "[WardApprovalModal]",
   "[GuardianApprovalModal]",
+  "Attempting to change the refresh control while it is not idle",
 ]);
+
+if (__DEV__) {
+  LogBox.ignoreAllLogs(true);
+}
 import { TongoBridgeProvider } from "./src/bridge/TongoBridge";
 import { WalletProvider } from "./src/lib/WalletContext";
 import { TwoFactorProvider } from "./src/lib/TwoFactorContext";
@@ -26,7 +31,7 @@ import { WardProvider } from "./src/lib/wardContext";
 import ApprovalModal from "./src/components/ApprovalModal";
 import WardApprovalModal from "./src/components/WardApprovalModal";
 import GuardianApprovalModal from "./src/components/GuardianApprovalModal";
-import AppNavigator from "./src/navigation/AppNavigator";
+import RootNavigator from "./src/navigation/RootNavigator";
 import { isE2E } from "./src/testing/runtimeConfig";
 import TestStateMarkers from "./src/testing/TestStateMarkers";
 
@@ -44,7 +49,7 @@ function App() {
             <TwoFactorProvider>
               <WardProvider>
                 <ErrorBoundary>
-                  <AppNavigator />
+                  <RootNavigator />
                 </ErrorBoundary>
                 {isE2E() && <TestStateMarkers />}
                 <ApprovalModal />
