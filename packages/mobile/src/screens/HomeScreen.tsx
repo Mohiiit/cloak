@@ -1,7 +1,7 @@
 /**
  * HomeScreen — Balance overview, portfolio, and quick actions.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect } from "react";
 import {
   View,
   Text,
@@ -391,6 +391,10 @@ export default function HomeScreen({ navigation }: any) {
   const { execute } = useTransactionRouter();
   const modal = useThemedModal();
   const showLegacyInlineOnboardingForms = false;
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: wallet.isWalletCreated });
+  }, [navigation, wallet.isWalletCreated]);
   const [showImport, setShowImport] = useState(false);
   const [showWardImport, setShowWardImport] = useState(false);
   const [importPK, setImportPK] = useState("");
