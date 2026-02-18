@@ -34,6 +34,7 @@ import {
   Camera,
   ClipboardPaste,
   Ghost,
+  Plus,
 } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
@@ -558,29 +559,32 @@ export default function HomeScreen({ navigation }: any) {
           </Modal>
 
           <OnboardingLogoBadge />
-          <Text style={styles.heroSubtitle}>
-            Shielded payments on Starknet
-          </Text>
-          <TouchableOpacity
-            {...testProps(testIDs.onboarding.createWallet)}
-            style={styles.onboardingCreateButton}
-            onPress={async () => {
-              try {
-                await AsyncStorage.multiRemove([
-                  "cloak_is_ward",
-                  "cloak_guardian_address",
-                  "cloak_ward_info_cache",
-                ]);
-                await wallet.createWallet();
-              } catch (e: any) {
-                modal.showError("Error", e.message || "Failed to create wallet", e.message);
-              }
-            }}
-          >
-            <Text style={styles.onboardingCreateButtonText}>+ Create New Wallet</Text>
-          </TouchableOpacity>
-
-          <View style={styles.onboardingRouteActions}>
+          <View style={styles.onboardingTextGroup}>
+            <Text style={styles.heroTitle}>Cloak</Text>
+            <Text style={styles.heroSubtitle}>
+              Shielded payments on Starknet
+            </Text>
+          </View>
+          <View style={styles.onboardingButtonGroup}>
+            <TouchableOpacity
+              {...testProps(testIDs.onboarding.createWallet)}
+              style={styles.onboardingCreateButton}
+              onPress={async () => {
+                try {
+                  await AsyncStorage.multiRemove([
+                    "cloak_is_ward",
+                    "cloak_guardian_address",
+                    "cloak_ward_info_cache",
+                  ]);
+                  await wallet.createWallet();
+                } catch (e: any) {
+                  modal.showError("Error", e.message || "Failed to create wallet", e.message);
+                }
+              }}
+            >
+              <Plus size={20} color="#FFFFFF" />
+              <Text style={styles.onboardingCreateButtonText}>Create New Wallet</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               {...testProps(testIDs.onboarding.importExistingRoute)}
               style={styles.onboardingRouteLink}
@@ -1289,6 +1293,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 40,
     paddingBottom: spacing.xl,
+    gap: 32,
   },
   loadingText: {
     color: colors.textSecondary,
@@ -1301,7 +1306,6 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     position: "relative",
-    marginBottom: spacing.xl,
   },
   onboardingLogoIcon: {
     position: "absolute",
@@ -1312,28 +1316,37 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  onboardingTextGroup: {
+    alignItems: "center",
+    gap: 8,
+  },
   heroTitle: {
     fontSize: 36,
     lineHeight: 42,
     fontWeight: "700",
     color: colors.text,
-    marginBottom: 8,
     fontFamily: typography.primarySemibold,
   },
   heroSubtitle: {
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: "center",
-    marginBottom: spacing.xl,
     fontFamily: typography.secondary,
+  },
+  onboardingButtonGroup: {
+    width: "100%",
+    gap: 16,
+    alignItems: "center",
   },
   onboardingCreateButton: {
     width: "100%",
     height: 52,
     borderRadius: 14,
     backgroundColor: colors.primary,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
   },
   onboardingCreateButtonText: {
     color: "#FFFFFF",
@@ -1352,12 +1365,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: "600",
     fontFamily: typography.primarySemibold,
-  },
-  onboardingRouteActions: {
-    marginTop: spacing.md,
-    width: "100%",
-    gap: spacing.md,
-    alignItems: "center",
   },
   onboardingRouteLink: {
     paddingVertical: 2,
