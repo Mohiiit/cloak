@@ -977,21 +977,13 @@ export default function SettingsScreen({ navigation }: any) {
               const showDivider = idx < wardItems.length - 1;
               return (
                 <View key={w.id} style={[styles.wardRow, showDivider && styles.wardRowDivider]}>
-                  {/* Top row: icon+info ... toggle */}
+                  {/* Top row: icon+name ... freeze toggle */}
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
                       <View style={[styles.wardIconCircle, isFrozen ? styles.wardIconCircleFrozen : styles.wardIconCircleActive]}>
                         <Shield size={18} color={isFrozen ? colors.error : colors.primaryLight} />
                       </View>
-                      <View style={{ gap: 2 }}>
-                        <Text style={[styles.wardNameText, isFrozen && { opacity: 0.6 }]}>{w.name}</Text>
-                        <View style={styles.wardStatusInline}>
-                          <View style={[styles.statusDot, isFrozen ? styles.statusDotFrozen : styles.statusDotActive]} />
-                          <Text style={[styles.wardStatusTextInline, isFrozen ? styles.wardStatusFrozenText : styles.wardStatusActiveText]}>
-                            {isFrozen ? "Frozen" : "Active"}
-                          </Text>
-                        </View>
-                      </View>
+                      <Text style={[styles.wardNameText, isFrozen && { opacity: 0.6 }]}>{w.name}</Text>
                     </View>
                     <View style={styles.wardToggleRow}>
                       <Text style={[styles.wardToggleLabel, isFrozen && styles.wardToggleLabelFrozen]}>
@@ -1020,15 +1012,11 @@ export default function SettingsScreen({ navigation }: any) {
                       </TouchableOpacity>
                     </View>
                   </View>
-                  {/* Bottom row: spending limit ... whitelist */}
+                  {/* Bottom row: spending limit */}
                   <View style={styles.wardDetailsRow}>
                     <View style={styles.wardDetailCol}>
                       <Text style={styles.wardMetaLabel}>Spending Limit</Text>
                       <Text style={[styles.wardMetaValue, isFrozen && { opacity: 0.5 }]}>{w.spendingLimit}</Text>
-                    </View>
-                    <View style={styles.wardDetailCol}>
-                      <Text style={styles.wardMetaLabel}>Whitelist</Text>
-                      <Text style={[styles.wardMetaValue, isFrozen && { opacity: 0.5 }]}>{w.whitelist}</Text>
                     </View>
                   </View>
                 </View>
@@ -1669,9 +1657,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   wardRow: {
-    paddingHorizontal: 0,
-    paddingVertical: 12,
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
   },
   wardRowDivider: {
     borderBottomWidth: 1,
