@@ -300,14 +300,18 @@ export function TwoFactorProvider({
     }
 
     // Biometric gate
+    onStep?.("auth");
     const authed = await promptBiometric("Authenticate to disable 2FA");
     if (!authed) {
+      onStep?.("error");
       showToast("Biometric authentication failed", "error");
       return;
     }
 
     try {
       if (isMockMode()) {
+        onStep?.("onchain");
+        onStep?.("register");
         const { error } = await disableTwoFactorConfig(
           normalizeAddress(wallet.keys.starkAddress),
         );
@@ -319,11 +323,13 @@ export function TwoFactorProvider({
         setIsConfigured(false);
         setIsEnabled(false);
         setPendingRequests([]);
+        onStep?.("done");
         showToast("Two-Factor Authentication disabled", "success");
         return;
       }
 
       // Step 1: On-chain remove_secondary_key — MUST succeed before anything else
+      onStep?.("onchain");
       const secondaryPk = await getSecondaryPrivateKey();
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const calls = [{
@@ -368,6 +374,7 @@ export function TwoFactorProvider({
       await provider.waitForTransaction(txHash);
 
       // Step 2: Supabase delete — only after on-chain succeeds
+      onStep?.("register");
       const { error } = await disableTwoFactorConfig(
         normalizeAddress(wallet.keys.starkAddress),
       );
@@ -383,9 +390,11 @@ export function TwoFactorProvider({
       setIsConfigured(false);
       setIsEnabled(false);
       setPendingRequests([]);
+      onStep?.("done");
       showToast("Two-Factor Authentication disabled", "success");
     } catch (e: any) {
       // On-chain failed — abort entirely, do NOT delete Supabase or clear local keys
+      onStep?.("error");
       console.warn("[TwoFactorContext] disable2FA error:", e);
       showToast(`Failed to disable 2FA: ${e.message}`, "error");
     }
