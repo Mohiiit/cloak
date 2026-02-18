@@ -78,29 +78,7 @@ export default function AppNavigator() {
   const ward = useWardContext();
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, Platform.OS === "android" ? 12 : 24);
-  const [previewInitialRoute, setPreviewInitialRoute] = React.useState<keyof AppTabParamList>("Home");
-  const [previewReady, setPreviewReady] = React.useState(!__DEV__);
-
-  React.useEffect(() => {
-    if (!__DEV__) return;
-    let isMounted = true;
-    AsyncStorage.getItem("cloak_preview_tab")
-      .then((value) => {
-        if (!isMounted) return;
-        const allowed: Array<keyof AppTabParamList> = ["Home", "Send", "Wallet", "Activity", "Settings"];
-        if (value && allowed.includes(value as keyof AppTabParamList)) {
-          setPreviewInitialRoute(value as keyof AppTabParamList);
-        } else {
-          setPreviewInitialRoute("Home");
-        }
-      })
-      .finally(() => {
-        if (isMounted) setPreviewReady(true);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const initialRouteName: keyof AppTabParamList = "Home";
 
   // Gate: show deploy screen if wallet exists but is not deployed
   if (wallet.isWalletCreated && !wallet.isDeployed && !wallet.isLoading && !wallet.isCheckingDeployment) {
@@ -111,13 +89,6 @@ export default function AppNavigator() {
       </View>
     );
   }
-
-  if (!previewReady) {
-    return <View style={styles.root} />;
-  }
-
-  const initialRouteName =
-    ward.isWard && previewInitialRoute === "Wallet" ? "Home" : previewInitialRoute;
 
   return (
     <View style={styles.root}>

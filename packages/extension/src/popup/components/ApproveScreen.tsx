@@ -205,10 +205,10 @@ export default function ApproveScreen() {
         <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 512 512" fill="none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path
-                  d="M256 52C220 52 186 72 164 104L96 208C80 232 72 260 72 290L72 360C72 380 80 398 96 410L144 448C152 454 162 456 172 454L196 444C204 442 210 436 214 428L232 384C240 368 256 360 256 360C256 360 272 368 280 384L298 428C302 436 308 442 316 444L340 454C350 456 360 454 368 448L416 410C432 398 440 380 440 360L440 290C440 260 432 232 416 208L348 104C326 72 292 52 256 52Z"
-                  fill="white"
+                  d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+                  fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                 />
               </svg>
             </div>
@@ -315,10 +315,10 @@ export default function ApproveScreen() {
       <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 512 512" fill="none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path
-                d="M256 52C220 52 186 72 164 104L96 208C80 232 72 260 72 290L72 360C72 380 80 398 96 410L144 448C152 454 162 456 172 454L196 444C204 442 210 436 214 428L232 384C240 368 256 360 256 360C256 360 272 368 280 384L298 428C302 436 308 442 316 444L340 454C350 456 360 454 368 448L416 410C432 398 440 380 440 360L440 290C440 260 432 232 416 208L348 104C326 72 292 52 256 52Z"
-                fill="white"
+                d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+                fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
               />
             </svg>
           </div>

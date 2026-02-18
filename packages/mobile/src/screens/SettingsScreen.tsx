@@ -416,7 +416,7 @@ function TwoFAProgressModal({
                     <View
                       style={[
                         tfaModalStyles.stepDot,
-                        isComplete && tfaModalStyles.stepDotComplete,
+                        isComplete && [tfaModalStyles.stepDotComplete, !isEnabling && { backgroundColor: "#EF4444", borderColor: "#EF4444" }],
                         isActive && [tfaModalStyles.stepDotActive, !isEnabling && { borderColor: "#EF4444", backgroundColor: "rgba(239, 68, 68, 0.1)" }],
                         isFailed && tfaModalStyles.stepDotFailed,
                       ]}
