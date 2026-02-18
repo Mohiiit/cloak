@@ -12,11 +12,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Account, RpcProvider } from "starknet";
+import { Fingerprint } from "lucide-react-native";
 import { DEFAULT_RPC } from "@cloak-wallet/sdk";
 import { useTwoFactor } from "../lib/TwoFactorContext";
 import { useWallet } from "../lib/WalletContext";
 import { useToast } from "./Toast";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
 import { KeyboardSafeModal } from "./KeyboardSafeContainer";
 import {
@@ -173,72 +174,64 @@ function ApprovalCard({
     }
   };
 
+  const actionLabel = `${formatAction(request.action)}${request.amount ? ` ${request.amount}` : ""} ${request.token}`;
+
   return (
     <View style={styles.card}>
-      {/* Header */}
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>Transaction Approval</Text>
-        <View
-          style={[
-            styles.timerBadge,
-            isExpired && styles.timerBadgeExpired,
-          ]}
-        >
-          <Text
-            style={[
-              styles.timerText,
-              isExpired && styles.timerTextExpired,
-            ]}
-          >
-            {countdown}
-          </Text>
-        </View>
+      {/* Fingerprint icon (7Ek3t parity) */}
+      <View style={styles.fingerprintCircle}>
+        <Fingerprint size={32} color={colors.primary} />
       </View>
 
-      {/* Details */}
+      <Text style={styles.cardTitle}>Authenticate</Text>
+      <Text style={styles.cardSubtitle}>
+        Use biometric authentication to approve this transaction
+      </Text>
+
+      {/* Detail card */}
       <View style={styles.detailsContainer}>
-        <DetailRow label="Action" value={formatAction(request.action)} />
-        <DetailRow label="Token" value={request.token} />
-        {request.amount && (
-          <DetailRow label="Amount" value={request.amount} />
-        )}
+        <DetailRow label="Action" value={actionLabel} />
+        <DetailRow label="Signing" value="Dual-key (2FA)" />
         {request.recipient && (
-          <DetailRow
-            label="Recipient"
-            value={truncate(request.recipient)}
-          />
+          <DetailRow label="Recipient" value={truncate(request.recipient)} />
         )}
-        {request.tx_hash ? (
-          <DetailRow
-            label="Tx Hash"
-            value={truncate(request.tx_hash)}
-          />
-        ) : null}
-        {request.nonce ? (
-          <DetailRow label="Nonce" value={request.nonce} />
-        ) : null}
+      </View>
+
+      {/* Hint */}
+      {!isApproving && !isRejecting && (
+        <Text style={styles.hintText}>Touch the sensor to authenticate</Text>
+      )}
+      {isApproving && (
+        <View style={styles.approvingRow}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.hintText}>Signing transaction...</Text>
+        </View>
+      )}
+
+      {/* Timer */}
+      <View style={[styles.timerBadge, isExpired && styles.timerBadgeExpired]}>
+        <Text style={[styles.timerText, isExpired && styles.timerTextExpired]}>
+          {countdown}
+        </Text>
       </View>
 
       {/* Buttons */}
       <View style={styles.buttonRow}>
         <TouchableOpacity
           {...testProps(testIDs.approvalModal.reject)}
-          style={[styles.rejectBtn, isRejecting && styles.btnDisabled]}
+          style={[styles.cancelBtn, isRejecting && styles.btnDisabled]}
           onPress={handleReject}
           disabled={isApproving || isRejecting}
         >
           {isRejecting ? (
-            <ActivityIndicator size="small" color={colors.error} />
+            <ActivityIndicator size="small" color={colors.textSecondary} />
           ) : (
-            <Text style={styles.rejectBtnText}>Reject</Text>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
           )}
         </TouchableOpacity>
         <TouchableOpacity
           {...testProps(testIDs.approvalModal.approve)}
-          style={[
-            styles.approveBtn,
-            (isApproving || isExpired) && styles.btnDisabled,
-          ]}
+          style={[styles.approveBtn, (isApproving || isExpired) && styles.btnDisabled]}
           onPress={handleApprove}
           disabled={isApproving || isRejecting || isExpired}
         >
@@ -290,9 +283,9 @@ export default function ApprovalModal() {
       {/* Header */}
       <View style={styles.modalHeader}>
         <View style={styles.headerIconCircle}>
-          <Text style={styles.headerIcon}>!</Text>
+          <Fingerprint size={28} color={colors.primary} />
         </View>
-        <Text style={styles.modalTitle}>Transaction Approval Required</Text>
+        <Text style={styles.modalTitle}>Authenticate</Text>
         <Text style={styles.modalSubtitle}>
           {pendingRequests.length} pending{" "}
           {pendingRequests.length === 1 ? "request" : "requests"}
@@ -380,51 +373,83 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
 
-  // Card
+  // Card (7Ek3t parity)
   card: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    padding: spacing.xl,
     borderWidth: 1,
     borderColor: colors.borderLight,
     marginBottom: spacing.md,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.md,
+  },
+  fingerprintCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(59, 130, 246, 0.12)",
+    borderWidth: 2,
+    borderColor: "rgba(59, 130, 246, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,
   },
   cardTitle: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
+    fontSize: fontSize.xl,
+    fontFamily: typography.secondarySemibold,
     color: colors.text,
+    marginBottom: spacing.xs,
+    textAlign: "center",
+  },
+  cardSubtitle: {
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondary,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: spacing.lg,
+    lineHeight: 20,
   },
   timerBadge: {
     backgroundColor: "rgba(59, 130, 246, 0.15)",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.full,
+    marginBottom: spacing.md,
   },
   timerBadgeExpired: {
     backgroundColor: "rgba(239, 68, 68, 0.15)",
   },
   timerText: {
     fontSize: fontSize.xs,
-    fontWeight: "600",
+    fontFamily: typography.primary,
     color: colors.primary,
-    fontFamily: "monospace",
   },
   timerTextExpired: {
     color: colors.error,
   },
+  hintText: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+    marginBottom: spacing.md,
+    textAlign: "center",
+  },
+  approvingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
 
   // Details
   detailsContainer: {
+    width: "100%",
     backgroundColor: colors.bg,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   detailRow: {
     flexDirection: "row",
@@ -437,36 +462,35 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    fontFamily: typography.secondary,
   },
   detailValue: {
     fontSize: fontSize.sm,
     color: colors.text,
-    fontWeight: "500",
-    fontFamily: "monospace",
+    fontFamily: typography.primarySemibold,
   },
 
   // Buttons
   buttonRow: {
-    flexDirection: "row",
-    gap: spacing.md,
+    width: "100%",
+    gap: spacing.sm,
   },
-  rejectBtn: {
-    flex: 1,
+  cancelBtn: {
+    width: "100%",
     paddingVertical: 14,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.3)",
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    borderColor: colors.borderLight,
     alignItems: "center",
     justifyContent: "center",
   },
-  rejectBtnText: {
-    color: colors.error,
+  cancelBtnText: {
+    color: colors.textSecondary,
     fontSize: fontSize.md,
-    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
   approveBtn: {
-    flex: 1.5,
+    width: "100%",
     paddingVertical: 14,
     borderRadius: borderRadius.md,
     backgroundColor: colors.primary,
@@ -476,7 +500,7 @@ const styles = StyleSheet.create({
   approveBtnText: {
     color: "#fff",
     fontSize: fontSize.md,
-    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
   btnDisabled: {
     opacity: 0.5,

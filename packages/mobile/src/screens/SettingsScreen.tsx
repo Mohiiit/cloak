@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, RefreshCw, X, Gem, QrCode, Download, Smartphone, LogOut } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, RefreshCw, X, Gem, Download, Smartphone, LogOut } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
@@ -70,50 +70,6 @@ function formatWeiToStrkDisplay(rawWei?: string): string {
   }
 }
 
-function WardStepRow({ step, label, currentStep, totalSteps, failed }: {
-  step: number;
-  label: string;
-  currentStep: number;
-  totalSteps: number;
-  failed: boolean;
-}) {
-  const isActive = currentStep === step && !failed;
-  const isComplete = currentStep > step;
-  const isFailed = currentStep === step && failed;
-
-  return (
-    <View style={styles.stepRow}>
-      <View style={[
-        styles.stepCircle,
-        isComplete && styles.stepCircleComplete,
-        isActive && styles.stepCircleActive,
-        isFailed && styles.stepCircleFailed,
-      ]}>
-        {isComplete ? (
-          <Check size={12} color="#fff" />
-        ) : isFailed ? (
-          <X size={12} color={colors.error} />
-        ) : isActive ? (
-          <ActivityIndicator size="small" color={colors.warning} />
-        ) : (
-          <Circle size={8} color={colors.textMuted} />
-        )}
-      </View>
-      {step < totalSteps && (
-        <View style={[styles.stepLine, isComplete && styles.stepLineComplete, isFailed && styles.stepLineFailed]} />
-      )}
-      <Text style={[
-        styles.stepLabel,
-        isActive && styles.stepLabelWardActive,
-        isComplete && styles.stepLabelComplete,
-        isFailed && styles.stepLabelFailed,
-      ]}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMessage, onRetry, onClose }: {
   visible: boolean;
   currentStep: number;
@@ -127,6 +83,7 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
   const markerStatus = failed ? "failed" : isDone ? "done" : "in_progress";
   const markerStepText = `ward.creation.step=${currentStep}`;
   const markerStatusText = `ward.creation.status=${markerStatus}`;
+  const progressFraction = Math.min(currentStep / 6, 1);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => { if (isDone || failed) onClose(); }}>
@@ -152,38 +109,58 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
               <Text style={styles.testMarkerText}>{markerStatusText}</Text>
             </View>
           </View>
-          {/* Header */}
-          <View style={[wardModalStyles.iconCircle, isDone && wardModalStyles.iconCircleDone, failed && wardModalStyles.iconCircleFailed]}>
-            {isDone ? (
-              <Check size={28} color={colors.success} />
-            ) : failed ? (
-              <AlertTriangle size={28} color={colors.error} />
-            ) : (
-              <ShieldAlert size={28} color={colors.warning} />
-            )}
-          </View>
 
           <Text style={wardModalStyles.title}>
-            {isDone ? "Ward Created!" : failed ? "Creation Failed" : "Creating Ward..."}
+            {isDone ? "Ward Created!" : failed ? "Creation Failed" : "Creating Ward"}
           </Text>
 
           {!isDone && !failed && (
-            <Text style={wardModalStyles.subtitle}>{stepMessage}</Text>
+            <Text style={wardModalStyles.subtitle}>
+              Setting up your new ward account on Starknet. This may take a moment.
+            </Text>
           )}
 
-          {/* Stepper */}
+          {/* Step list (cuF9k parity) */}
           <View style={wardModalStyles.stepper}>
-            {WARD_STEPS.map((s) => (
-              <WardStepRow
-                key={s.step}
-                step={s.step}
-                label={s.label}
-                currentStep={currentStep}
-                totalSteps={6}
-                failed={failed && currentStep === s.step}
-              />
-            ))}
+            {WARD_STEPS.map((s) => {
+              const isComplete = currentStep > s.step;
+              const isActive = currentStep === s.step && !failed;
+              const isFailed = currentStep === s.step && failed;
+              return (
+                <View key={s.step} style={wardModalStyles.stepItem}>
+                  <View style={[
+                    wardModalStyles.stepDot,
+                    isComplete && wardModalStyles.stepDotComplete,
+                    isActive && wardModalStyles.stepDotActive,
+                    isFailed && wardModalStyles.stepDotFailed,
+                  ]}>
+                    {isComplete && <Check size={12} color="#fff" />}
+                    {isFailed && <X size={12} color={colors.error} />}
+                  </View>
+                  <Text style={[
+                    wardModalStyles.stepText,
+                    isComplete && wardModalStyles.stepTextComplete,
+                    isActive && wardModalStyles.stepTextActive,
+                    isFailed && wardModalStyles.stepTextFailed,
+                  ]}>
+                    {s.label}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
+
+          {/* Progress bar */}
+          {!isDone && !failed && (
+            <View style={wardModalStyles.progressContainer}>
+              <View style={wardModalStyles.progressTrack}>
+                <View style={[wardModalStyles.progressFill, { width: `${progressFraction * 100}%` }]} />
+              </View>
+              <Text style={wardModalStyles.progressLabel}>
+                Step {Math.min(currentStep, 6)} of 6
+              </Text>
+            </View>
+          )}
 
           {/* Error message */}
           {failed && errorMessage && (
@@ -221,6 +198,12 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
                 <Text style={wardModalStyles.dismissBtnText}>Dismiss</Text>
               </TouchableOpacity>
             </View>
+          )}
+
+          {!isDone && !failed && (
+            <TouchableOpacity style={wardModalStyles.cancelBtn} onPress={onClose}>
+              <Text style={wardModalStyles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -339,16 +322,15 @@ function CopyRow({ label, value, displayValue }: { label: string; value: string;
   );
 }
 
-function QrPreview({ glowColor }: { glowColor: "blue" | "violet" }) {
+function InlineQR({ value, glowColor }: { value: string; glowColor: "blue" | "violet" }) {
   return (
     <View style={styles.qrContainer}>
-      {/* Subtle glow effect */}
       <View style={[
         styles.qrGlow,
         glowColor === "blue" ? styles.qrGlowBlue : styles.qrGlowViolet
       ]} />
-      <View style={styles.qrPlaceholder}>
-        <QrCode size={46} color={"rgba(148, 163, 184, 0.55)"} />
+      <View style={styles.qrInlineWrapper}>
+        <QRCode value={value} size={100} backgroundColor="transparent" color="rgba(148, 163, 184, 0.7)" />
       </View>
     </View>
   );
@@ -365,25 +347,31 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.qrModalOverlay}>
         <View style={styles.qrModalCard}>
-          <Text style={styles.qrModalLabel}>{label}</Text>
-          {/* Large QR code with white background for better scanning */}
-          <View style={styles.qrModalQRWrapper}>
-            <QRCode value={value} size={250} backgroundColor="#FFFFFF" color="#000000" />
-          </View>
-          <Text
-            {...testProps(testIDs.settings.qrValue)}
-            style={styles.qrModalAddress}
-            selectable
-          >
-            {value}
+          <Text style={styles.qrModalTitle}>Receive</Text>
+          <Text style={styles.qrModalDesc}>
+            Scan this QR code or copy your address to receive funds.
           </Text>
-          <View style={styles.qrModalActions}>
-            <TouchableOpacity
-              {...testProps(testIDs.settings.qrCopy)}
-              style={styles.qrModalCopyBtn}
-              onPress={handleCopy}
+          <View style={styles.qrModalQRWrapper}>
+            <QRCode value={value} size={200} backgroundColor="#FFFFFF" color="#000000" />
+          </View>
+          <Text style={styles.qrModalAddressLabel}>Your Cloak Address</Text>
+          <TouchableOpacity
+            {...testProps(testIDs.settings.qrCopy)}
+            style={styles.qrModalAddressRow}
+            onPress={handleCopy}
+          >
+            <Text
+              {...testProps(testIDs.settings.qrValue)}
+              style={styles.qrModalAddress}
+              numberOfLines={1}
             >
-              <Text style={styles.qrModalCopyText}>{copied ? "Copied!" : "Copy Address"}</Text>
+              {shortenMiddle(value, 12, 6)}
+            </Text>
+            <Text style={styles.qrModalCopyIcon}>{copied ? "✓" : "⎘"}</Text>
+          </TouchableOpacity>
+          <View style={styles.qrModalActions}>
+            <TouchableOpacity style={styles.qrModalShareBtn} onPress={handleCopy}>
+              <Text style={styles.qrModalShareText}>{copied ? "Copied!" : "Share"}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               {...testProps(testIDs.settings.qrClose)}
@@ -658,7 +646,7 @@ export default function SettingsScreen({ navigation }: any) {
             value={wallet.keys.tongoAddress}
             displayValue={shortenMiddle(wallet.keys.tongoAddress, 12, 6)}
           />
-          <QrPreview glowColor="blue" />
+          <InlineQR value={wallet.keys.tongoAddress} glowColor="blue" />
         </TouchableOpacity>
       </View>
 
@@ -680,7 +668,7 @@ export default function SettingsScreen({ navigation }: any) {
             value={wallet.keys.starkAddress}
             displayValue={shortenMiddle(wallet.keys.starkAddress, 10, 6)}
           />
-          <QrPreview glowColor="violet" />
+          <InlineQR value={wallet.keys.starkAddress} glowColor="violet" />
         </TouchableOpacity>
       </View>
 
@@ -712,7 +700,7 @@ export default function SettingsScreen({ navigation }: any) {
           <TouchableOpacity
             {...testProps(testIDs.settings.wardCreate)}
             style={styles.wardsCreateBtn}
-            onPress={() => navigation.getParent()?.navigate("WardSetup")}
+            onPress={() => navigation.getParent("root")?.navigate("WardSetup" as never)}
           >
             <Plus size={14} color={colors.warning} />
             <Text style={styles.wardsCreateBtnText}>Create New Ward</Text>
@@ -1122,10 +1110,7 @@ const styles = StyleSheet.create({
   qrGlowViolet: {
     backgroundColor: colors.secondary,
   },
-  qrPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: borderRadius.lg,
+  qrInlineWrapper: {
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1343,7 +1328,7 @@ const styles = StyleSheet.create({
   contactNameNew: { color: colors.text, fontSize: fontSize.sm, fontFamily: typography.secondarySemibold },
   contactAddrNew: { color: colors.textMuted, fontSize: 11, fontFamily: typography.primary },
 
-  // QR Modal
+  // QR Modal (iPjpF parity)
   qrModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.85)",
@@ -1353,7 +1338,7 @@ const styles = StyleSheet.create({
   },
   qrModalCard: {
     width: "100%",
-    maxWidth: 360,
+    maxWidth: 340,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.xl,
     padding: spacing.xl,
@@ -1361,56 +1346,85 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  qrModalLabel: {
-    fontSize: fontSize.lg,
-    fontWeight: "600",
+  qrModalTitle: {
+    fontSize: fontSize.xl,
+    fontFamily: typography.secondarySemibold,
+    fontStyle: "italic",
     color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  qrModalDesc: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontFamily: typography.secondary,
+    textAlign: "center",
     marginBottom: spacing.lg,
+    lineHeight: 20,
   },
   qrModalQRWrapper: {
     backgroundColor: "#FFFFFF",
     padding: spacing.lg,
     borderRadius: borderRadius.lg,
     marginBottom: spacing.lg,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+  },
+  qrModalAddressLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+    marginBottom: spacing.xs,
+  },
+  qrModalAddressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.inputBg,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    gap: spacing.sm,
   },
   qrModalAddress: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    fontFamily: "monospace",
-    textAlign: "center",
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.sm,
+    flex: 1,
+    fontSize: fontSize.sm,
+    color: colors.text,
+    fontFamily: typography.primary,
+  },
+  qrModalCopyIcon: {
+    fontSize: fontSize.md,
+    color: colors.textMuted,
   },
   qrModalActions: {
     width: "100%",
+    flexDirection: "row",
     gap: spacing.sm,
   },
-  qrModalCopyBtn: {
+  qrModalShareBtn: {
+    flex: 1,
     paddingVertical: 14,
     borderRadius: borderRadius.md,
     backgroundColor: colors.primary,
     alignItems: "center",
   },
-  qrModalCopyText: {
+  qrModalShareText: {
     color: "#fff",
     fontSize: fontSize.md,
-    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
   qrModalCloseBtn: {
-    paddingVertical: 12,
+    flex: 1,
+    paddingVertical: 14,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
     alignItems: "center",
+    backgroundColor: colors.surface,
   },
   qrModalCloseText: {
     color: colors.textSecondary,
     fontSize: fontSize.md,
+    fontFamily: typography.secondarySemibold,
   },
 
   // Contacts
@@ -1488,58 +1502,6 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
   },
 
-  // Stepper styles
-  stepperContainer: {
-    marginBottom: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  stepRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-    position: "relative",
-  },
-  stepCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.bg,
-    borderWidth: 2,
-    borderColor: colors.borderLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.sm,
-  },
-  stepCircleActive: {
-    borderColor: colors.primary,
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
-  },
-  stepCircleComplete: {
-    borderColor: colors.success,
-    backgroundColor: colors.success,
-  },
-  stepLine: {
-    position: "absolute",
-    left: 11,
-    top: 24,
-    width: 2,
-    height: spacing.sm,
-    backgroundColor: colors.borderLight,
-  },
-  stepLineComplete: {
-    backgroundColor: colors.success,
-  },
-  stepLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-  },
-  stepLabelActive: {
-    color: colors.primary,
-    fontWeight: "600",
-  },
-  stepLabelComplete: {
-    color: colors.success,
-  },
   tfaWarning: {
     flexDirection: "row",
     backgroundColor: "rgba(245, 158, 11, 0.08)",
@@ -1793,22 +1755,6 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
   },
 
-  // Ward step overrides
-  stepCircleFailed: {
-    borderColor: colors.error,
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-  },
-  stepLineFailed: {
-    backgroundColor: colors.error,
-  },
-  stepLabelWardActive: {
-    color: colors.warning,
-    fontWeight: "600",
-  },
-  stepLabelFailed: {
-    color: colors.error,
-    fontWeight: "600",
-  },
 
   // Partial ward recovery banner
   partialWardBanner: {
@@ -1863,12 +1809,133 @@ const styles = StyleSheet.create({
 
   aboutSection: { alignItems: "center", paddingVertical: spacing.xl },
   aboutText: { fontSize: fontSize.sm, color: colors.textMuted, marginBottom: 4 },
+
+  // Security section (QqFEX parity)
+  securityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: spacing.sm,
+  },
+  securityIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  securityIconKey: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+  },
+  securityIcon2fa: {
+    backgroundColor: "rgba(139, 92, 246, 0.12)",
+  },
+  securityText: {
+    flex: 1,
+    gap: 2,
+  },
+  securityLabel: {
+    fontSize: fontSize.sm,
+    color: colors.text,
+    fontFamily: typography.secondarySemibold,
+  },
+  securitySub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+  },
+  securityActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+  },
+  securityActionText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: typography.primarySemibold,
+  },
+  securityDivider: {
+    height: 1,
+    backgroundColor: colors.borderLight,
+    marginVertical: 4,
+  },
+  securityToggleTrack: {
+    width: 42,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: "rgba(100, 116, 139, 0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    padding: 3,
+    justifyContent: "center",
+  },
+  securityToggleTrackOn: {
+    backgroundColor: "rgba(59, 130, 246, 0.65)",
+  },
+  securityToggleKnob: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#E2E8F0",
+    alignSelf: "flex-start",
+  },
+  securityToggleKnobOn: {
+    alignSelf: "flex-end",
+    backgroundColor: "#FFFFFF",
+  },
+
+  // Network last row
+  infoRowLast: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+  },
+  infoValueMuted: {
+    fontSize: fontSize.md,
+    color: colors.textMuted,
+  },
+
+  // Danger Zone (QqFEX parity)
+  dangerZoneCard: {
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    backgroundColor: "rgba(239, 68, 68, 0.03)",
+  },
+  dangerZoneTitle: {
+    fontSize: fontSize.lg,
+    fontFamily: typography.secondarySemibold,
+    color: colors.error,
+  },
+  dangerZoneBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    marginTop: spacing.sm,
+  },
+  dangerZoneBtnText: {
+    color: colors.error,
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondarySemibold,
+  },
 });
 
 const wardModalStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
     justifyContent: "center",
     alignItems: "center",
     padding: spacing.lg,
@@ -1881,30 +1948,11 @@ const wardModalStyles = StyleSheet.create({
     padding: spacing.xl,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.3)",
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
-    borderWidth: 2,
-    borderColor: "rgba(245, 158, 11, 0.3)",
-    marginBottom: spacing.md,
-  },
-  iconCircleDone: {
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    borderColor: "rgba(16, 185, 129, 0.3)",
-  },
-  iconCircleFailed: {
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
-    borderColor: "rgba(239, 68, 68, 0.3)",
+    borderColor: colors.border,
   },
   title: {
     fontSize: fontSize.xl,
-    fontWeight: "bold",
+    fontFamily: typography.secondarySemibold,
     color: colors.text,
     marginBottom: spacing.xs,
     textAlign: "center",
@@ -1912,13 +1960,83 @@ const wardModalStyles = StyleSheet.create({
   subtitle: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    fontFamily: typography.secondary,
     textAlign: "center",
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
+    lineHeight: 20,
   },
+  // Step list (cuF9k parity)
   stepper: {
     width: "100%",
     paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
+    gap: 14,
+  },
+  stepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  stepDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.borderLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotComplete: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  stepDotActive: {
+    borderColor: colors.primary,
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+  },
+  stepDotFailed: {
+    borderColor: colors.error,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+  },
+  stepText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+  },
+  stepTextComplete: {
+    color: colors.text,
+  },
+  stepTextActive: {
+    color: colors.primary,
+    fontFamily: typography.secondarySemibold,
+  },
+  stepTextFailed: {
+    color: colors.error,
+    fontFamily: typography.secondarySemibold,
+  },
+  // Progress bar
+  progressContainer: {
+    width: "100%",
+    marginBottom: spacing.lg,
+    gap: 8,
+  },
+  progressTrack: {
+    width: "100%",
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(100, 116, 139, 0.2)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
+  progressLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontFamily: typography.primary,
+    textAlign: "center",
   },
   errorBox: {
     width: "100%",
@@ -1944,7 +2062,7 @@ const wardModalStyles = StyleSheet.create({
   doneBtnText: {
     color: colors.success,
     fontSize: fontSize.md,
-    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
   failedActions: {
     width: "100%",
@@ -1962,7 +2080,7 @@ const wardModalStyles = StyleSheet.create({
   retryBtnText: {
     color: "#fff",
     fontSize: fontSize.md,
-    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
   },
   dismissBtn: {
     paddingVertical: 12,
@@ -1974,5 +2092,19 @@ const wardModalStyles = StyleSheet.create({
   dismissBtnText: {
     color: colors.textSecondary,
     fontSize: fontSize.md,
+  },
+  cancelBtn: {
+    width: "100%",
+    paddingVertical: 14,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    alignItems: "center",
+    backgroundColor: colors.surface,
+  },
+  cancelBtnText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    fontFamily: typography.secondarySemibold,
   },
 });

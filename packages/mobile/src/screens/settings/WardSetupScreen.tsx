@@ -10,12 +10,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
-import { ArrowLeft, Plus } from 'lucide-react-native';
+import { ArrowLeft, Plus, Check, X, RefreshCw } from 'lucide-react-native';
 import { useWallet } from '../../lib/WalletContext';
 import { useWardContext } from '../../lib/wardContext';
 import { colors, spacing, fontSize, borderRadius, typography } from '../../lib/theme';
 import { testIDs, testProps } from '../../testing/testIDs';
+
+const WARD_STEPS = [
+  { step: 1, label: "Generating keys" },
+  { step: 2, label: "Deploying contract" },
+  { step: 3, label: "Funding ward" },
+  { step: 4, label: "Configuring limits" },
+  { step: 5, label: "Setting permissions" },
+  { step: 6, label: "Complete" },
+];
 
 /**
  * Convert a human-readable STRK amount (e.g. "500.00") to hex wei string.
@@ -47,6 +57,10 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
   const [dailyLimit, setDailyLimit] = useState('');
   const [creating, setCreating] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
+  const [currentStep, setCurrentStep] = useState(0);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const validateInputs = useCallback((): boolean => {
     if (!pseudoName.trim()) {
@@ -79,12 +93,17 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
     if (creating) return;
 
     setCreating(true);
-    setProgressMsg('Preparing ward creation...');
+    setFailed(false);
+    setErrorMessage(null);
+    setCurrentStep(1);
+    setProgressMsg('Generating keys...');
+    setModalVisible(true);
 
     try {
       const fundingWei = parseStrkToHexWei(fundingAmount);
 
-      const onProgress = (_step: number, _total: number, message: string) => {
+      const onProgress = (step: number, _total: number, message: string) => {
+        setCurrentStep(step);
         setProgressMsg(message);
       };
 
@@ -92,6 +111,9 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
         pseudoName: pseudoName.trim(),
         fundingAmountWei: fundingWei,
       });
+
+      setCurrentStep(7); // Beyond last step = done
+      setModalVisible(false);
 
       navigation.navigate('WardCreated', {
         wardAddress: result?.wardAddress,
@@ -103,13 +125,13 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
       });
     } catch (err: any) {
       const message = err?.message || 'Ward creation failed. Please try again.';
-      Alert.alert('Ward Creation Failed', message);
+      setFailed(true);
+      setErrorMessage(message);
       console.warn('[WardSetupScreen] createWard error:', message);
     } finally {
       setCreating(false);
-      setProgressMsg('');
     }
-  }, [validateInputs, creating, pseudoName, fundingAmount, ward, navigation]);
+  }, [validateInputs, creating, pseudoName, fundingAmount, dailyLimit, ward, navigation]);
 
   return (
     <View style={styles.container}>
@@ -214,14 +236,6 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
             </Text>
           </View>
 
-          {/* Progress message */}
-          {creating && progressMsg ? (
-            <View style={styles.progressContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.progressText}>{progressMsg}</Text>
-            </View>
-          ) : null}
-
           {/* Create Ward Button */}
           <TouchableOpacity
             {...testProps(testIDs.ward.creationStart)}
@@ -241,6 +255,88 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Ward Creation Progress Modal (cuF9k parity) */}
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => { if (failed) setModalVisible(false); }}>
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.card}>
+            <Text style={modalStyles.title}>
+              {failed ? "Creation Failed" : "Creating Ward"}
+            </Text>
+            {!failed && (
+              <Text style={modalStyles.subtitle}>
+                Setting up your new ward account on Starknet. This may take a moment.
+              </Text>
+            )}
+
+            {/* Step list */}
+            <View style={modalStyles.stepper}>
+              {WARD_STEPS.map((s) => {
+                const isComplete = currentStep > s.step;
+                const isActive = currentStep === s.step && !failed;
+                const isFailed = currentStep === s.step && failed;
+                return (
+                  <View key={s.step} style={modalStyles.stepItem}>
+                    <View style={[
+                      modalStyles.stepDot,
+                      isComplete && modalStyles.stepDotComplete,
+                      isActive && modalStyles.stepDotActive,
+                      isFailed && modalStyles.stepDotFailed,
+                    ]}>
+                      {isComplete && <Check size={12} color="#fff" />}
+                      {isFailed && <X size={12} color={colors.error} />}
+                    </View>
+                    <Text style={[
+                      modalStyles.stepText,
+                      isComplete && modalStyles.stepTextComplete,
+                      isActive && modalStyles.stepTextActive,
+                      isFailed && modalStyles.stepTextFailed,
+                    ]}>
+                      {s.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Progress bar */}
+            {!failed && (
+              <View style={modalStyles.progressContainer}>
+                <View style={modalStyles.progressTrack}>
+                  <View style={[modalStyles.progressFill, { width: `${Math.min(currentStep / 6, 1) * 100}%` }]} />
+                </View>
+                <Text style={modalStyles.progressLabel}>
+                  Step {Math.min(currentStep, 6)} of 6
+                </Text>
+              </View>
+            )}
+
+            {/* Error */}
+            {failed && errorMessage && (
+              <View style={modalStyles.errorBox}>
+                <Text style={modalStyles.errorText} numberOfLines={3}>{errorMessage}</Text>
+              </View>
+            )}
+
+            {/* Actions */}
+            {failed ? (
+              <View style={modalStyles.failedActions}>
+                <TouchableOpacity style={modalStyles.retryBtn} onPress={() => { setModalVisible(false); handleCreateWard(); }}>
+                  <RefreshCw size={14} color="#fff" />
+                  <Text style={modalStyles.retryBtnText}>Retry</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={modalStyles.cancelBtn} onPress={() => setModalVisible(false)}>
+                  <Text style={modalStyles.cancelBtnText}>Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={modalStyles.cancelBtn} onPress={() => setModalVisible(false)}>
+                <Text style={modalStyles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -333,18 +429,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 4,
-  },
-  progressText: {
-    fontFamily: typography.secondary,
-    fontSize: 12,
-    color: colors.textSecondary,
-    flex: 1,
-  },
   createButton: {
     height: 52,
     borderRadius: 12,
@@ -363,5 +447,157 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     fontWeight: '700',
+  },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  title: {
+    fontSize: fontSize.xl,
+    fontFamily: typography.secondarySemibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontFamily: typography.secondary,
+    textAlign: "center",
+    marginBottom: spacing.lg,
+    lineHeight: 20,
+  },
+  stepper: {
+    width: "100%",
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    gap: 14,
+  },
+  stepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  stepDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.borderLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotComplete: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  stepDotActive: {
+    borderColor: colors.primary,
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+  },
+  stepDotFailed: {
+    borderColor: colors.error,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+  },
+  stepText: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+  },
+  stepTextComplete: {
+    color: colors.text,
+  },
+  stepTextActive: {
+    color: colors.primary,
+    fontFamily: typography.secondarySemibold,
+  },
+  stepTextFailed: {
+    color: colors.error,
+    fontFamily: typography.secondarySemibold,
+  },
+  progressContainer: {
+    width: "100%",
+    marginBottom: spacing.lg,
+    gap: 8,
+  },
+  progressTrack: {
+    width: "100%",
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(100, 116, 139, 0.2)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
+  progressLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontFamily: typography.primary,
+    textAlign: "center",
+  },
+  errorBox: {
+    width: "100%",
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+  },
+  errorText: {
+    fontSize: fontSize.xs,
+    color: colors.error,
+    lineHeight: 16,
+  },
+  failedActions: {
+    width: "100%",
+    gap: spacing.sm,
+  },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: 14,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.warning,
+  },
+  retryBtnText: {
+    color: "#fff",
+    fontSize: fontSize.md,
+    fontFamily: typography.secondarySemibold,
+  },
+  cancelBtn: {
+    width: "100%",
+    paddingVertical: 14,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    alignItems: "center",
+    backgroundColor: colors.surface,
+  },
+  cancelBtnText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    fontFamily: typography.secondarySemibold,
   },
 });
