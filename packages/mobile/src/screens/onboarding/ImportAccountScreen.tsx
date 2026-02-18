@@ -154,6 +154,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
+    marginTop: 44,
   },
   headerTitle: {
     flex: 1,

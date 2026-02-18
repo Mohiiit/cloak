@@ -150,6 +150,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginTop: 44,
   },
   headerIconBtn: { width: 24, height: 24, alignItems: "center", justifyContent: "center" },
   headerIconSpacer: { width: 24, height: 24 },

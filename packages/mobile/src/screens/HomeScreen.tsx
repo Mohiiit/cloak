@@ -558,7 +558,6 @@ export default function HomeScreen({ navigation }: any) {
           </Modal>
 
           <OnboardingLogoBadge />
-          <Text style={styles.heroTitle}>Cloak</Text>
           <Text style={styles.heroSubtitle}>
             Shielded payments on Starknet
           </Text>

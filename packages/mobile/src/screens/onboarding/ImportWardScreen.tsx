@@ -662,6 +662,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     height: 56,
     paddingHorizontal: 20,
+    marginTop: 44,
   },
   headerTitle: {
     fontFamily: typography.primarySemibold,
