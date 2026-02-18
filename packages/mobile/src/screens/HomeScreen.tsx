@@ -33,6 +33,7 @@ import {
   Gauge,
   Camera,
   ClipboardPaste,
+  Ghost,
 } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
@@ -762,13 +763,9 @@ export default function HomeScreen({ navigation }: any) {
   const guardianAddress = ward.wardInfo?.guardianAddress || "";
   const guardianShort = guardianAddress
     ? `${guardianAddress.slice(0, 8)}...${guardianAddress.slice(-4)}`
-    : "0x2563...8f3a";
+    : "—";
   const wardDisplayedBalance = displayErc20;
   const hasPending = wallet.pending !== "0";
-  const claimUnitsForUi = hasPending ? wallet.pending : "500";
-  const claimSubline = hasPending
-    ? `Tap to claim ${wallet.pending} units to your shielded balance`
-    : `Tap to claim ${claimUnitsForUi} units to your shielded balance`;
   const deployStatusValue = wallet.isCheckingDeployment
     ? "checking_deployment"
     : wallet.isDeployed
@@ -1142,21 +1139,25 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
 
-          {/* Claim Banner */}
+          {/* Claim Banner — only when there are real pending funds */}
+          {hasPending && (
           <TouchableOpacity
             {...testProps(testIDs.home.claimPending)}
-            style={[styles.claimBanner, !hasPending && styles.claimBannerPlaceholder]}
-            onPress={hasPending ? handleClaim : undefined}
-            disabled={!hasPending || isClaiming}
-            activeOpacity={hasPending ? 0.72 : 1}
+            style={styles.claimBanner}
+            onPress={handleClaim}
+            disabled={isClaiming}
+            activeOpacity={0.72}
           >
             <ArrowDownToLine size={20} color={colors.success} />
             <View style={styles.claimTextWrap}>
               <Text style={styles.claimBannerTitle}>Pending funds available</Text>
-              <Text style={styles.claimBannerSub}>{claimSubline}</Text>
+              <Text style={styles.claimBannerSub}>
+                Tap to claim {wallet.pending} units to your shielded balance
+              </Text>
             </View>
             {isClaiming ? <ActivityIndicator size="small" color={colors.success} /> : null}
           </TouchableOpacity>
+          )}
 
       {/* Quick Actions */}
       <View style={styles.actionsRow}>
@@ -1190,46 +1191,55 @@ export default function HomeScreen({ navigation }: any) {
       <View style={styles.recentSection}>
         <View style={styles.recentHeader}>
           <Text style={styles.recentTitle}>Recent Activity</Text>
-          <TouchableOpacity
-            {...testProps(testIDs.home.recentSeeAll)}
-            onPress={() => navigation.navigate("Activity")}
-          >
-            <Text style={styles.recentSeeAll}>View All</Text>
-          </TouchableOpacity>
+          {recentActivityItems.length > 0 && (
+            <TouchableOpacity
+              {...testProps(testIDs.home.recentSeeAll)}
+              onPress={() => navigation.navigate("Activity")}
+            >
+              <Text style={styles.recentSeeAll}>View All</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <View style={styles.recentListCard}>
-          {recentActivityItems.map((item, index) => {
-            const rowIcon =
-              item.kind === "received" ? (
-                <ArrowDownToLine size={18} color={colors.success} />
-              ) : item.kind === "shielded" ? (
-                <ShieldPlus size={18} color={colors.primaryLight} />
-              ) : (
-                <ArrowUpFromLine size={18} color={colors.primaryLight} />
+          {recentActivityItems.length === 0 ? (
+            <View style={styles.recentEmptyState}>
+              <Ghost size={40} color={colors.textMuted} style={{ opacity: 0.35 }} />
+              <Text style={styles.recentEmptyText}>No activity yet</Text>
+            </View>
+          ) : (
+            recentActivityItems.map((item, index) => {
+              const rowIcon =
+                item.kind === "received" ? (
+                  <ArrowDownToLine size={18} color={colors.success} />
+                ) : item.kind === "shielded" ? (
+                  <ShieldPlus size={18} color={colors.primaryLight} />
+                ) : (
+                  <ArrowUpFromLine size={18} color={colors.primaryLight} />
+                );
+              return (
+                <View key={item.id}>
+                  <TouchableOpacity
+                    style={styles.recentRow}
+                    disabled={!item.txHash}
+                    activeOpacity={item.txHash ? 0.72 : 1}
+                    onPress={() =>
+                      item.txHash
+                        ? Linking.openURL(`https://sepolia.voyager.online/tx/${item.txHash}`)
+                        : undefined
+                    }
+                  >
+                    {rowIcon}
+                    <View style={styles.recentInfo}>
+                      <Text style={styles.recentType}>{item.title}</Text>
+                      <Text style={styles.recentSub}>{item.subtitle}</Text>
+                    </View>
+                    <Text style={[styles.recentAmount, { color: item.amountColor }]}>{item.amountLabel}</Text>
+                  </TouchableOpacity>
+                  {index < recentActivityItems.length - 1 ? <View style={styles.recentDivider} /> : null}
+                </View>
               );
-            return (
-              <View key={item.id}>
-                <TouchableOpacity
-                  style={styles.recentRow}
-                  disabled={!item.txHash}
-                  activeOpacity={item.txHash ? 0.72 : 1}
-                  onPress={() =>
-                    item.txHash
-                      ? Linking.openURL(`https://sepolia.voyager.online/tx/${item.txHash}`)
-                      : undefined
-                  }
-                >
-                  {rowIcon}
-                  <View style={styles.recentInfo}>
-                    <Text style={styles.recentType}>{item.title}</Text>
-                    <Text style={styles.recentSub}>{item.subtitle}</Text>
-                  </View>
-                  <Text style={[styles.recentAmount, { color: item.amountColor }]}>{item.amountLabel}</Text>
-                </TouchableOpacity>
-                {index < recentActivityItems.length - 1 ? <View style={styles.recentDivider} /> : null}
-              </View>
-            );
-          })}
+            })
+          )}
         </View>
       </View>
 
@@ -1571,9 +1581,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 12,
   },
-  claimBannerPlaceholder: {
-    opacity: 0.85,
-  },
   claimTextWrap: {
     flex: 1,
     justifyContent: "center",
@@ -1684,6 +1691,18 @@ const styles = StyleSheet.create({
   recentAmount: {
     fontSize: 14,
     fontFamily: typography.primarySemibold,
+  },
+  recentEmptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 36,
+    gap: 10,
+  },
+  recentEmptyText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+    opacity: 0.6,
   },
 
   // Claim Success Card
