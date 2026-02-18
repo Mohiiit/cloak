@@ -1,7 +1,8 @@
 /**
- * SendScreen — single-page shielded transfer form + success state.
+ * SendScreen — single-page shielded transfer form + modal overlays for
+ * sending, success, and failure states.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +12,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Linking,
+  Modal,
+  Animated,
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import {
@@ -25,22 +28,21 @@ import {
   Send as SendIcon,
   UtensilsCrossed,
   WalletCards,
+  X,
+  RefreshCw,
 } from "lucide-react-native";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoUnitToErc20Display } from "../lib/tokens";
+import { tongoUnitToErc20Display, type TokenKey } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
 import { triggerMedium } from "../lib/haptics";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
-import { useThemedModal } from "../components/ThemedModal";
 import { FeeRetryModal } from "../components/FeeRetryModal";
 import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
 import { useKeyboardVisible } from "../hooks/useKeyboardVisible";
 import { testIDs, testProps } from "../testing/testIDs";
-
-type Step = 1 | 4;
 
 const QUICK_NOTE_CHIPS = [
   { key: "coffee", label: "Coffee money", Icon: Coffee },
@@ -53,21 +55,277 @@ const QUICK_NOTE_CHIPS = [
   { key: "gift", label: "Gift", Icon: Gift },
 ] as const;
 
+/* ─── Modal sub-components ────────────────────────────────────────────── */
+
+/** Spinner with two concentric circles */
+function SendingSpinner() {
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      }),
+    ).start();
+  }, [spinAnim]);
+  const rotate = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+  return (
+    <View style={modalStyles.spinnerContainer}>
+      {/* outer ring */}
+      <View style={modalStyles.spinnerOuter} />
+      {/* inner ring (rotating) */}
+      <Animated.View
+        style={[modalStyles.spinnerInner, { transform: [{ rotate }] }]}
+      />
+    </View>
+  );
+}
+
+/** Detail card used in both sending and success modals */
+function DetailCard({
+  rows,
+}: {
+  rows: { label: string; value: string; valueColor?: string }[];
+}) {
+  return (
+    <View style={modalStyles.detailCard}>
+      {rows.map((r) => (
+        <View key={r.label} style={modalStyles.detailRow}>
+          <Text style={modalStyles.detailLabel}>{r.label}</Text>
+          <Text
+            style={[
+              modalStyles.detailValue,
+              r.valueColor ? { color: r.valueColor } : undefined,
+            ]}
+            numberOfLines={1}
+            ellipsizeMode="middle"
+          >
+            {r.value}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/* ─── Sending Modal ───────────────────────────────────────────────────── */
+
+function SendingModal({
+  visible,
+  recipient,
+  amount,
+  note,
+  token,
+}: {
+  visible: boolean;
+  recipient: string;
+  amount: string;
+  note: string;
+  token: TokenKey;
+}) {
+  const progressAnim = useRef(new Animated.Value(0.15)).current;
+
+  useEffect(() => {
+    if (visible) {
+      progressAnim.setValue(0.15);
+      Animated.timing(progressAnim, {
+        toValue: 0.85,
+        duration: 25000,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [visible, progressAnim]);
+
+  const displayAmount = amount
+    ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
+    : "0 units";
+  const displayRecipient =
+    recipient.length > 20
+      ? `${recipient.slice(0, 10)}...${recipient.slice(-8)}`
+      : recipient;
+
+  const detailRows = [
+    { label: "To", value: displayRecipient },
+    { label: "Amount", value: displayAmount },
+  ];
+  if (note) detailRows.push({ label: "Note", value: note });
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.card}>
+          <SendingSpinner />
+          <Text style={modalStyles.sendingTitle}>Sending...</Text>
+          <Text style={modalStyles.description}>
+            {"Your shielded transfer is being\nprocessed on Starknet"}
+          </Text>
+          <DetailCard rows={detailRows} />
+          {/* Progress bar */}
+          <View style={modalStyles.progressBarBg}>
+            <Animated.View
+              style={[
+                modalStyles.progressBarFill,
+                {
+                  width: progressAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0%", "100%"],
+                  }),
+                },
+              ]}
+            />
+          </View>
+          <Text style={modalStyles.stepText}>Generating ZK proof...</Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ─── Success Modal ───────────────────────────────────────────────────── */
+
+function SuccessModal({
+  visible,
+  recipient,
+  amount,
+  token,
+  txHash,
+  fee,
+  onDone,
+}: {
+  visible: boolean;
+  recipient: string;
+  amount: string;
+  token: TokenKey;
+  txHash: string;
+  fee?: string;
+  onDone: () => void;
+}) {
+  const displayAmount = amount
+    ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
+    : "0 units";
+  const displayRecipient =
+    recipient.length > 20
+      ? `${recipient.slice(0, 10)}...${recipient.slice(-8)}`
+      : recipient;
+  const displayTxHash =
+    txHash.length > 20
+      ? `${txHash.slice(0, 10)}...${txHash.slice(-8)}`
+      : txHash;
+
+  const detailRows: { label: string; value: string; valueColor?: string }[] = [
+    { label: "To", value: displayRecipient },
+    { label: "Amount", value: displayAmount },
+    { label: "Tx Hash", value: displayTxHash, valueColor: "#3B82F6" },
+  ];
+  if (fee) detailRows.push({ label: "Fee", value: fee, valueColor: "#94A3B8" });
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={modalStyles.overlay}>
+        <View style={[modalStyles.card, { gap: 20 }]}>
+          {/* Check circle */}
+          <View style={modalStyles.successCircle}>
+            <Check size={36} color="#10B981" />
+          </View>
+          <Text style={modalStyles.successTitle}>Transfer Complete!</Text>
+          <Text style={modalStyles.description}>
+            {"Your shielded transfer has been\nsuccessfully processed"}
+          </Text>
+          <DetailCard rows={detailRows} />
+          {/* Done button */}
+          <TouchableOpacity
+            style={modalStyles.doneButton}
+            onPress={onDone}
+            activeOpacity={0.8}
+          >
+            <Check size={18} color="#fff" />
+            <Text style={modalStyles.doneButtonText}>Done</Text>
+          </TouchableOpacity>
+          {/* Explorer link */}
+          <TouchableOpacity
+            onPress={() =>
+              Linking.openURL(`https://sepolia.voyager.online/tx/${txHash}`)
+            }
+          >
+            <Text style={modalStyles.explorerLink}>View on Voyager</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ─── Failed Modal ────────────────────────────────────────────────────── */
+
+function FailedModal({
+  visible,
+  errorMessage,
+  onRetry,
+  onCancel,
+}: {
+  visible: boolean;
+  errorMessage: string;
+  onRetry: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={modalStyles.overlay}>
+        <View style={[modalStyles.card, modalStyles.failedCard, { gap: 20 }]}>
+          {/* Error circle */}
+          <View style={modalStyles.errorCircle}>
+            <X size={36} color="#EF4444" />
+          </View>
+          <Text style={modalStyles.failedTitle}>Transfer Failed</Text>
+          <Text style={modalStyles.description}>
+            {"The transaction could not be\ncompleted. Please try again."}
+          </Text>
+          {/* Error box */}
+          <View style={modalStyles.errorBox}>
+            <X size={18} color="#EF4444" style={{ flexShrink: 0 }} />
+            <Text style={modalStyles.errorBoxText}>{errorMessage}</Text>
+          </View>
+          {/* Retry button */}
+          <TouchableOpacity
+            style={modalStyles.retryButton}
+            onPress={onRetry}
+            activeOpacity={0.8}
+          >
+            <RefreshCw size={18} color="#fff" />
+            <Text style={modalStyles.retryButtonText}>Retry Transfer</Text>
+          </TouchableOpacity>
+          {/* Cancel button */}
+          <TouchableOpacity
+            style={modalStyles.cancelButton}
+            onPress={onCancel}
+            activeOpacity={0.8}
+          >
+            <Text style={modalStyles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ─── Main screen ─────────────────────────────────────────────────────── */
+
 export default function SendScreen({ navigation }: any) {
   const wallet = useWallet();
   const { contacts } = useContacts();
   const { execute } = useTransactionRouter();
-  const modal = useThemedModal();
   const keyboardVisible = useKeyboardVisible();
   const scrollRef = React.useRef<ScrollView>(null);
 
-  const [step, setStep] = useState<Step>(1);
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState("");
-  const [txCopied, setTxCopied] = useState(false);
   const [addressError, setAddressError] = useState("");
   const [amountError, setAmountError] = useState("");
   const [isNoteFocused, setIsNoteFocused] = useState(false);
@@ -75,6 +333,12 @@ export default function SendScreen({ navigation }: any) {
   const [showFeeRetry, setShowFeeRetry] = useState(false);
   const [gasErrorMsg, setGasErrorMsg] = useState("");
   const [feeRetryCount, setFeeRetryCount] = useState(0);
+
+  // Modal states
+  const [sendingModalVisible, setSendingModalVisible] = useState(false);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [failedModalVisible, setFailedModalVisible] = useState(false);
+  const [failedError, setFailedError] = useState("");
 
   useEffect(() => {
     wallet.refreshTxHistory();
@@ -120,11 +384,13 @@ export default function SendScreen({ navigation }: any) {
 
     triggerMedium();
     setIsPending(true);
+    setSendingModalVisible(true);
 
     try {
       const valid = await wallet.validateAddress(recipient.trim());
       if (!valid) {
         setAddressError("Invalid Cloak address. Please check and try again.");
+        setSendingModalVisible(false);
         return;
       }
 
@@ -146,15 +412,18 @@ export default function SendScreen({ navigation }: any) {
         token: wallet.selectedToken,
         amount,
       });
-      setStep(4);
+      setSendingModalVisible(false);
+      setSuccessModalVisible(true);
       await wallet.refreshBalance();
     } catch (e: any) {
+      setSendingModalVisible(false);
       const gasInfo = parseInsufficientGasError(e.message || "");
       if (gasInfo && feeRetryCount < 3) {
         setGasErrorMsg(e.message);
         setShowFeeRetry(true);
       } else {
-        modal.showError("Error", e.message || "Transfer failed", e.message);
+        setFailedError(e.message || "Transfer failed");
+        setFailedModalVisible(true);
       }
     } finally {
       setIsPending(false);
@@ -167,21 +436,13 @@ export default function SendScreen({ navigation }: any) {
     handleSend();
   };
 
-  const handleCopyTx = () => {
-    Clipboard.setString(txHash);
-    setTxCopied(true);
-    setTimeout(() => setTxCopied(false), 2000);
-  };
-
   const reset = () => {
-    setStep(1);
     setRecipient("");
     setAmount("");
     setNote("");
     setTxHash("");
     setAddressError("");
     setAmountError("");
-    setTxCopied(false);
   };
 
   return (
@@ -191,7 +452,6 @@ export default function SendScreen({ navigation }: any) {
       contentContainerStyle={[styles.content, sendKeyboardMode && styles.contentKeyboard]}
       keyboardShouldPersistTaps="handled"
     >
-      {modal.ModalComponent}
       <FeeRetryModal
         visible={showFeeRetry}
         errorMessage={gasErrorMsg}
@@ -205,208 +465,444 @@ export default function SendScreen({ navigation }: any) {
         }}
       />
 
-      {step !== 4 ? (
-        <>
-          <View style={styles.progressRow}>
-            <View style={[styles.progressSegment, styles.progressSegmentActive]} />
-            <View style={[styles.progressSegment, styles.progressSegmentActive]} />
-            <View style={styles.progressSegment} />
-          </View>
+      {/* Modal overlays */}
+      <SendingModal
+        visible={sendingModalVisible}
+        recipient={recipient}
+        amount={amount}
+        note={note}
+        token={wallet.selectedToken}
+      />
+      <SuccessModal
+        visible={successModalVisible}
+        recipient={recipient}
+        amount={amount}
+        token={wallet.selectedToken}
+        txHash={txHash}
+        onDone={() => {
+          setSuccessModalVisible(false);
+          reset();
+        }}
+      />
+      <FailedModal
+        visible={failedModalVisible}
+        errorMessage={failedError}
+        onRetry={() => {
+          setFailedModalVisible(false);
+          setFeeRetryCount(0);
+          handleSend();
+        }}
+        onCancel={() => setFailedModalVisible(false)}
+      />
 
-          <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
-            <Text style={styles.sectionLabel}>TO</Text>
-            <View style={styles.inputRow}>
-              <Search size={16} color={colors.textMuted} />
-              <TextInput
-                {...testProps(testIDs.send.recipientInput)}
-                style={styles.recipientInput}
-                placeholder="alice.stark or 0x..."
-                placeholderTextColor={colors.textMuted}
-                value={recipient}
-                onChangeText={(t) => {
-                  setRecipient(t.replace(/\s/g, ""));
-                  setAddressError("");
-                }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-              />
-              <TouchableOpacity
-                {...testProps(testIDs.send.recipientPaste)}
-                onPress={async () => {
-                  const text = await Clipboard.getString();
-                  if (text) {
-                    setRecipient(text.trim());
-                    setAddressError("");
-                  }
-                }}
-              >
-                <Text style={styles.pasteText}>Paste</Text>
-              </TouchableOpacity>
-            </View>
-            {!sendKeyboardMode ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.contactRow}
-              >
-                {visibleContacts.map((c, index) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={styles.contactChip}
-                    onPress={() => {
-                      setRecipient(c.address);
-                      setAddressError("");
-                    }}
-                  >
-                    <View
-                      style={[
-                        styles.contactDot,
-                        index % 2 === 0 ? styles.contactDotBlue : styles.contactDotGreen,
-                      ]}
-                    />
-                    <Text style={styles.contactChipText}>{c.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            ) : null}
-            {addressError ? <Text style={styles.errorText}>{addressError}</Text> : null}
-          </View>
-
-          <View style={[styles.section, styles.amountSection, sendKeyboardMode && styles.sectionCompact]}>
-            <Text style={styles.sectionLabel}>AMOUNT</Text>
-            <View style={[styles.amountCard, sendKeyboardMode && styles.amountCardKeyboard]}>
-              <TextInput
-                {...testProps(testIDs.send.amountInput)}
-                style={[styles.amountInput, sendKeyboardMode && styles.amountInputKeyboard]}
-                placeholder="0"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={(t) => {
-                  if (/^\d*$/.test(t)) {
-                    setAmount(t);
-                    setAmountError("");
-                  }
-                }}
-              />
-              <Text style={[styles.amountSub, sendKeyboardMode && styles.amountSubKeyboard]}>
-                units ({amount ? tongoUnitToErc20Display(amount, wallet.selectedToken) : "0.00 STRK"})
-              </Text>
-              {!sendKeyboardMode ? (
-                <Text style={styles.availableText}>Available: {wallet.balance} units MAX</Text>
-              ) : null}
-            </View>
-            {amountError ? <Text style={styles.errorText}>{amountError}</Text> : null}
-            {!sendKeyboardMode ? <Text style={styles.conversionHint}>{conversionHint}</Text> : null}
-          </View>
-
-          <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
-            <Text style={styles.sectionLabel}>NOTE (OPTIONAL)</Text>
-            <TextInput
-              {...testProps(testIDs.send.noteInput)}
-              style={styles.noteInput}
-              placeholder="Coffee money!"
-              placeholderTextColor={colors.textMuted}
-              value={note}
-              onChangeText={setNote}
-              onFocus={() => setIsNoteFocused(true)}
-              onBlur={() => setIsNoteFocused(false)}
-              maxLength={100}
-            />
-            <View style={styles.quickChipRow}>
-              {QUICK_NOTE_CHIPS.slice(0, 5).map(({ key, label, Icon }) => (
-                <TouchableOpacity
-                  key={key}
-                  style={styles.quickChip}
-                  onPress={() => {
-                    setNote((prev) => {
-                      const trimmed = prev.trim();
-                      return trimmed.length === 0 ? label : `${trimmed} · ${label}`;
-                    });
-                  }}
-                >
-                  <Icon size={14} color={colors.textSecondary} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {!sendKeyboardMode ? <View style={styles.formSpacer} /> : null}
-
+      {/* Dev-only debug triggers */}
+      {__DEV__ && (
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
           <TouchableOpacity
-            {...testProps(testIDs.send.confirmSend)}
-            style={[styles.sendButton, isPending && styles.sendButtonDisabled]}
+            onPress={() => setSendingModalVisible(true)}
+            style={{ padding: 4, backgroundColor: "#333", borderRadius: 4 }}
+          >
+            <Text style={{ color: "#fff", fontSize: 10 }}>Test Send</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => {
-              setFeeRetryCount(0);
-              handleSend();
+              setTxHash(
+                "0x7a3f1234567890abcdef1234567890abcdef1234567890abcdef1234e2b1",
+              );
+              setSuccessModalVisible(true);
             }}
-            disabled={isPending}
+            style={{ padding: 4, backgroundColor: "#333", borderRadius: 4 }}
           >
-            {isPending ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <SendIcon size={18} color="#fff" />
-                <Text style={styles.sendButtonText}>
-                  {`Send ${amount && parseInt(amount, 10) > 0 ? amount : "0"} Units`}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </>
-      ) : (
-        <View style={styles.successCard}>
-          <Check size={48} color={colors.success} style={styles.successIconSpacing} />
-          <Text style={styles.successTitle}>Payment Sent!</Text>
-          <Text style={styles.successAmount}>{amount} units</Text>
-          <Text style={styles.successEquiv}>
-            ({tongoUnitToErc20Display(amount, wallet.selectedToken)})
-          </Text>
-          <Text style={styles.successRecipient}>to {recipient.slice(0, 16)}...</Text>
-          {note ? <Text style={styles.successNote}>{note}</Text> : null}
-
-          <View style={styles.txSection}>
-            <Text style={styles.txLabel}>Transaction Hash</Text>
-            <Text style={styles.txHashFull} numberOfLines={2} selectable>
-              {txHash}
-            </Text>
-            <View style={styles.txActionRow}>
-              <TouchableOpacity
-                {...testProps(testIDs.send.successCopyTx)}
-                style={styles.txActionBtn}
-                onPress={handleCopyTx}
-              >
-                <Text style={styles.txActionBtnText}>{txCopied ? "Copied!" : "Copy Tx Hash"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                {...testProps(testIDs.send.successViewVoyager)}
-                style={styles.txActionBtn}
-                onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${txHash}`)}
-              >
-                <Text style={styles.txActionBtnText}>View on Voyager</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            {...testProps(testIDs.send.successSendAnother)}
-            style={styles.doneBtn}
-            onPress={reset}
-          >
-            <Text style={styles.doneBtnText}>Send Another</Text>
+            <Text style={{ color: "#fff", fontSize: 10 }}>Test Success</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            {...testProps(testIDs.send.successGoHome)}
-            onPress={() => navigation.navigate("Home")}
+            onPress={() => {
+              setFailedError(
+                "Insufficient balance for gas fee. Fund your account and retry.",
+              );
+              setFailedModalVisible(true);
+            }}
+            style={{ padding: 4, backgroundColor: "#333", borderRadius: 4 }}
           >
-            <Text style={styles.goHomeText}>Go Home</Text>
+            <Text style={{ color: "#fff", fontSize: 10 }}>Test Failed</Text>
           </TouchableOpacity>
         </View>
       )}
+
+      <View style={styles.progressRow}>
+        <View style={[styles.progressSegment, styles.progressSegmentActive]} />
+        <View style={[styles.progressSegment, styles.progressSegmentActive]} />
+        <View style={styles.progressSegment} />
+      </View>
+
+      <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
+        <Text style={styles.sectionLabel}>TO</Text>
+        <View style={styles.inputRow}>
+          <Search size={16} color={colors.textMuted} />
+          <TextInput
+            {...testProps(testIDs.send.recipientInput)}
+            style={styles.recipientInput}
+            placeholder="alice.stark or 0x..."
+            placeholderTextColor={colors.textMuted}
+            value={recipient}
+            onChangeText={(t) => {
+              setRecipient(t.replace(/\s/g, ""));
+              setAddressError("");
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+          />
+          <TouchableOpacity
+            {...testProps(testIDs.send.recipientPaste)}
+            onPress={async () => {
+              const text = await Clipboard.getString();
+              if (text) {
+                setRecipient(text.trim());
+                setAddressError("");
+              }
+            }}
+          >
+            <Text style={styles.pasteText}>Paste</Text>
+          </TouchableOpacity>
+        </View>
+        {!sendKeyboardMode ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.contactRow}
+          >
+            {visibleContacts.map((c, index) => (
+              <TouchableOpacity
+                key={c.id}
+                style={styles.contactChip}
+                onPress={() => {
+                  setRecipient(c.address);
+                  setAddressError("");
+                }}
+              >
+                <View
+                  style={[
+                    styles.contactDot,
+                    index % 2 === 0 ? styles.contactDotBlue : styles.contactDotGreen,
+                  ]}
+                />
+                <Text style={styles.contactChipText}>{c.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
+        {addressError ? <Text style={styles.errorText}>{addressError}</Text> : null}
+      </View>
+
+      <View
+        style={[styles.section, styles.amountSection, sendKeyboardMode && styles.sectionCompact]}
+      >
+        <Text style={styles.sectionLabel}>AMOUNT</Text>
+        <View style={[styles.amountCard, sendKeyboardMode && styles.amountCardKeyboard]}>
+          <TextInput
+            {...testProps(testIDs.send.amountInput)}
+            style={[styles.amountInput, sendKeyboardMode && styles.amountInputKeyboard]}
+            placeholder="0"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="numeric"
+            value={amount}
+            onChangeText={(t) => {
+              if (/^\d*$/.test(t)) {
+                setAmount(t);
+                setAmountError("");
+              }
+            }}
+          />
+          <Text style={[styles.amountSub, sendKeyboardMode && styles.amountSubKeyboard]}>
+            units ({amount ? tongoUnitToErc20Display(amount, wallet.selectedToken) : "0.00 STRK"})
+          </Text>
+          {!sendKeyboardMode ? (
+            <Text style={styles.availableText}>Available: {wallet.balance} units MAX</Text>
+          ) : null}
+        </View>
+        {amountError ? <Text style={styles.errorText}>{amountError}</Text> : null}
+        {!sendKeyboardMode ? <Text style={styles.conversionHint}>{conversionHint}</Text> : null}
+      </View>
+
+      <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
+        <Text style={styles.sectionLabel}>NOTE (OPTIONAL)</Text>
+        <TextInput
+          {...testProps(testIDs.send.noteInput)}
+          style={styles.noteInput}
+          placeholder="Coffee money!"
+          placeholderTextColor={colors.textMuted}
+          value={note}
+          onChangeText={setNote}
+          onFocus={() => setIsNoteFocused(true)}
+          onBlur={() => setIsNoteFocused(false)}
+          maxLength={100}
+        />
+        <View style={styles.quickChipRow}>
+          {QUICK_NOTE_CHIPS.slice(0, 5).map(({ key, label, Icon }) => (
+            <TouchableOpacity
+              key={key}
+              style={styles.quickChip}
+              onPress={() => {
+                setNote((prev) => {
+                  const trimmed = prev.trim();
+                  return trimmed.length === 0 ? label : `${trimmed} · ${label}`;
+                });
+              }}
+            >
+              <Icon size={14} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {!sendKeyboardMode ? <View style={styles.formSpacer} /> : null}
+
+      <TouchableOpacity
+        {...testProps(testIDs.send.confirmSend)}
+        style={[styles.sendButton, isPending && styles.sendButtonDisabled]}
+        onPress={() => {
+          setFeeRetryCount(0);
+          handleSend();
+        }}
+        disabled={isPending}
+      >
+        {isPending ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <>
+            <SendIcon size={18} color="#fff" />
+            <Text style={styles.sendButtonText}>
+              {`Send ${amount && parseInt(amount, 10) > 0 ? amount : "0"} Units`}
+            </Text>
+          </>
+        )}
+      </TouchableOpacity>
     </KeyboardSafeScreen>
   );
 }
+
+/* ─── Modal styles ────────────────────────────────────────────────────── */
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 15, 28, 0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  card: {
+    width: 320,
+    backgroundColor: "#1E293B",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#2D3B4D",
+    paddingTop: 40,
+    paddingHorizontal: 32,
+    paddingBottom: 32,
+    alignItems: "center",
+    gap: 24,
+  },
+  failedCard: {
+    borderColor: "rgba(239, 68, 68, 0.25)",
+  },
+
+  /* ── Spinner ── */
+  spinnerContainer: {
+    width: 64,
+    height: 64,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  spinnerOuter: {
+    position: "absolute",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 3,
+    borderColor: "#2D3B4D",
+  },
+  spinnerInner: {
+    position: "absolute",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 3,
+    borderColor: "transparent",
+    borderTopColor: "#3B82F6",
+  },
+
+  /* ── Sending ── */
+  sendingTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#F8FAFC",
+    fontFamily: typography.primarySemibold,
+  },
+  description: {
+    fontSize: 14,
+    color: "#94A3B8",
+    fontFamily: typography.secondary,
+    textAlign: "center",
+    lineHeight: 21,
+  },
+
+  /* ── Detail card ── */
+  detailCard: {
+    width: "100%",
+    backgroundColor: "#0F172A",
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: "#64748B",
+    fontFamily: typography.primary,
+  },
+  detailValue: {
+    fontSize: 12,
+    color: "#F8FAFC",
+    fontFamily: typography.primarySemibold,
+    flexShrink: 1,
+    textAlign: "right",
+    maxWidth: "60%",
+  },
+
+  /* ── Progress bar ── */
+  progressBarBg: {
+    width: "100%",
+    height: 4,
+    backgroundColor: "#0F172A",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: 4,
+    backgroundColor: "#3B82F6",
+    borderRadius: 2,
+  },
+  stepText: {
+    fontSize: 11,
+    color: "#64748B",
+    fontFamily: typography.primary,
+  },
+
+  /* ── Success ── */
+  successCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(16, 185, 129, 0.13)",
+    borderWidth: 3,
+    borderColor: "#10B981",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#10B981",
+    fontFamily: typography.primarySemibold,
+  },
+  doneButton: {
+    width: "100%",
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#10B981",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  doneButtonText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#fff",
+    fontFamily: typography.primarySemibold,
+  },
+  explorerLink: {
+    fontSize: 13,
+    color: "#3B82F6",
+    fontFamily: typography.primarySemibold,
+  },
+
+  /* ── Failed ── */
+  errorCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(239, 68, 68, 0.13)",
+    borderWidth: 3,
+    borderColor: "#EF4444",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  failedTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#EF4444",
+    fontFamily: typography.primarySemibold,
+  },
+  errorBox: {
+    width: "100%",
+    backgroundColor: "rgba(239, 68, 68, 0.06)",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.19)",
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  errorBoxText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#EF4444",
+    opacity: 0.9,
+    fontFamily: typography.secondary,
+    lineHeight: 16.8,
+  },
+  retryButton: {
+    width: "100%",
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#3B82F6",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#fff",
+    fontFamily: typography.primarySemibold,
+  },
+  cancelButton: {
+    width: "100%",
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#2D3B4D",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#94A3B8",
+    fontFamily: typography.primarySemibold,
+  },
+});
+
+/* ─── Form styles ─────────────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -603,108 +1099,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.error,
     marginTop: 8,
-    fontFamily: typography.secondary,
-  },
-
-  // Success
-  successCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.xl,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
-  },
-  successIconSpacing: {
-    marginBottom: spacing.md,
-  },
-  successTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: "bold",
-    color: colors.success,
-    marginBottom: spacing.sm,
-    fontFamily: typography.primarySemibold,
-  },
-  successAmount: {
-    fontSize: fontSize.xxl,
-    fontWeight: "bold",
-    color: colors.text,
-    fontFamily: typography.primarySemibold,
-  },
-  successEquiv: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-    fontFamily: typography.primary,
-  },
-  successRecipient: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    fontFamily: typography.secondary,
-  },
-  successNote: {
-    fontSize: fontSize.md,
-    color: colors.text,
-    marginBottom: spacing.md,
-    fontFamily: typography.secondary,
-  },
-  txSection: {
-    width: "100%",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  txLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: spacing.xs,
-    fontFamily: typography.primarySemibold,
-  },
-  txHashFull: {
-    fontSize: fontSize.xs,
-    color: colors.text,
-    fontFamily: typography.primary,
-    marginBottom: spacing.sm,
-  },
-  txActionRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  txActionBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  txActionBtnText: {
-    fontSize: fontSize.xs,
-    color: colors.primary,
-    fontWeight: "600",
-    fontFamily: typography.secondarySemibold,
-  },
-  doneBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 48,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.md,
-  },
-  doneBtnText: {
-    color: "#fff",
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    fontFamily: typography.primarySemibold,
-  },
-  goHomeText: {
-    color: colors.textSecondary,
-    fontSize: fontSize.sm,
     fontFamily: typography.secondary,
   },
 });
