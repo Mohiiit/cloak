@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Smartphone, X } from "lucide-react";
+import { Smartphone } from "lucide-react";
 import { FeeRetryModal } from "./FeeRetryModal";
 
 interface Props {
@@ -10,33 +10,17 @@ interface Props {
   subtitle?: string;
 }
 
-const TIMEOUT_SECONDS = 5 * 60; // 5 minutes
-
 export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: Props) {
-  const [countdown, setCountdown] = useState(TIMEOUT_SECONDS);
   const [showGasRetry, setShowGasRetry] = useState(false);
   const [gasErrorMessage, setGasErrorMessage] = useState("");
   const gasRetryCount = useRef(0);
 
   useEffect(() => {
     if (!isOpen) {
-      setCountdown(TIMEOUT_SECONDS);
       gasRetryCount.current = 0;
       setShowGasRetry(false);
       return;
     }
-
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 0) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
   }, [isOpen]);
 
   // Detect gas errors in status messages
@@ -48,84 +32,178 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
       setGasErrorMessage(status);
       setShowGasRetry(true);
     } else if (showGasRetry && !status.toLowerCase().includes("gas")) {
-      // Status changed to something non-gas-related — background has moved on
       setShowGasRetry(false);
     }
   }, [status]);
 
   if (!isOpen) return null;
 
-  const minutes = Math.floor(countdown / 60);
-  const seconds = countdown % 60;
-  const timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
-
-  // Determine status color
-  const isApproved = status.toLowerCase().includes("approved");
-  const isRejected = status.toLowerCase().includes("rejected") || status.toLowerCase().includes("timed out");
-  const statusColor = isApproved
-    ? "text-green-400"
-    : isRejected
-      ? "text-red-400"
-      : "text-blue-400";
-
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-modal-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(10, 15, 28, 0.92)" }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="w-[320px] bg-[#1E293B] border border-[#334155] rounded-2xl p-6 animate-modal-card">
-        {/* Pulsing phone icon */}
-        <div className="flex flex-col items-center mb-5">
-          <div className="relative mb-4">
-            <div className="absolute inset-0 w-16 h-16 rounded-full bg-blue-500/20 animate-ping" />
-            <div className="relative w-16 h-16 rounded-full bg-blue-500/15 flex items-center justify-center">
-              <Smartphone className="w-8 h-8 text-blue-400" />
-            </div>
-          </div>
-          <h3 className="text-base font-semibold text-white mb-1">
-            {title || "Mobile Approval Required"}
-          </h3>
-          <p className="text-xs text-gray-400 text-center">
-            {subtitle || "Open the Cloak mobile app to approve this transaction"}
-          </p>
+      <div
+        className="flex flex-col items-center border border-[rgba(59,130,246,0.2)]"
+        style={{
+          width: 310,
+          borderRadius: 20,
+          backgroundColor: "#1E293B",
+          padding: "32px 20px 20px 20px",
+          gap: 16,
+        }}
+      >
+        {/* Phone icon with purple ring */}
+        <div
+          className="flex items-center justify-center"
+          style={{
+            width: 60,
+            height: 60,
+            borderRadius: 30,
+            backgroundColor: "rgba(139, 92, 246, 0.08)",
+            border: "2px solid #8B5CF6",
+          }}
+        >
+          <Smartphone className="text-[#8B5CF6]" style={{ width: 28, height: 28 }} />
         </div>
 
-        {/* Status */}
-        <div className="bg-[#0F172A] border border-[#334155] rounded-xl p-3 mb-4">
-          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">
-            Status
-          </p>
-          <p className={`text-sm font-medium ${statusColor} transition-colors duration-300`}>
+        {/* Title */}
+        <h3
+          className="text-center"
+          style={{
+            fontSize: 16,
+            fontWeight: 700,
+            fontFamily: "'JetBrains Mono', monospace",
+            color: "#F8FAFC",
+            lineHeight: 1.3,
+            margin: 0,
+          }}
+        >
+          {title || "Waiting for Mobile\nApproval"}
+        </h3>
+
+        {/* Description */}
+        <p
+          className="text-center"
+          style={{
+            fontSize: 12,
+            fontWeight: 400,
+            fontFamily: "'Geist', sans-serif",
+            color: "#94A3B8",
+            lineHeight: 1.4,
+            margin: 0,
+            whiteSpace: "pre-line",
+          }}
+        >
+          {subtitle || "Approve this transaction on your\nmobile device to continue."}
+        </p>
+
+        {/* Detail card */}
+        <div
+          className="w-full flex items-center justify-between"
+          style={{
+            borderRadius: 10,
+            backgroundColor: "#0F172A",
+            padding: 12,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 400,
+              color: "#64748B",
+            }}
+          >
+            Action
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: "#F8FAFC",
+            }}
+          >
             {status || "Initializing..."}
-          </p>
+          </span>
         </div>
 
-        {/* Countdown */}
-        <div className="bg-[#0F172A] border border-[#334155] rounded-xl p-3 mb-5">
-          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">
-            Time Remaining
-          </p>
-          <p className="text-lg font-mono text-white">{timeStr}</p>
-          {/* Progress bar */}
-          <div className="mt-2 h-1 bg-[#334155] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-500 rounded-full transition-all duration-1000 ease-linear"
-              style={{
-                width: `${(countdown / TIMEOUT_SECONDS) * 100}%`,
-              }}
-            />
-          </div>
+        {/* Polling dots */}
+        <div className="flex items-center justify-center" style={{ gap: 6 }}>
+          <span
+            className="animate-polling-dot-1"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: "#8B5CF6",
+            }}
+          />
+          <span
+            className="animate-polling-dot-2"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: "#8B5CF6",
+            }}
+          />
+          <span
+            className="animate-polling-dot-3"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: "#8B5CF6",
+            }}
+          />
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 400,
+              color: "#64748B",
+              marginLeft: 2,
+            }}
+          >
+            Polling...
+          </span>
         </div>
 
         {/* Cancel button */}
         <button
           onClick={onCancel}
-          className="w-full py-2.5 rounded-xl text-sm font-medium bg-[#0F172A] border border-[#334155] text-gray-300 hover:bg-[#334155] transition-colors flex items-center justify-center gap-2"
+          className="w-full flex items-center justify-center border border-[rgba(59,130,246,0.2)] hover:bg-[#0F172A] transition-colors"
+          style={{
+            height: 36,
+            borderRadius: 10,
+            backgroundColor: "transparent",
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: "'JetBrains Mono', monospace",
+            color: "#94A3B8",
+            cursor: "pointer",
+          }}
         >
-          <X className="w-4 h-4" />
           Cancel
         </button>
       </div>
+
+      {/* Polling dot animations */}
+      <style>{`
+        @keyframes pollingDot {
+          0%, 100% { opacity: 0.2; }
+          50% { opacity: 1; }
+        }
+        .animate-polling-dot-1 {
+          animation: pollingDot 1.4s ease-in-out infinite;
+        }
+        .animate-polling-dot-2 {
+          animation: pollingDot 1.4s ease-in-out 0.2s infinite;
+        }
+        .animate-polling-dot-3 {
+          animation: pollingDot 1.4s ease-in-out 0.4s infinite;
+        }
+      `}</style>
 
       {/* Fee retry overlay — shown on top of the waiting modal */}
       <FeeRetryModal
@@ -133,7 +211,6 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
         errorMessage={gasErrorMessage}
         retryCount={gasRetryCount.current}
         onRetry={() => {
-          // Background is already auto-retrying — dismiss the overlay
           setShowGasRetry(false);
         }}
         onCancel={onCancel}

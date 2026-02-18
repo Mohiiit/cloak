@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff, Clock, Users, ShieldAlert, ChevronDown, ChevronUp } from "lucide-react";
+import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff, Clock, Users, ShieldAlert, ChevronDown, ChevronUp, ArrowDownLeft, Copy, Check } from "lucide-react";
 import { useExtensionWallet } from "./hooks/useExtensionWallet";
 import { useWard } from "./hooks/useWard";
+import { TOKENS, formatTokenAmount } from "@cloak-wallet/sdk";
 import { CloakIcon } from "./components/CloakIcon";
 import { Onboarding } from "./components/Onboarding";
 import { DeployScreen } from "./components/DeployScreen";
@@ -23,6 +24,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("main");
   const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
   const [wardExpanded, setWardExpanded] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Loading state
   if (w.loading) {
@@ -83,14 +86,32 @@ export default function App() {
     return <ClaimSuccessScreen txHash={claimTxHash} onBack={() => setScreen("main")} />;
   }
 
+  // Derived balance values for inline display
+  const token = TOKENS[w.selectedToken];
+  const shieldedErc20 = w.balances.balance * token.rate;
+  const pendingErc20 = w.balances.pending * token.rate;
+  const shieldedDisplay = formatTokenAmount(shieldedErc20, token.decimals);
+  const publicDisplay = formatTokenAmount(w.erc20Balance, token.decimals);
+
+  const truncatedAddress = w.wallet.starkAddress
+    ? `${w.wallet.starkAddress.slice(0, 8)}...${w.wallet.starkAddress.slice(-6)}`
+    : "";
+
+  const handleCopy = async () => {
+    if (!w.wallet.starkAddress) return;
+    await navigator.clipboard.writeText(w.wallet.starkAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   // Main dashboard
   return (
     <div className="flex flex-col h-[580px] bg-cloak-bg animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+      {/* Header — 48px, horizontal, space-between, bottom border */}
+      <div className="flex items-center justify-between px-4 h-12 shrink-0 border-b border-cloak-border">
         <div className="flex items-center gap-2">
-          <CloakIcon size={20} />
-          <span className="text-cloak-text font-semibold text-sm">Cloak</span>
+          <CloakIcon size={18} />
+          <span className="text-cloak-text font-mono text-sm font-semibold">Cloak</span>
           {ward.isWard && (
             <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-full">
               <ShieldAlert className="w-3 h-3 text-amber-400" />
@@ -98,154 +119,219 @@ export default function App() {
             </span>
           )}
         </div>
-        <button
-          onClick={() => setScreen("settings")}
-          className="text-cloak-text-dim hover:text-cloak-text transition-colors p-1"
-        >
-          <SettingsIcon className="w-[18px] h-[18px]" />
-        </button>
+        <div className="flex items-center gap-1.5 bg-cloak-input-bg rounded-md px-2 py-[3px]">
+          <div className="w-1.5 h-1.5 rounded-full bg-cloak-success" />
+          <span className="text-[10px] font-medium text-cloak-muted">Sepolia</span>
+        </div>
       </div>
 
-      {/* Ward info banner */}
-      {ward.isWard && (
-        <div className="px-4 pb-2">
-          <button
-            onClick={() => setWardExpanded(!wardExpanded)}
-            className="w-full flex items-center justify-between p-2.5 rounded-lg bg-amber-500/8 border border-amber-500/15 hover:border-amber-500/25 transition-all"
-          >
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[11px] text-amber-400 font-medium">Managed by guardian</span>
+      {/* Scrollable content area */}
+      <div className="flex flex-col gap-3.5 px-4 py-3 flex-1 overflow-y-auto">
+        {/* Ward info banner */}
+        {ward.isWard && (
+          <div>
+            <button
+              onClick={() => setWardExpanded(!wardExpanded)}
+              className="w-full flex items-center justify-between p-2.5 rounded-lg bg-amber-500/8 border border-amber-500/15 hover:border-amber-500/25 transition-all"
+            >
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px] text-amber-400 font-medium">Managed by guardian</span>
+              </div>
+              {wardExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5 text-cloak-muted" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-cloak-muted" />
+              )}
+            </button>
+            {wardExpanded && (
+              ward.wardInfo ? (
+              <div className="mt-1.5 p-2.5 rounded-lg bg-cloak-card border border-amber-500/10 space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-[10px] text-cloak-muted">Guardian</span>
+                  <span className="text-[10px] text-cloak-text-dim font-mono">
+                    {ward.wardInfo.guardianAddress.slice(0, 8)}...{ward.wardInfo.guardianAddress.slice(-4)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[10px] text-cloak-muted">Status</span>
+                  <span className={`text-[10px] font-medium ${ward.wardInfo.isFrozen ? "text-red-400" : "text-cloak-success"}`}>
+                    {ward.wardInfo.isFrozen ? "Frozen" : "Active"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[10px] text-cloak-muted">Guardian 2FA</span>
+                  <span className={`text-[10px] ${ward.wardInfo.isGuardian2faEnabled ? "text-cloak-success" : "text-cloak-muted"}`}>
+                    {ward.wardInfo.isGuardian2faEnabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+              </div>
+              ) : (
+              <div className="mt-1.5 p-3 rounded-lg bg-cloak-card border border-amber-500/10 flex items-center justify-center">
+                <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mr-2" />
+                <span className="text-[10px] text-cloak-muted">Loading ward info...</span>
+              </div>
+              )
+            )}
+          </div>
+        )}
+
+        {/* Balance Card — inline per design spec */}
+        <div className="rounded-[14px] bg-cloak-card border border-cloak-border p-4 flex flex-col gap-2">
+          <span className="text-[9px] font-semibold text-cloak-muted uppercase tracking-[1.5px]">
+            Shielded Balance
+          </span>
+          <p className="text-[28px] font-bold text-cloak-text leading-tight">
+            {w.balances.balance.toLocaleString()} <span className="text-lg font-semibold">units</span>
+          </p>
+          <p className="text-xs text-cloak-text-dim">
+            ({shieldedDisplay} {w.selectedToken})
+          </p>
+
+          {/* Pending claim row */}
+          {w.balances.pending > 0n && (
+            <div className="flex items-center justify-between mt-1 bg-cloak-warning/10 border border-cloak-warning/25 rounded-lg p-2">
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-cloak-warning" />
+                <span className="text-[11px] text-cloak-warning">
+                  +{w.balances.pending.toString()} pending
+                </span>
+              </div>
+              <button
+                onClick={async () => {
+                  setClaiming(true);
+                  try {
+                    const txHash = await w.rollover();
+                    if (txHash) {
+                      setClaimTxHash(txHash);
+                      setScreen("claim-success");
+                    }
+                  } finally {
+                    setClaiming(false);
+                  }
+                }}
+                disabled={claiming}
+                className="text-[11px] font-semibold text-cloak-warning hover:text-yellow-300 bg-cloak-warning/20 border border-cloak-warning/40 px-2.5 py-1 rounded-full transition-colors disabled:opacity-50"
+              >
+                {claiming ? "Claiming..." : "Claim"}
+              </button>
             </div>
-            {wardExpanded ? (
-              <ChevronUp className="w-3.5 h-3.5 text-cloak-muted" />
+          )}
+
+          {/* Unshielded row */}
+          <div className="flex items-center justify-between pt-2 border-t border-cloak-border-light mt-1">
+            <span className="text-[9px] font-medium text-cloak-muted uppercase tracking-[1px]">
+              Unshielded
+            </span>
+            <span className="text-[13px] font-semibold text-cloak-success">
+              {publicDisplay} {w.selectedToken}
+            </span>
+          </div>
+        </div>
+
+        {/* Action Buttons — 4 horizontal */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setScreen("send")}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-cloak-card border border-cloak-border h-[68px] flex-1 hover:border-cloak-primary/50 transition-all"
+          >
+            <Send className="w-5 h-5 text-cloak-primary" />
+            <span className="text-[11px] font-semibold text-cloak-text">Send</span>
+          </button>
+          <button
+            onClick={() => setScreen("shield")}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-cloak-card border border-cloak-border h-[68px] flex-1 hover:border-cloak-success/50 transition-all"
+          >
+            <ShieldPlus className="w-5 h-5 text-cloak-success" />
+            <span className="text-[11px] font-semibold text-cloak-text">Shield</span>
+          </button>
+          <button
+            onClick={() => setScreen("withdraw")}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-cloak-card border border-cloak-border h-[68px] flex-1 hover:border-cloak-secondary/50 transition-all"
+          >
+            <ShieldOff className="w-5 h-5 text-cloak-secondary" />
+            <span className="text-[11px] font-semibold text-cloak-text">Unshield</span>
+          </button>
+          <button
+            onClick={() => setScreen("receive")}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-cloak-card border border-cloak-border h-[68px] flex-1 hover:border-cloak-muted/50 transition-all"
+          >
+            <ArrowDownLeft className="w-5 h-5 text-cloak-muted" />
+            <span className="text-[11px] font-semibold text-cloak-text">Receive</span>
+          </button>
+        </div>
+
+        {/* Address display */}
+        <div className="flex items-center gap-2 rounded-[10px] bg-cloak-input-bg px-3 py-2">
+          <span className="text-[11px] text-cloak-muted font-mono flex-1 truncate">
+            {truncatedAddress}
+          </span>
+          <button
+            onClick={handleCopy}
+            className="text-[11px] font-semibold text-cloak-primary hover:text-blue-400 transition-colors shrink-0 flex items-center gap-1"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3 h-3" />
+                Copied
+              </>
             ) : (
-              <ChevronDown className="w-3.5 h-3.5 text-cloak-muted" />
+              <>
+                <Copy className="w-3 h-3" />
+                Copy
+              </>
             )}
           </button>
-          {wardExpanded && (
-            ward.wardInfo ? (
-            <div className="mt-1.5 p-2.5 rounded-lg bg-cloak-card border border-amber-500/10 space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-[10px] text-cloak-muted">Guardian</span>
-                <span className="text-[10px] text-cloak-text-dim font-mono">
-                  {ward.wardInfo.guardianAddress.slice(0, 8)}...{ward.wardInfo.guardianAddress.slice(-4)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[10px] text-cloak-muted">Status</span>
-                <span className={`text-[10px] font-medium ${ward.wardInfo.isFrozen ? "text-red-400" : "text-cloak-success"}`}>
-                  {ward.wardInfo.isFrozen ? "Frozen" : "Active"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[10px] text-cloak-muted">Guardian 2FA</span>
-                <span className={`text-[10px] ${ward.wardInfo.isGuardian2faEnabled ? "text-cloak-success" : "text-cloak-muted"}`}>
-                  {ward.wardInfo.isGuardian2faEnabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-            </div>
-            ) : (
-            <div className="mt-1.5 p-3 rounded-lg bg-cloak-card border border-amber-500/10 flex items-center justify-center">
-              <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mr-2" />
-              <span className="text-[10px] text-cloak-muted">Loading ward info...</span>
-            </div>
-            )
-          )}
         </div>
-      )}
 
-      {/* Balance card */}
-      <div className="px-4 pb-4">
-        <BalanceCard
-          balances={w.balances}
-          erc20Balance={w.erc20Balance}
-          selectedToken={w.selectedToken}
-          onRefresh={w.refreshBalances}
-          onRollover={w.rollover}
-          onClaimSuccess={(txHash) => {
-            setClaimTxHash(txHash);
-            setScreen("claim-success");
-          }}
-        />
-      </div>
-
-      {/* Action buttons — row style with colored left borders */}
-      <div className="flex flex-col gap-2 px-4 pb-4">
-        <button
-          onClick={() => setScreen("send")}
-          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-primary hover:border-cloak-primary/50 transition-all"
-        >
-          <Send className="w-[18px] h-[18px] text-cloak-primary shrink-0" />
-          <div className="text-left">
-            <p className="text-sm font-medium text-cloak-text">Send</p>
-            <p className="text-[11px] text-cloak-text-dim">Private shielded payment</p>
+        {/* Recent Activity section */}
+        <div className="flex flex-col gap-2">
+          <span className="text-[9px] font-semibold text-cloak-muted uppercase tracking-[1.5px]">
+            Recent Activity
+          </span>
+          <div className="flex flex-col gap-0">
+            {/* Placeholder rows — no activity hook yet */}
+            <div className="flex items-center justify-between py-1.5">
+              <div className="flex items-center gap-2">
+                <ShieldPlus className="w-4 h-4 text-cloak-success" />
+                <div>
+                  <p className="text-xs font-medium text-cloak-text">Shield</p>
+                  <p className="text-[10px] text-cloak-muted">No recent activity</p>
+                </div>
+              </div>
+              <span className="text-xs font-semibold text-cloak-muted">--</span>
+            </div>
           </div>
-        </button>
-
-        <button
-          onClick={() => setScreen("shield")}
-          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-accent hover:border-cloak-accent/50 transition-all"
-        >
-          <ShieldPlus className="w-[18px] h-[18px] text-cloak-accent shrink-0" />
-          <div className="text-left">
-            <p className="text-sm font-medium text-cloak-text">Shield</p>
-            <p className="text-[11px] text-cloak-text-dim">Deposit into private pool</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setScreen("withdraw")}
-          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-cloak-secondary hover:border-cloak-secondary/50 transition-all"
-        >
-          <ShieldOff className="w-[18px] h-[18px] text-cloak-secondary shrink-0" />
-          <div className="text-left">
-            <p className="text-sm font-medium text-cloak-text">Unshield</p>
-            <p className="text-[11px] text-cloak-text-dim">Withdraw to public wallet</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setScreen("activity")}
-          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-yellow-500 hover:border-yellow-500/50 transition-all"
-        >
-          <Clock className="w-[18px] h-[18px] text-yellow-500 shrink-0" />
-          <div className="text-left">
-            <p className="text-sm font-medium text-cloak-text">Activity</p>
-            <p className="text-[11px] text-cloak-text-dim">Transaction history</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setScreen("contacts")}
-          className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light border-l-[3px] border-l-teal-500 hover:border-teal-500/50 transition-all"
-        >
-          <Users className="w-[18px] h-[18px] text-teal-500 shrink-0" />
-          <div className="text-left">
-            <p className="text-sm font-medium text-cloak-text">Contacts</p>
-            <p className="text-[11px] text-cloak-text-dim">Manage saved addresses</p>
-          </div>
-        </button>
-      </div>
-
-      {/* Error toast */}
-      {w.error && (
-        <div className="mx-4 p-3 bg-red-900/30 border border-red-800/50 rounded-lg">
-          <p className="text-red-400 text-xs">{w.error}</p>
-          <button onClick={() => w.setError(null)} className="text-red-500 text-xs underline mt-1">
-            Dismiss
+          <button
+            onClick={() => setScreen("activity")}
+            className="text-[11px] font-medium text-cloak-primary hover:text-blue-400 transition-colors text-left"
+          >
+            View all activity &rarr;
           </button>
         </div>
-      )}
 
-      {/* Footer — matches mobile compact status */}
-      <div className="mt-auto px-4 py-3 border-t border-cloak-border-light">
-        <div className="flex items-center justify-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-cloak-success" />
-          <span className="text-[10px] text-cloak-muted">Sepolia</span>
-          <span className="text-[10px] text-cloak-muted opacity-50">|</span>
-          <span className="text-[10px] text-cloak-muted">Nonce: {w.balances.nonce.toString()}</span>
-        </div>
+        {/* Error toast */}
+        {w.error && (
+          <div className="p-3 bg-red-900/30 border border-red-800/50 rounded-lg">
+            <p className="text-red-400 text-xs">{w.error}</p>
+            <button onClick={() => w.setError(null)} className="text-red-500 text-xs underline mt-1">
+              Dismiss
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Footer — 40px, top border, space-between */}
+      <div className="flex items-center justify-between px-4 h-10 shrink-0 border-t border-cloak-border">
+        <span className="text-[10px] text-cloak-muted font-sans">
+          Nonce: {w.balances.nonce.toString()}
+        </span>
+        <button
+          onClick={() => setScreen("settings")}
+          className="text-cloak-muted hover:text-cloak-text transition-colors"
+        >
+          <SettingsIcon className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
