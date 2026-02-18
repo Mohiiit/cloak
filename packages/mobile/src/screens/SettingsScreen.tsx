@@ -940,7 +940,7 @@ export default function SettingsScreen({ navigation }: any) {
         <View style={[styles.section, styles.wardsCard]}>
           <View style={styles.rowBetween}>
             <View style={styles.sectionHeader}>
-              <ShieldAlert size={18} color={colors.warning} />
+              <Users size={18} color={colors.warning} />
               <Text style={styles.sectionTitle}>Manage Wards</Text>
             </View>
             {ward.isLoadingWards && <ActivityIndicator size="small" color={colors.warning} />}
