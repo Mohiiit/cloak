@@ -179,7 +179,7 @@ export default function ApproveScreen() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0F172A]">
+      <div className="flex items-center justify-center h-screen bg-[#0A0F1C]">
         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -187,7 +187,7 @@ export default function ApproveScreen() {
 
   if (!request) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[#0F172A] text-white p-6">
+      <div className="flex flex-col items-center justify-center h-screen bg-[#0A0F1C] text-white p-6">
         <p className="text-sm text-gray-400">No pending transaction.</p>
         <button
           onClick={() => window.close()}
@@ -201,7 +201,7 @@ export default function ApproveScreen() {
 
   if (waitingApproval) {
     return (
-      <div className="flex flex-col h-screen bg-[#0F172A] text-white">
+      <div className="flex flex-col h-screen bg-[#0A0F1C] text-white">
         <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
@@ -311,7 +311,7 @@ export default function ApproveScreen() {
   const flowNotice = getFlowNotice(flowMeta);
 
   return (
-    <div className="flex flex-col h-screen bg-[#0F172A] text-white">
+    <div className="flex flex-col h-screen bg-[#0A0F1C] text-white">
       <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
