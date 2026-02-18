@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, RefreshCw, X, Gem, Download, Smartphone, LogOut } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, RefreshCw, X, Gem, Download, Smartphone, LogOut, LockOpen } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
@@ -417,6 +417,13 @@ export default function SettingsScreen({ navigation }: any) {
   const [wardLastOptions, setWardLastOptions] = useState<WardCreationOptions>({});
   const [wardAction, setWardAction] = useState<string | null>(null);
 
+  // Freeze Ward confirmation modal state
+  const [freezeModalWard, setFreezeModalWard] = useState<string | null>(null);
+
+  // 2FA Delete Warning modal state
+  const [deleteWarningVisible, setDeleteWarningVisible] = useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+
   const wardProgressCallback: WardCreationProgress = (step, _total, message) => {
     setWardStep(step);
     setWardStepMessage(message);
@@ -744,17 +751,19 @@ export default function SettingsScreen({ navigation }: any) {
                         style={[styles.toggleTrack, isFrozen && styles.toggleTrackOn]}
                         onPress={async () => {
                           if (!w.raw) return;
-                          setWardAction(w.raw.wardAddress);
-                          try {
-                            if (isFrozen) {
+                          if (isFrozen) {
+                            // Unfreeze directly
+                            setWardAction(w.raw.wardAddress);
+                            try {
                               await ward.unfreezeWard(w.raw.wardAddress);
-                            } else {
-                              await ward.freezeWard(w.raw.wardAddress);
+                            } catch (e: any) {
+                              modal.showError("Failed", e.message || "Action failed", e.message);
+                            } finally {
+                              setWardAction(null);
                             }
-                          } catch (e: any) {
-                            modal.showError("Failed", e.message || "Action failed", e.message);
-                          } finally {
-                            setWardAction(null);
+                          } else {
+                            // Show freeze confirmation modal
+                            setFreezeModalWard(w.raw.wardAddress);
                           }
                         }}
                         disabled={!!wardAction || !w.raw}
@@ -985,15 +994,21 @@ export default function SettingsScreen({ navigation }: any) {
         <TouchableOpacity
           style={styles.dangerZoneBtn}
           onPress={() => {
-            modal.showConfirm(
-              "Reset all data?",
-              "This will remove keys and all local data from this device.",
-              async () => {
-                await clearWallet();
-                modal.showSuccess("Done", "All data cleared. Restart the app.");
-              },
-              { destructive: true, confirmText: "Reset All Data" },
-            );
+            if (twoFactor.isEnabled) {
+              // Show special 2FA delete warning modal
+              setDeleteConfirmed(false);
+              setDeleteWarningVisible(true);
+            } else {
+              modal.showConfirm(
+                "Reset all data?",
+                "This will remove keys and all local data from this device.",
+                async () => {
+                  await clearWallet();
+                  modal.showSuccess("Done", "All data cleared. Restart the app.");
+                },
+                { destructive: true, confirmText: "Reset All Data" },
+              );
+            }
           }}
         >
           <Trash2 size={16} color={colors.error} />
@@ -1001,6 +1016,170 @@ export default function SettingsScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
       </KeyboardSafeScreen>
+
+      {/* Freeze Ward Confirmation Modal (7PY2U) */}
+      <Modal
+        visible={!!freezeModalWard}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFreezeModalWard(null)}
+      >
+        <View style={fmStyles.overlay}>
+          <View style={fmStyles.sheet}>
+            {/* Handle */}
+            <View style={fmStyles.handle} />
+
+            {/* Icon */}
+            <View style={fmStyles.iconCircle}>
+              <Shield size={36} color="#EF4444" />
+            </View>
+
+            {/* Title */}
+            <Text style={fmStyles.title}>Freeze Ward Account?</Text>
+
+            {/* Description */}
+            <Text style={fmStyles.description}>
+              {"This will immediately disable all\ntransactions on this ward account.\nThe ward user will not be able to\nsend, shield, or unshield tokens."}
+            </Text>
+
+            {/* Ward info card */}
+            {(() => {
+              const frozenWardEntry = wardItems.find((w: any) => w.id === freezeModalWard);
+              const wardName = frozenWardEntry?.raw?.pseudoName || frozenWardEntry?.name || "Ward";
+              const wardAddr = freezeModalWard || "";
+              return (
+                <View style={fmStyles.wardInfoCard}>
+                  <View style={fmStyles.wardInfoIcon}>
+                    <Shield size={18} color="#3B82F6" />
+                  </View>
+                  <View style={fmStyles.wardInfoText}>
+                    <Text style={fmStyles.wardInfoName} numberOfLines={1}>{wardName}</Text>
+                    <Text style={fmStyles.wardInfoAddr} numberOfLines={1}>
+                      {shortenMiddle(wardAddr, 6, 4)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* Freeze button */}
+            <TouchableOpacity
+              style={fmStyles.freezeBtn}
+              onPress={async () => {
+                if (!freezeModalWard) return;
+                const addr = freezeModalWard;
+                setFreezeModalWard(null);
+                setWardAction(addr);
+                try {
+                  await ward.freezeWard(addr);
+                } catch (e: any) {
+                  modal.showError("Failed", e.message || "Freeze failed", e.message);
+                } finally {
+                  setWardAction(null);
+                }
+              }}
+            >
+              <Shield size={20} color="#FFFFFF" />
+              <Text style={fmStyles.freezeBtnText}>Freeze Account</Text>
+            </TouchableOpacity>
+
+            {/* Cancel button */}
+            <TouchableOpacity
+              style={fmStyles.cancelBtn}
+              onPress={() => setFreezeModalWard(null)}
+            >
+              <Text style={fmStyles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 2FA Delete Warning Modal (B4WjD) */}
+      <Modal
+        visible={deleteWarningVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setDeleteWarningVisible(false);
+          setDeleteConfirmed(false);
+        }}
+      >
+        <View style={dwStyles.overlay}>
+          <View style={dwStyles.card}>
+            {/* Handle */}
+            <View style={dwStyles.handle} />
+
+            {/* Icon */}
+            <View style={dwStyles.iconCircle}>
+              <ShieldAlert size={36} color="#EF4444" />
+            </View>
+
+            {/* Title */}
+            <Text style={dwStyles.title}>{"2FA Is Active \u2014 Danger!"}</Text>
+
+            {/* Description */}
+            <Text style={dwStyles.description}>
+              {"You have 2FA enabled. Deleting your data will permanently remove your recovery key from this device."}
+            </Text>
+
+            {/* Warning box */}
+            <View style={dwStyles.warningBox}>
+              <View style={dwStyles.warningRow}>
+                <Key size={14} color="#EF4444" />
+                <Text style={dwStyles.warningText}>Your 2FA recovery key will be lost forever</Text>
+              </View>
+              <View style={dwStyles.warningRow}>
+                <LockOpen size={14} color="#EF4444" />
+                <Text style={dwStyles.warningText}>Funds protected by 2FA may become inaccessible</Text>
+              </View>
+              <View style={dwStyles.warningRow}>
+                <AlertTriangle size={14} color="#EF4444" />
+                <Text style={dwStyles.warningText}>This action cannot be undone</Text>
+              </View>
+            </View>
+
+            {/* Confirm checkbox row */}
+            <TouchableOpacity
+              style={dwStyles.checkboxRow}
+              onPress={() => setDeleteConfirmed(!deleteConfirmed)}
+              activeOpacity={0.7}
+            >
+              <View style={[dwStyles.checkbox, deleteConfirmed && dwStyles.checkboxChecked]}>
+                {deleteConfirmed && <Check size={14} color="#FFFFFF" />}
+              </View>
+              <Text style={dwStyles.checkboxText}>
+                I understand my 2FA key will be permanently deleted
+              </Text>
+            </TouchableOpacity>
+
+            {/* Delete button */}
+            <TouchableOpacity
+              style={[dwStyles.deleteBtn, !deleteConfirmed && dwStyles.deleteBtnDisabled]}
+              disabled={!deleteConfirmed}
+              onPress={async () => {
+                setDeleteWarningVisible(false);
+                setDeleteConfirmed(false);
+                await clearWallet();
+                modal.showSuccess("Done", "All data cleared. Restart the app.");
+              }}
+            >
+              <Trash2 size={18} color="#FFFFFF" />
+              <Text style={dwStyles.deleteBtnText}>Delete All Data</Text>
+            </TouchableOpacity>
+
+            {/* Cancel button */}
+            <TouchableOpacity
+              style={dwStyles.cancelBtn}
+              onPress={() => {
+                setDeleteWarningVisible(false);
+                setDeleteConfirmed(false);
+              }}
+            >
+              <Text style={dwStyles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2106,5 +2285,252 @@ const wardModalStyles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fontSize.md,
     fontFamily: typography.secondarySemibold,
+  },
+});
+
+// Freeze Ward Confirmation Modal styles (7PY2U)
+const fmStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 15, 28, 0.9)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    width: "100%",
+    backgroundColor: "#1E293B",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: "#2D3B4D",
+    paddingTop: 32,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    alignItems: "center",
+    gap: 20,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(100, 116, 139, 0.3)",
+    marginBottom: 0,
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(239, 68, 68, 0.094)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: {
+    fontSize: 20,
+    fontFamily: typography.primarySemibold,
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  description: {
+    fontSize: 14,
+    fontFamily: typography.secondary,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  wardInfoCard: {
+    width: "100%",
+    backgroundColor: "#0F172A",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  wardInfoIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "rgba(59, 130, 246, 0.082)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wardInfoText: {
+    flex: 1,
+    gap: 2,
+  },
+  wardInfoName: {
+    fontSize: 14,
+    fontFamily: typography.primarySemibold,
+    color: "#FFFFFF",
+  },
+  wardInfoAddr: {
+    fontSize: 11,
+    fontFamily: typography.primary,
+    color: "#64748B",
+  },
+  freezeBtn: {
+    width: "100%",
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "#EF4444",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  freezeBtnText: {
+    fontSize: 16,
+    fontFamily: typography.primarySemibold,
+    color: "#FFFFFF",
+  },
+  cancelBtn: {
+    width: "100%",
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#2D3B4D",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontFamily: typography.primarySemibold,
+    color: "#94A3B8",
+  },
+});
+
+// 2FA Delete Warning Modal styles (B4WjD)
+const dwStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 15, 28, 0.92)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  card: {
+    width: 342,
+    maxWidth: "100%",
+    backgroundColor: "#1E293B",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.25)",
+    paddingTop: 32,
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+    alignItems: "center",
+    gap: 20,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(100, 116, 139, 0.3)",
+    marginBottom: 0,
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(239, 68, 68, 0.094)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: {
+    fontSize: 20,
+    fontFamily: typography.primarySemibold,
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  description: {
+    fontSize: 14,
+    fontFamily: typography.secondary,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  warningBox: {
+    width: "100%",
+    backgroundColor: "rgba(239, 68, 68, 0.063)",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.188)",
+  },
+  warningRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: typography.secondary,
+    color: "#94A3B8",
+  },
+  checkboxRow: {
+    width: "100%",
+    backgroundColor: "#0F172A",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: "#EF4444",
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#EF4444",
+  },
+  checkboxText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: typography.secondary,
+    color: "#94A3B8",
+  },
+  deleteBtn: {
+    width: "100%",
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "#EF4444",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  deleteBtnDisabled: {
+    opacity: 0.5,
+  },
+  deleteBtnText: {
+    fontSize: 16,
+    fontFamily: typography.primarySemibold,
+    color: "#FFFFFF",
+  },
+  cancelBtn: {
+    width: "100%",
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#2D3B4D",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontFamily: typography.primarySemibold,
+    color: "#94A3B8",
   },
 });

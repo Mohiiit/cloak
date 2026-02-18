@@ -1,24 +1,40 @@
 /**
- * GuardianApprovalModal — Full-screen modal for guardian transaction approval.
+ * GuardianApprovalModal — Amber-themed modal for guardian transaction approval.
  * Shows when there are pending guardian approval requests from wards.
+ * Design: TumTT "Ward Waiting Guardian" (.pen frame).
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  Modal,
   ActivityIndicator,
+  Animated,
 } from "react-native";
+import { ShieldCheck } from "lucide-react-native";
 import { useWardContext, type WardApprovalRequest } from "../lib/wardContext";
 import { useThemedModal } from "./ThemedModal";
 import { promptBiometric } from "../lib/twoFactor";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import {
+  colors,
+  spacing,
+  fontSize,
+  borderRadius,
+  typography,
+} from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
-import { KeyboardSafeModal } from "./KeyboardSafeContainer";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ── Amber palette (from TumTT design) ────────────────────────────────────────
+
+const amber = {
+  solid: "#F59E0B",
+  dim: "rgba(245, 158, 11, 0.15)",
+  border: "rgba(245, 158, 11, 0.19)", // #F59E0B30
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function truncate(str: string, front = 8, back = 6): string {
   if (!str) return "";
@@ -62,9 +78,83 @@ function useCountdown(expiresAt: string): string {
   return timeLeft;
 }
 
-// ─── Guardian Approval Card ─────────────────────────────────────────────────
+// ── Polling Dots ──────────────────────────────────────────────────────────────
 
-function GuardianApprovalCard({
+function PollingDots() {
+  const anim1 = useRef(new Animated.Value(1)).current;
+  const anim2 = useRef(new Animated.Value(0.5)).current;
+  const anim3 = useRef(new Animated.Value(0.25)).current;
+
+  useEffect(() => {
+    const pulse = (val: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(val, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(val, {
+            toValue: 0.25,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+    const a1 = pulse(anim1, 0);
+    const a2 = pulse(anim2, 150);
+    const a3 = pulse(anim3, 300);
+    a1.start();
+    a2.start();
+    a3.start();
+
+    return () => {
+      a1.stop();
+      a2.stop();
+      a3.stop();
+    };
+  }, [anim1, anim2, anim3]);
+
+  return (
+    <View style={styles.pollingRow}>
+      <View style={styles.dotsContainer}>
+        <Animated.View style={[styles.dot, { opacity: anim1 }]} />
+        <Animated.View style={[styles.dot, { opacity: anim2 }]} />
+        <Animated.View style={[styles.dot, { opacity: anim3 }]} />
+      </View>
+      <Text style={styles.pollingText}>Awaiting ward request...</Text>
+    </View>
+  );
+}
+
+// ── Detail Row ────────────────────────────────────────────────────────────────
+
+function DetailRow({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text
+        style={[styles.detailValue, highlight && { color: amber.solid }]}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+// ── Guardian Card Content ─────────────────────────────────────────────────────
+
+function GuardianCardContent({
   request,
   onApproved,
   onRejected,
@@ -83,13 +173,21 @@ function GuardianApprovalCard({
 
   const handleApprove = async () => {
     if (isExpired) {
-      modal.showError("Request Expired", "This request has expired and can no longer be approved.");
+      modal.showError(
+        "Request Expired",
+        "This request has expired and can no longer be approved.",
+      );
       return;
     }
 
-    const authed = await promptBiometric("Authenticate to approve as guardian");
+    const authed = await promptBiometric(
+      "Authenticate to approve as guardian",
+    );
     if (!authed) {
-      modal.showError("Authentication Failed", "Biometric authentication failed. Please try again.");
+      modal.showError(
+        "Authentication Failed",
+        "Biometric authentication failed. Please try again.",
+      );
       return;
     }
 
@@ -99,7 +197,11 @@ function GuardianApprovalCard({
       onApproved();
     } catch (e: any) {
       console.warn("[GuardianApprovalModal] Approve error:", e);
-      modal.showError("Guardian Approval Failed", e.message || "Failed to approve as guardian", e.message);
+      modal.showError(
+        "Guardian Approval Failed",
+        e.message || "Failed to approve as guardian",
+        e.message,
+      );
     } finally {
       setIsApproving(false);
     }
@@ -112,60 +214,70 @@ function GuardianApprovalCard({
       onRejected();
     } catch (e: any) {
       console.warn("[GuardianApprovalModal] Reject error:", e);
-      modal.showError("Rejection Failed", e.message || "Failed to reject request", e.message);
+      modal.showError(
+        "Rejection Failed",
+        e.message || "Failed to reject request",
+        e.message,
+      );
     } finally {
       setIsRejecting(false);
     }
   };
 
   return (
-    <View style={styles.card}>
+    <>
       {modal.ModalComponent}
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>Guardian Approval</Text>
-        <View
-          style={[
-            styles.timerBadge,
-            isExpired && styles.timerBadgeExpired,
-          ]}
-        >
-          <Text
-            style={[
-              styles.timerText,
-              isExpired && styles.timerTextExpired,
-            ]}
-          >
-            {countdown}
-          </Text>
-        </View>
+
+      {/* Icon circle */}
+      <View style={styles.iconCircle}>
+        <ShieldCheck size={36} color={amber.solid} strokeWidth={1.5} />
       </View>
 
-      <View style={styles.detailsContainer}>
-        <DetailRow label="Ward" value={truncate(request.ward_address)} />
-        <DetailRow label="Action" value={formatAction(request.action)} />
-        <DetailRow label="Token" value={request.token} />
-        <DetailRow label="Amount" value={request.amount || "Claim pending balance"} />
+      {/* Title */}
+      <Text style={styles.title}>
+        {"Guardian Approval\nRequired"}
+      </Text>
+
+      {/* Description */}
+      <Text style={styles.description}>
+        {"Your ward is requesting approval\nfor a transaction."}
+      </Text>
+
+      {/* Detail card */}
+      <View style={styles.detailCard}>
+        <DetailRow label="Type" value={formatAction(request.action)} />
         {request.recipient && (
-          <DetailRow label="Recipient" value={truncate(request.recipient)} />
+          <DetailRow label="To" value={truncate(request.recipient)} />
         )}
-        {request.tx_hash ? (
-          <DetailRow label="Tx Hash" value={truncate(request.tx_hash)} />
-        ) : null}
+        <DetailRow
+          label="Amount"
+          value={
+            request.amount
+              ? `${request.amount} ${request.token}`
+              : "Claim pending balance"
+          }
+        />
+        <DetailRow label="Time left" value={countdown} highlight={isExpired} />
       </View>
 
+      {/* Polling dots */}
+      <PollingDots />
+
+      {/* Buttons */}
       <View style={styles.buttonRow}>
         <TouchableOpacity
           {...testProps(testIDs.guardianApprovalModal.reject)}
-          style={[styles.rejectBtn, isRejecting && styles.btnDisabled]}
+          style={[styles.cancelBtn, isRejecting && styles.btnDisabled]}
           onPress={handleReject}
           disabled={isApproving || isRejecting}
         >
           {isRejecting ? (
-            <ActivityIndicator size="small" color={colors.error} />
+            <ActivityIndicator size="small" color={colors.textSecondary} />
           ) : (
-            <Text style={styles.rejectBtnText}>Reject</Text>
+            <Text style={styles.cancelBtnText}>Reject</Text>
           )}
         </TouchableOpacity>
+
         <TouchableOpacity
           {...testProps(testIDs.guardianApprovalModal.approve)}
           style={[
@@ -184,227 +296,184 @@ function GuardianApprovalCard({
           )}
         </TouchableOpacity>
       </View>
-    </View>
+    </>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  );
-}
-
-// ─── Main Modal ──────────────────────────────────────────────────────────────
+// ── Main Modal ────────────────────────────────────────────────────────────────
 
 export default function GuardianApprovalModal() {
   const { pendingGuardianRequests } = useWardContext();
 
   if (pendingGuardianRequests.length === 0) return null;
 
+  const firstRequest = pendingGuardianRequests[0];
+
   const handleDone = () => {
     // Polling will auto-clear completed/rejected requests
   };
 
   return (
-    <KeyboardSafeModal
+    <Modal
       visible={pendingGuardianRequests.length > 0}
-      overlayStyle={styles.overlay}
-      contentStyle={styles.modalContainer}
-      contentMaxHeight="90%"
+      transparent
+      animationType="fade"
+      statusBarTranslucent
       onRequestClose={() => {}}
-      dismissOnBackdrop
     >
-      <View style={styles.modalHeader}>
-        <View style={styles.headerIconCircle}>
-          <Text style={styles.headerIcon}>G</Text>
-        </View>
-        <Text style={styles.modalTitle}>Guardian Approval Required</Text>
-        <Text style={styles.modalSubtitle}>
-          {pendingGuardianRequests.length} pending{" "}
-          {pendingGuardianRequests.length === 1 ? "request" : "requests"}
-        </Text>
-      </View>
-
-      <ScrollView
-        style={styles.scrollArea}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {pendingGuardianRequests.map((req) => (
-          <GuardianApprovalCard
-            key={req.id}
-            request={req}
+      <View style={styles.overlay}>
+        <View style={styles.modalCard}>
+          <GuardianCardContent
+            request={firstRequest}
             onApproved={handleDone}
             onRejected={handleDone}
           />
-        ))}
-      </ScrollView>
-    </KeyboardSafeModal>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ── Styles (TumTT design tokens) ─────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // Overlay
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    backgroundColor: "rgba(10, 15, 28, 0.9)",
     justifyContent: "center",
     alignItems: "center",
-    padding: spacing.md,
+    padding: spacing.lg,
   },
-  modalContainer: {
-    width: "100%",
-    maxHeight: "90%",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
-    overflow: "hidden",
-  },
-  modalHeader: {
-    alignItems: "center",
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  headerIconCircle: {
-    width: 48,
-    height: 48,
+
+  // Modal card
+  modalCard: {
+    width: 330,
+    backgroundColor: colors.surface,
     borderRadius: 24,
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: amber.border,
+    paddingTop: 36,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    alignItems: "center",
+    gap: 20,
+  },
+
+  // Icon circle
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: amber.dim,
     borderWidth: 2,
-    borderColor: "rgba(16, 185, 129, 0.4)",
+    borderColor: amber.solid,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.md,
   },
-  headerIcon: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: colors.success,
-  },
-  modalTitle: {
-    fontSize: fontSize.lg,
+
+  // Title
+  title: {
+    fontFamily: typography.primary,
+    fontSize: 20,
     fontWeight: "700",
     color: colors.text,
-    marginBottom: spacing.xs,
     textAlign: "center",
+    lineHeight: 28,
   },
-  modalSubtitle: {
-    fontSize: fontSize.sm,
+
+  // Description
+  description: {
+    fontFamily: typography.secondary,
+    fontSize: 13,
     color: colors.textSecondary,
-  },
-  scrollArea: {
-    maxHeight: 500,
-  },
-  scrollContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    textAlign: "center",
+    lineHeight: 20,
   },
 
-  // Card
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    marginBottom: spacing.md,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.md,
-  },
-  cardTitle: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  timerBadge: {
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-  },
-  timerBadgeExpired: {
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
-  },
-  timerText: {
-    fontSize: fontSize.xs,
-    fontWeight: "600",
-    color: colors.success,
-    fontFamily: "monospace",
-  },
-  timerTextExpired: {
-    color: colors.error,
+  // Detail card
+  detailCard: {
+    width: "100%",
+    backgroundColor: colors.inputBg,
+    borderRadius: 12,
+    padding: 14,
+    gap: 8,
   },
 
-  // Details
-  detailsContainer: {
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
+  // Detail rows
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.xs + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
   },
   detailLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
+    fontFamily: typography.primary,
+    fontSize: 12,
+    color: colors.textMuted,
   },
   detailValue: {
-    fontSize: fontSize.sm,
-    color: colors.text,
+    fontFamily: typography.primary,
+    fontSize: 12,
     fontWeight: "500",
-    fontFamily: "monospace",
+    color: colors.text,
+  },
+
+  // Polling dots
+  pollingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  dotsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: amber.solid,
+  },
+  pollingText: {
+    fontFamily: typography.primary,
+    fontSize: 11,
+    color: colors.textMuted,
   },
 
   // Buttons
   buttonRow: {
+    width: "100%",
     flexDirection: "row",
-    gap: spacing.md,
+    gap: 12,
   },
-  rejectBtn: {
+  cancelBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: borderRadius.md,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.3)",
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  rejectBtnText: {
-    color: colors.error,
-    fontSize: fontSize.md,
-    fontWeight: "600",
+  cancelBtnText: {
+    fontFamily: typography.primarySemibold,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   approveBtn: {
     flex: 1.5,
-    paddingVertical: 14,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.success,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: amber.solid,
     alignItems: "center",
     justifyContent: "center",
   },
   approveBtnText: {
+    fontFamily: typography.primarySemibold,
+    fontSize: 14,
     color: "#fff",
-    fontSize: fontSize.md,
-    fontWeight: "600",
   },
   btnDisabled: {
     opacity: 0.5,
