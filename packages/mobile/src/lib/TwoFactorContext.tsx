@@ -310,6 +310,7 @@ export function TwoFactorProvider({
 
     try {
       if (isMockMode()) {
+        onStep?.("keygen");
         onStep?.("onchain");
         onStep?.("register");
         const { error } = await disableTwoFactorConfig(
@@ -328,9 +329,12 @@ export function TwoFactorProvider({
         return;
       }
 
-      // Step 1: On-chain remove_secondary_key — MUST succeed before anything else
-      onStep?.("onchain");
+      // Step 1: Retrieve secondary key material
+      onStep?.("keygen");
       const secondaryPk = await getSecondaryPrivateKey();
+
+      // Step 2: On-chain remove_secondary_key — MUST succeed before anything else
+      onStep?.("onchain");
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const calls = [{
         contractAddress: wallet.keys.starkAddress,

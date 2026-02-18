@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Gem, Download, Smartphone, LogOut, LockOpen } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Gem, Download, Smartphone, LogOut, LockOpen, TriangleAlert } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
@@ -221,10 +221,109 @@ const TFA_ENABLE_STEPS: { step: TwoFAStep; label: string }[] = [
 
 const TFA_DISABLE_STEPS: { step: TwoFAStep; label: string }[] = [
   { step: "auth", label: "Authenticating" },
-  { step: "onchain", label: "Removing on-chain" },
-  { step: "register", label: "Unregistering" },
+  { step: "keygen", label: "Removing key" },
+  { step: "onchain", label: "Submitting on-chain" },
+  { step: "register", label: "Confirming" },
   { step: "done", label: "Complete" },
 ];
+
+function TwoFAConfirmModal({
+  visible,
+  action,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  action: "enable" | "disable";
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const isEnabling = action === "enable";
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={tfaConfirmStyles.overlay}>
+        <View style={[tfaConfirmStyles.card, isEnabling ? tfaConfirmStyles.cardEnable : tfaConfirmStyles.cardDisable]}>
+          {/* Icon */}
+          <View style={[tfaConfirmStyles.iconCircle, isEnabling ? tfaConfirmStyles.iconCircleEnable : tfaConfirmStyles.iconCircleDisable]}>
+            {isEnabling ? (
+              <ShieldCheck size={36} color="#8B5CF6" />
+            ) : (
+              <ShieldOff size={36} color="#EF4444" />
+            )}
+          </View>
+
+          {/* Title */}
+          <Text style={tfaConfirmStyles.title}>
+            {isEnabling
+              ? "Enable Two-Factor\nAuthentication?"
+              : "Disable Two-Factor\nAuthentication?"}
+          </Text>
+
+          {/* Description */}
+          <Text style={tfaConfirmStyles.description}>
+            {isEnabling
+              ? "Every transaction will require approval from your mobile device. Even if your keys are compromised, your funds stay safe."
+              : "Removing 2FA means transactions will no longer require mobile approval. Your account will be protected by a single key only."}
+          </Text>
+
+          {/* Info/Warning box */}
+          {isEnabling ? (
+            <View style={tfaConfirmStyles.infoBox}>
+              <View style={tfaConfirmStyles.infoRow}>
+                <View style={[tfaConfirmStyles.infoDot, { backgroundColor: "#3B82F6" }]} />
+                <Text style={tfaConfirmStyles.infoText}>Pair your mobile device</Text>
+              </View>
+              <View style={tfaConfirmStyles.infoRow}>
+                <View style={[tfaConfirmStyles.infoDot, { backgroundColor: "#8B5CF6" }]} />
+                <Text style={tfaConfirmStyles.infoText}>Register secondary key on-chain</Text>
+              </View>
+              <View style={tfaConfirmStyles.infoRow}>
+                <View style={[tfaConfirmStyles.infoDot, { backgroundColor: "#10B981" }]} />
+                <Text style={tfaConfirmStyles.infoText}>Dual-key signing for all transactions</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={tfaConfirmStyles.warningBox}>
+              <View style={tfaConfirmStyles.infoRow}>
+                <TriangleAlert size={16} color="#F59E0B" />
+                <Text style={tfaConfirmStyles.infoText}>Single-key signing only</Text>
+              </View>
+              <View style={tfaConfirmStyles.infoRow}>
+                <TriangleAlert size={16} color="#F59E0B" />
+                <Text style={tfaConfirmStyles.infoText}>No mobile approval required</Text>
+              </View>
+              <View style={tfaConfirmStyles.infoRow}>
+                <TriangleAlert size={16} color="#F59E0B" />
+                <Text style={tfaConfirmStyles.infoText}>On-chain transaction required</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Buttons */}
+          <View style={tfaConfirmStyles.buttons}>
+            <TouchableOpacity
+              style={[tfaConfirmStyles.primaryBtn, isEnabling ? tfaConfirmStyles.primaryBtnEnable : tfaConfirmStyles.primaryBtnDisable]}
+              onPress={onConfirm}
+            >
+              {isEnabling ? (
+                <ShieldCheck size={18} color="#FFFFFF" />
+              ) : (
+                <ShieldOff size={18} color="#FFFFFF" />
+              )}
+              <Text style={tfaConfirmStyles.primaryBtnText}>
+                {isEnabling ? "Enable 2FA" : "Disable 2FA"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={tfaConfirmStyles.cancelBtn} onPress={onCancel}>
+              <Text style={tfaConfirmStyles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 function TwoFAProgressModal({
   visible,
@@ -260,12 +359,13 @@ function TwoFAProgressModal({
     : 0;
 
   const isEnabling = action === "enable";
+  const accentColor = isEnabling ? "#3B82F6" : "#EF4444";
 
   // Step status text
   const statusTextMap: Record<string, string> = {
     idle: "Preparing...",
     auth: "Verifying biometric identity...",
-    keygen: "Generating secondary key pair...",
+    keygen: isEnabling ? "Generating secondary key pair..." : "Retrieving key material...",
     onchain: isEnabling ? "Submitting set_secondary_key..." : "Submitting remove_secondary_key...",
     register: isEnabling ? "Registering config in database..." : "Removing config from database...",
     done: isEnabling ? "2FA successfully enabled" : "2FA successfully disabled",
@@ -275,82 +375,88 @@ function TwoFAProgressModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => { if (isDone || isError) onClose(); }}>
       <View style={tfaModalStyles.overlay}>
-        <View style={tfaModalStyles.card}>
-          {/* Icon */}
-          <View style={[tfaModalStyles.iconCircle, isEnabling ? tfaModalStyles.iconCircleBlue : tfaModalStyles.iconCircleRed]}>
-            {isError ? (
-              <X size={32} color={colors.error} />
-            ) : isDone ? (
-              <Check size={32} color={colors.success} />
-            ) : isEnabling ? (
-              <ShieldCheck size={32} color={colors.primary} />
-            ) : (
-              <ShieldOff size={32} color={colors.error} />
+        <View style={[tfaModalStyles.card, !isEnabling && tfaModalStyles.cardDisable]}>
+          {/* modalInner section */}
+          <View style={tfaModalStyles.modalInner}>
+            {/* Icon */}
+            <View style={[tfaModalStyles.iconCircle, isEnabling ? tfaModalStyles.iconCircleBlue : tfaModalStyles.iconCircleRed]}>
+              {isError ? (
+                <X size={32} color={colors.error} />
+              ) : isDone ? (
+                <Check size={32} color={colors.success} />
+              ) : isEnabling ? (
+                <ShieldCheck size={32} color="#3B82F6" />
+              ) : (
+                <ShieldOff size={32} color="#EF4444" />
+              )}
+            </View>
+
+            {/* Title */}
+            <Text style={tfaModalStyles.title}>
+              {isError
+                ? "Failed"
+                : isDone
+                ? isEnabling
+                  ? "2FA Enabled!"
+                  : "2FA Disabled!"
+                : isEnabling
+                ? "Enabling 2FA..."
+                : "Disabling 2FA..."}
+            </Text>
+
+            {/* Step list */}
+            <View style={tfaModalStyles.stepper}>
+              {steps.map((s, i) => {
+                const isComplete = activeIndex > i || isDone;
+                const isActive = activeIndex === i && !isDone && !isError;
+                const isFailed = isError && activeIndex === i;
+
+                return (
+                  <View key={s.step} style={tfaModalStyles.stepItem}>
+                    <View
+                      style={[
+                        tfaModalStyles.stepDot,
+                        isComplete && tfaModalStyles.stepDotComplete,
+                        isActive && [tfaModalStyles.stepDotActive, !isEnabling && { borderColor: "#EF4444", backgroundColor: "rgba(239, 68, 68, 0.1)" }],
+                        isFailed && tfaModalStyles.stepDotFailed,
+                      ]}
+                    >
+                      {isComplete && <Check size={14} color="#fff" />}
+                      {isFailed && <X size={14} color={colors.error} />}
+                    </View>
+                    <Text
+                      style={[
+                        tfaModalStyles.stepText,
+                        isComplete && tfaModalStyles.stepTextComplete,
+                        isActive && [tfaModalStyles.stepTextActive, !isEnabling && { color: "#F8FAFC" }],
+                        isFailed && tfaModalStyles.stepTextFailed,
+                      ]}
+                    >
+                      {s.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* bottomSection */}
+          <View style={tfaModalStyles.bottomSection}>
+            {/* Progress bar */}
+            <View style={tfaModalStyles.progressContainer}>
+              <View style={tfaModalStyles.progressTrack}>
+                <View style={[tfaModalStyles.progressFill, { width: `${progressFraction * 100}%`, backgroundColor: accentColor }]} />
+              </View>
+              <Text style={tfaModalStyles.statusText}>{statusTextMap[currentStep] || "Processing..."}</Text>
+            </View>
+
+            {/* Error close button */}
+            {isError && (
+              <TouchableOpacity style={tfaModalStyles.closeBtn} onPress={onClose}>
+                <Text style={tfaModalStyles.closeBtnText}>Close</Text>
+              </TouchableOpacity>
             )}
           </View>
-
-          {/* Title */}
-          <Text style={tfaModalStyles.title}>
-            {isError
-              ? "Failed"
-              : isDone
-              ? isEnabling
-                ? "2FA Enabled!"
-                : "2FA Disabled!"
-              : isEnabling
-              ? "Enabling 2FA..."
-              : "Disabling 2FA..."}
-          </Text>
-
-          {/* Step list */}
-          <View style={tfaModalStyles.stepper}>
-            {steps.map((s, i) => {
-              const isComplete = activeIndex > i || isDone;
-              const isActive = activeIndex === i && !isDone && !isError;
-              const isFailed = isError && activeIndex === i;
-
-              return (
-                <View key={s.step} style={tfaModalStyles.stepItem}>
-                  <View
-                    style={[
-                      tfaModalStyles.stepDot,
-                      isComplete && tfaModalStyles.stepDotComplete,
-                      isActive && tfaModalStyles.stepDotActive,
-                      isFailed && tfaModalStyles.stepDotFailed,
-                    ]}
-                  >
-                    {isComplete && <Check size={14} color="#fff" />}
-                    {isFailed && <X size={14} color={colors.error} />}
-                  </View>
-                  <Text
-                    style={[
-                      tfaModalStyles.stepText,
-                      isComplete && tfaModalStyles.stepTextComplete,
-                      isActive && tfaModalStyles.stepTextActive,
-                      isFailed && tfaModalStyles.stepTextFailed,
-                    ]}
-                  >
-                    {s.label}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-
-          {/* Progress bar */}
-          <View style={tfaModalStyles.progressContainer}>
-            <View style={tfaModalStyles.progressTrack}>
-              <View style={[tfaModalStyles.progressFill, { width: `${progressFraction * 100}%` }]} />
-            </View>
-            <Text style={tfaModalStyles.statusText}>{statusTextMap[currentStep] || "Processing..."}</Text>
-          </View>
-
-          {/* Error close button */}
-          {isError && (
-            <TouchableOpacity style={tfaModalStyles.closeBtn} onPress={onClose}>
-              <Text style={tfaModalStyles.closeBtnText}>Close</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     </Modal>
@@ -546,6 +652,7 @@ export default function SettingsScreen({ navigation }: any) {
 
   // 2FA state
   const [tfaLoading, setTfaLoading] = useState(false);
+  const [tfaConfirmVisible, setTfaConfirmVisible] = useState(false);
   const [tfaModalVisible, setTfaModalVisible] = useState(false);
   const [tfaModalAction, setTfaModalAction] = useState<"enable" | "disable">("enable");
   const [tfaStep, setTfaStep] = useState<TwoFAStep>("idle");
@@ -674,7 +781,7 @@ export default function SettingsScreen({ navigation }: any) {
   const networkRpcLabel = "blast.io";
   const appVersionLabel = "v0.1.0-alpha";
 
-  const isBiometric2faEnabled = twoFactor.isEnabled || (__DEV__ && !twoFactor.isEnabled);
+  const isBiometric2faEnabled = twoFactor.isEnabled;
 
   const previewWards: Array<{
     id: string;
@@ -1071,26 +1178,11 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
           <TouchableOpacity
             style={[styles.securityToggleTrack, isBiometric2faEnabled && styles.securityToggleTrackOn]}
-            onPress={async () => {
+            onPress={() => {
               if (!wallet.isDeployed) return;
               const action = twoFactor.isEnabled ? "disable" : "enable";
               setTfaModalAction(action);
-              setTfaStep("idle");
-              setTfaModalVisible(true);
-              try {
-                setTfaLoading(true);
-                const stepCallback = (step: TwoFAStep) => setTfaStep(step);
-                if (action === "disable") {
-                  await twoFactor.disable2FA(stepCallback);
-                } else {
-                  await twoFactor.enable2FA(stepCallback);
-                }
-                if (ward.isWard) {
-                  await ward.refreshWardInfo();
-                }
-              } finally {
-                setTfaLoading(false);
-              }
+              setTfaConfirmVisible(true);
             }}
             disabled={tfaLoading}
           >
@@ -1246,6 +1338,32 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* 2FA Confirm Modal */}
+      <TwoFAConfirmModal
+        visible={tfaConfirmVisible}
+        action={tfaModalAction}
+        onConfirm={async () => {
+          setTfaConfirmVisible(false);
+          setTfaStep("idle");
+          setTfaModalVisible(true);
+          try {
+            setTfaLoading(true);
+            const stepCallback = (step: TwoFAStep) => setTfaStep(step);
+            if (tfaModalAction === "disable") {
+              await twoFactor.disable2FA(stepCallback);
+            } else {
+              await twoFactor.enable2FA(stepCallback);
+            }
+            if (ward.isWard) {
+              await ward.refreshWardInfo();
+            }
+          } finally {
+            setTfaLoading(false);
+          }
+        }}
+        onCancel={() => setTfaConfirmVisible(false)}
+      />
 
       {/* 2FA Progress Modal */}
       <TwoFAProgressModal
@@ -2696,7 +2814,135 @@ const dwStyles = StyleSheet.create({
   },
 });
 
-// 2FA Progress Modal styles
+// 2FA Confirm Modal styles (8FrbN enable / 8cgGD disable)
+const tfaConfirmStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 15, 28, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  card: {
+    width: 342,
+    maxWidth: "100%",
+    backgroundColor: "#1E293B",
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingTop: 36,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    alignItems: "center",
+    gap: 20,
+  },
+  cardEnable: {
+    borderColor: "rgba(139, 92, 246, 0.188)",
+  },
+  cardDisable: {
+    borderColor: "rgba(239, 68, 68, 0.188)",
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+  },
+  iconCircleEnable: {
+    backgroundColor: "rgba(139, 92, 246, 0.063)",
+    borderColor: "rgba(139, 92, 246, 0.25)",
+  },
+  iconCircleDisable: {
+    backgroundColor: "rgba(239, 68, 68, 0.082)",
+    borderColor: "rgba(239, 68, 68, 0.25)",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    fontFamily: typography.primarySemibold,
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  description: {
+    fontSize: 13,
+    fontFamily: typography.secondary,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  infoBox: {
+    width: "100%",
+    backgroundColor: "#0F172A",
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  warningBox: {
+    width: "100%",
+    backgroundColor: "#0F172A",
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  infoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  infoText: {
+    fontSize: 12,
+    fontFamily: typography.secondary,
+    color: "#94A3B8",
+  },
+  buttons: {
+    width: "100%",
+    gap: 10,
+  },
+  primaryBtn: {
+    width: "100%",
+    height: 48,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  primaryBtnEnable: {
+    backgroundColor: "#8B5CF6",
+  },
+  primaryBtnDisable: {
+    backgroundColor: "#EF4444",
+  },
+  primaryBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
+    color: "#FFFFFF",
+  },
+  cancelBtn: {
+    width: "100%",
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2D3B4D",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
+    color: "#94A3B8",
+  },
+});
+
+// 2FA Progress Modal styles (KD4bh enable / WGJnV disable)
 const tfaModalStyles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -2706,15 +2952,21 @@ const tfaModalStyles = StyleSheet.create({
     padding: spacing.lg,
   },
   card: {
-    width: 320,
+    width: 342,
     maxWidth: "100%",
     backgroundColor: "#1E293B",
     borderRadius: 24,
     borderWidth: 1,
     borderColor: "#2D3B4D",
-    paddingTop: 40,
-    paddingHorizontal: 32,
-    paddingBottom: 32,
+    overflow: "hidden",
+  },
+  cardDisable: {
+    borderColor: "rgba(239, 68, 68, 0.157)",
+  },
+  modalInner: {
+    paddingTop: 32,
+    paddingHorizontal: 28,
+    paddingBottom: 24,
     alignItems: "center",
     gap: 24,
   },
@@ -2724,25 +2976,27 @@ const tfaModalStyles = StyleSheet.create({
     borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: 2,
   },
   iconCircleBlue: {
-    backgroundColor: "rgba(59, 130, 246, 0.125)",
+    backgroundColor: "rgba(59, 130, 246, 0.071)",
     borderColor: "rgba(59, 130, 246, 0.25)",
   },
   iconCircleRed: {
-    backgroundColor: "rgba(239, 68, 68, 0.125)",
+    backgroundColor: "rgba(239, 68, 68, 0.071)",
     borderColor: "rgba(239, 68, 68, 0.25)",
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
+    fontWeight: "700",
     fontFamily: typography.primarySemibold,
     color: "#FFFFFF",
     textAlign: "center",
   },
   stepper: {
     width: "100%",
-    gap: 12,
+    gap: 18,
+    paddingHorizontal: 4,
   },
   stepItem: {
     flexDirection: "row",
@@ -2750,11 +3004,11 @@ const tfaModalStyles = StyleSheet.create({
     gap: 12,
   },
   stepDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#334155",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(100, 116, 139, 0.4)",
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
@@ -2762,30 +3016,40 @@ const tfaModalStyles = StyleSheet.create({
   stepDotComplete: {
     backgroundColor: "#10B981",
     borderColor: "#10B981",
+    borderWidth: 0,
   },
   stepDotActive: {
     borderColor: "#3B82F6",
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    borderWidth: 2.5,
+    backgroundColor: "transparent",
   },
   stepDotFailed: {
     borderColor: colors.error,
     backgroundColor: "rgba(239, 68, 68, 0.1)",
   },
   stepText: {
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: "500",
     fontFamily: typography.secondary,
-    color: "#94A3B8",
+    color: "#64748B",
   },
   stepTextComplete: {
+    fontWeight: "600",
     color: "#F8FAFC",
   },
   stepTextActive: {
+    fontWeight: "700",
     color: "#F8FAFC",
     fontFamily: typography.secondarySemibold,
   },
   stepTextFailed: {
     color: colors.error,
     fontFamily: typography.secondarySemibold,
+  },
+  bottomSection: {
+    paddingHorizontal: 28,
+    paddingBottom: 24,
+    gap: 12,
   },
   progressContainer: {
     width: "100%",
