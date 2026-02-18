@@ -247,7 +247,7 @@ function TwoFAConfirmModal({
           {/* Icon */}
           <View style={[tfaConfirmStyles.iconCircle, isEnabling ? tfaConfirmStyles.iconCircleEnable : tfaConfirmStyles.iconCircleDisable]}>
             {isEnabling ? (
-              <ShieldCheck size={36} color="#8B5CF6" />
+              <ShieldCheck size={36} color="#3B82F6" />
             ) : (
               <ShieldOff size={36} color="#EF4444" />
             )}
@@ -275,11 +275,11 @@ function TwoFAConfirmModal({
                 <Text style={tfaConfirmStyles.infoText}>Pair your mobile device</Text>
               </View>
               <View style={tfaConfirmStyles.infoRow}>
-                <View style={[tfaConfirmStyles.infoDot, { backgroundColor: "#8B5CF6" }]} />
+                <View style={[tfaConfirmStyles.infoDot, { backgroundColor: "#3B82F6" }]} />
                 <Text style={tfaConfirmStyles.infoText}>Register secondary key on-chain</Text>
               </View>
               <View style={tfaConfirmStyles.infoRow}>
-                <View style={[tfaConfirmStyles.infoDot, { backgroundColor: "#10B981" }]} />
+                <View style={[tfaConfirmStyles.infoDot, { backgroundColor: "#3B82F6" }]} />
                 <Text style={tfaConfirmStyles.infoText}>Dual-key signing for all transactions</Text>
               </View>
             </View>
@@ -2836,7 +2836,7 @@ const tfaConfirmStyles = StyleSheet.create({
     gap: 20,
   },
   cardEnable: {
-    borderColor: "rgba(139, 92, 246, 0.188)",
+    borderColor: "rgba(59, 130, 246, 0.188)",
   },
   cardDisable: {
     borderColor: "rgba(239, 68, 68, 0.188)",
@@ -2850,8 +2850,8 @@ const tfaConfirmStyles = StyleSheet.create({
     borderWidth: 2,
   },
   iconCircleEnable: {
-    backgroundColor: "rgba(139, 92, 246, 0.063)",
-    borderColor: "rgba(139, 92, 246, 0.25)",
+    backgroundColor: "rgba(59, 130, 246, 0.07)",
+    borderColor: "rgba(59, 130, 246, 0.25)",
   },
   iconCircleDisable: {
     backgroundColor: "rgba(239, 68, 68, 0.082)",
@@ -2914,7 +2914,7 @@ const tfaConfirmStyles = StyleSheet.create({
     gap: 8,
   },
   primaryBtnEnable: {
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#3B82F6",
   },
   primaryBtnDisable: {
     backgroundColor: "#EF4444",
