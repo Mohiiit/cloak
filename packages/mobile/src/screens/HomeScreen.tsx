@@ -1203,8 +1203,9 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.recentListCard}>
           {recentActivityItems.length === 0 ? (
             <View style={styles.recentEmptyState}>
-              <Ghost size={40} color={colors.textMuted} style={{ opacity: 0.35 }} />
+              <Ghost size={48} color={colors.textSecondary} style={{ opacity: 0.5 }} />
               <Text style={styles.recentEmptyText}>No activity yet</Text>
+              <Text style={styles.recentEmptyHint}>Your transactions will appear here</Text>
             </View>
           ) : (
             recentActivityItems.map((item, index) => {
@@ -1253,6 +1254,7 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: {
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 96,
@@ -1635,6 +1637,7 @@ const styles = StyleSheet.create({
 
   // Recent Activity
   recentSection: {
+    flex: 1,
     marginBottom: 14,
   },
   recentHeader: {
@@ -1658,6 +1661,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondarySemibold,
   },
   recentListCard: {
+    flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
@@ -1693,16 +1697,24 @@ const styles = StyleSheet.create({
     fontFamily: typography.primarySemibold,
   },
   recentEmptyState: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 36,
-    gap: 10,
+    paddingVertical: 48,
+    gap: 8,
   },
   recentEmptyText: {
-    fontSize: 13,
+    fontSize: 15,
+    color: colors.textSecondary,
+    fontFamily: typography.primarySemibold,
+    opacity: 0.7,
+    marginTop: 4,
+  },
+  recentEmptyHint: {
+    fontSize: 12,
     color: colors.textMuted,
     fontFamily: typography.secondary,
-    opacity: 0.6,
+    opacity: 0.5,
   },
 
   // Claim Success Card
