@@ -77,7 +77,7 @@ export default function App() {
     return <Settings wallet={w} onBack={() => setScreen("main")} />;
   }
   if (screen === "activity") {
-    return <ActivityScreen onBack={() => setScreen("main")} />;
+    return <ActivityScreen onBack={() => setScreen("main")} walletAddress={w.wallet?.starkAddress} />;
   }
   if (screen === "contacts") {
     return <ContactsScreen onBack={() => setScreen("main")} />;

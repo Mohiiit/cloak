@@ -52,6 +52,8 @@ export default function ImportAccountScreen({ navigation }: { navigation: any })
 
       // Address is derived automatically from the private key
       await wallet.importWallet(trimmedKey);
+      // Navigate back to AppTabs — wallet state change will show the correct screen
+      navigation.goBack();
     } catch (err: any) {
       const message =
         err?.message || 'Failed to import account. Please check your private key and try again.';

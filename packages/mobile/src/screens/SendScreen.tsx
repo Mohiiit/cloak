@@ -391,11 +391,15 @@ export default function SendScreen({ navigation }: any) {
         return;
       }
 
+      // Find matching contact for recipientName (if user selected from contacts)
+      const matchedContact = contacts.find((c) => c.tongoAddress === recipient.trim());
       const result = await execute({
         action: "transfer",
         token: wallet.selectedToken,
         amount,
         recipient: recipient.trim(),
+        recipientName: matchedContact?.nickname || undefined,
+        note: note || undefined,
       });
 
       setTxHash(result.txHash);

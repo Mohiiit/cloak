@@ -233,7 +233,6 @@ function ThemedModal({
       onRequestClose={onClose}
       dismissOnBackdrop
     >
-      <View style={[styles.card, { borderColor }]}>
         {/* Icon */}
         <View
           style={[
@@ -302,7 +301,6 @@ function ThemedModal({
             <Text style={[styles.okButtonText, { color: iconColor }]}>OK</Text>
           </TouchableOpacity>
         )}
-      </View>
     </KeyboardSafeModal>
   );
 }

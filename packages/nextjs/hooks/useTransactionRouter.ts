@@ -18,7 +18,13 @@ import {
   check2FAEnabled,
   request2FAApproval,
 } from "~~/lib/two-factor";
-import { serializeCalls, formatWardAmount } from "@cloak-wallet/sdk";
+import {
+  serializeCalls,
+  formatWardAmount,
+  saveTransaction,
+  confirmTransaction,
+  getProvider,
+} from "@cloak-wallet/sdk";
 
 interface TransactionMeta {
   action: string;
@@ -60,6 +66,19 @@ export function useTransactionRouter() {
           needsGuardian2fa: wardNeeds.guardianHas2fa,
         });
         if (wardResult.approved && wardResult.txHash) {
+          saveTransaction({
+            wallet_address: address,
+            tx_hash: wardResult.txHash,
+            type: (meta.action || "transfer") as any,
+            token: meta.token || "STRK",
+            amount: meta.amount || null,
+            recipient: meta.recipient || null,
+            status: "pending",
+            account_type: "ward",
+            network: "sepolia",
+            platform: "web",
+          }).catch(() => {});
+          confirmTransaction(getProvider(), wardResult.txHash).catch(() => {});
           return wardResult.txHash;
         }
         throw new Error(wardResult.error || "Ward approval failed");
@@ -82,6 +101,19 @@ export function useTransactionRouter() {
             txHash: "",
           });
           if (result.approved && result.txHash) {
+            saveTransaction({
+              wallet_address: address,
+              tx_hash: result.txHash,
+              type: (meta.action || "transfer") as any,
+              token: meta.token || "STRK",
+              amount: meta.amount || null,
+              recipient: meta.recipient || null,
+              status: "pending",
+              account_type: "normal",
+              network: "sepolia",
+              platform: "web",
+            }).catch(() => {});
+            confirmTransaction(getProvider(), result.txHash).catch(() => {});
             return result.txHash;
           }
           throw new Error(result.error || "Transaction not approved");
@@ -91,7 +123,21 @@ export function useTransactionRouter() {
       // 3. Direct execution via connected wallet
       if (!account) throw new Error("Wallet not connected");
       const tx = await account.execute(calls);
-      return tx.transaction_hash;
+      const txHash = tx.transaction_hash;
+      saveTransaction({
+        wallet_address: address,
+        tx_hash: txHash,
+        type: (meta.action || "transfer") as any,
+        token: meta.token || "STRK",
+        amount: meta.amount || null,
+        recipient: meta.recipient || null,
+        status: "pending",
+        account_type: "normal",
+        network: "sepolia",
+        platform: "web",
+      }).catch(() => {});
+      confirmTransaction(getProvider(), txHash).catch(() => {});
+      return txHash;
     },
     [account, address],
   );

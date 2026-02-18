@@ -80,8 +80,8 @@ export default function AppNavigator() {
   const bottomPadding = Math.max(insets.bottom, Platform.OS === "android" ? 12 : 24);
   const initialRouteName: keyof AppTabParamList = "Home";
 
-  // Gate: show deploy screen if wallet exists but is not deployed
-  if (wallet.isWalletCreated && !wallet.isDeployed && !wallet.isLoading && !wallet.isCheckingDeployment) {
+  // Gate: show deploy screen if wallet exists but is not deployed (or still checking)
+  if (wallet.isWalletCreated && !wallet.isDeployed && !wallet.isLoading) {
     return (
       <View style={styles.root}>
         <DeployScreen />

@@ -14,6 +14,7 @@ import {
   ArrowDownToLine,
   RefreshCw,
 } from "lucide-react-native";
+import { getTransactions, type TransactionRecord } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
 import { TOKENS, type TokenKey } from "../lib/tokens";
@@ -21,6 +22,14 @@ import { colors, spacing, fontSize, borderRadius, typography } from "../lib/them
 import { testIDs, testProps } from "../testing/testIDs";
 
 type FilterKey = "all" | "sent" | "received" | "shield";
+
+/** Local extension of TxMetadata with Supabase-sourced fields */
+interface TxMetadataExtended extends TxMetadata {
+  status?: string;
+  errorMessage?: string;
+  accountType?: string;
+  fee?: string;
+}
 
 function formatIntWithCommas(intStr: string): string {
   const sanitized = (intStr || "0").replace(/\D/g, "");
@@ -60,7 +69,7 @@ function matchesFilter(type: TxMetadata["type"], filter: FilterKey): boolean {
   return true;
 }
 
-function getTxTitle(tx: TxMetadata): string {
+function getTxTitle(tx: TxMetadataExtended): string {
   switch (tx.type) {
     case "send":
       return tx.recipientName ? `Sent to ${tx.recipientName}` : "Sent payment";
@@ -77,7 +86,10 @@ function getTxTitle(tx: TxMetadata): string {
   }
 }
 
-function getTxStatus(tx: TxMetadata): string {
+function getTxStatus(tx: TxMetadataExtended): string {
+  // Show Supabase status if available
+  if (tx.status === "failed") return "Failed";
+  if (tx.status === "pending") return "Pending";
   switch (tx.type) {
     case "send":
       return "Shielded";
@@ -93,11 +105,17 @@ function getTxStatus(tx: TxMetadata): string {
   }
 }
 
-function getTxPolarity(tx: TxMetadata): "credit" | "debit" {
+function getStatusColor(tx: TxMetadataExtended): string | undefined {
+  if (tx.status === "failed") return colors.error;
+  if (tx.status === "pending") return "#F59E0B";
+  return undefined;
+}
+
+function getTxPolarity(tx: TxMetadataExtended): "credit" | "debit" {
   return ["receive", "fund", "rollover"].includes(tx.type) ? "credit" : "debit";
 }
 
-function getTxColor(tx: TxMetadata): string {
+function getTxColor(tx: TxMetadataExtended): string {
   switch (tx.type) {
     case "send":
       return colors.primary;
@@ -113,7 +131,7 @@ function getTxColor(tx: TxMetadata): string {
   }
 }
 
-function getTxIcon(tx: TxMetadata): React.ReactNode {
+function getTxIcon(tx: TxMetadataExtended): React.ReactNode {
   switch (tx.type) {
     case "fund":
       return <ShieldPlus size={18} color={colors.success} />;
@@ -130,7 +148,7 @@ function getTxIcon(tx: TxMetadata): React.ReactNode {
   }
 }
 
-function getTxIconBg(tx: TxMetadata): string {
+function getTxIconBg(tx: TxMetadataExtended): string {
   switch (tx.type) {
     case "fund":
     case "receive":
@@ -163,18 +181,54 @@ function formatTokenFromUnits(unitsStr: string, token: TokenKey): string {
   return `${w.toString()}.${f.toString().padStart(2, "0")} ${token}`;
 }
 
+/** Convert a Supabase TransactionRecord to our local TxMetadataExtended */
+function recordToMetadata(r: TransactionRecord): TxMetadataExtended {
+  return {
+    txHash: r.tx_hash,
+    recipient: r.recipient || undefined,
+    recipientName: r.recipient_name || undefined,
+    note: r.note || undefined,
+    privacyLevel: "private",
+    timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+    type: r.type === "transfer" ? "send" : (r.type as any),
+    token: r.token || "STRK",
+    amount: r.amount || undefined,
+    status: r.status,
+    errorMessage: r.error_message || undefined,
+    accountType: r.account_type || undefined,
+    fee: r.fee || undefined,
+  };
+}
+
 export default function ActivityScreen({ navigation }: any) {
   const wallet = useWallet();
-  const [history, setHistory] = useState<TxMetadata[]>([]);
+  const [history, setHistory] = useState<TxMetadataExtended[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
 
   const loadNotes = useCallback(async () => {
+    // Try Supabase first, fall back to local storage
+    const walletAddress = wallet.keys?.starkAddress;
+    if (walletAddress) {
+      try {
+        const records = await getTransactions(walletAddress);
+        if (records && records.length > 0) {
+          const arr = records.map(recordToMetadata);
+          arr.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          setHistory(arr);
+          return;
+        }
+      } catch {
+        // Fall through to local storage
+      }
+    }
+
+    // Fallback: local AsyncStorage notes
     const notes = await getTxNotes();
-    const arr = Object.values(notes || {}).filter(Boolean) as TxMetadata[];
+    const arr = (Object.values(notes || {}).filter(Boolean) as TxMetadataExtended[]);
     arr.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     setHistory(arr);
-  }, []);
+  }, [wallet.keys?.starkAddress]);
 
   useEffect(() => {
     loadNotes();
@@ -197,7 +251,7 @@ export default function ActivityScreen({ navigation }: any) {
   );
 
   const grouped = useMemo(() => {
-    const buckets: Record<"Today" | "Yesterday" | "Earlier", TxMetadata[]> = {
+    const buckets: Record<"Today" | "Yesterday" | "Earlier", TxMetadataExtended[]> = {
       Today: [],
       Yesterday: [],
       Earlier: [],
@@ -261,7 +315,9 @@ export default function ActivityScreen({ navigation }: any) {
                   const token = (tx.token || "STRK") as TokenKey;
                   const tokenLabel = formatTokenFromUnits(amountUnitsRaw, token);
                   const title = getTxTitle(tx);
-                  const subtitle = `${formatRelativeTime(tx.timestamp)} \u00b7 ${getTxStatus(tx)}`;
+                  const statusText = getTxStatus(tx);
+                  const statusColor = getStatusColor(tx);
+                  const subtitle = `${formatRelativeTime(tx.timestamp)} \u00b7 ${statusText}`;
 
                   const rowTestID = tx.txHash
                     ? `${testIDs.activity.rowPrefix}.${tx.txHash}`
@@ -292,7 +348,13 @@ export default function ActivityScreen({ navigation }: any) {
                         <Text style={styles.titleText} numberOfLines={1}>
                           {title}
                         </Text>
-                        <Text style={styles.subtitleText} numberOfLines={1}>
+                        <Text
+                          style={[
+                            styles.subtitleText,
+                            statusColor ? { color: statusColor } : undefined,
+                          ]}
+                          numberOfLines={1}
+                        >
                           {subtitle}
                         </Text>
                       </View>
@@ -433,4 +495,3 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondary,
   },
 });
-

@@ -21,6 +21,8 @@ import {
   buildResourceBoundsFromEstimate,
   serializeResourceBounds,
   signHash,
+  saveTransaction,
+  confirmTransaction,
 } from "@cloak-wallet/sdk";
 import type { TokenKey, WardApprovalResult } from "@cloak-wallet/sdk";
 import { Account, hash, num, transaction } from "starknet";
@@ -137,10 +139,30 @@ export async function routeTransaction(
     // If guardian is not required, execute directly.
     const needsLocalWardSignature = !wardNeeds.wardHas2fa;
     if (needsLocalWardSignature && !wardNeeds.needsGuardian) {
-      if (action === "fund") return acct.fund(BigInt(opts?.amount!));
-      if (action === "transfer") return acct.transfer(opts?.recipient!, BigInt(opts?.amount!));
-      if (action === "withdraw") return acct.withdraw(BigInt(opts?.amount!));
-      return acct.rollover();
+      let result: any;
+      if (action === "fund") result = await acct.fund(BigInt(opts?.amount!));
+      else if (action === "transfer") result = await acct.transfer(opts?.recipient!, BigInt(opts?.amount!));
+      else if (action === "withdraw") result = await acct.withdraw(BigInt(opts?.amount!));
+      else result = await acct.rollover();
+
+      const txHash = result.txHash || result.transaction_hash;
+      if (txHash) {
+        saveTransaction({
+          wallet_address: wallet.starkAddress,
+          tx_hash: txHash,
+          type: action,
+          token,
+          amount: opts?.amount || null,
+          recipient: opts?.recipient || null,
+          status: "pending",
+          account_type: "ward",
+          network: "sepolia",
+          platform: "extension",
+        }).catch(() => {});
+        const provider = getProvider();
+        confirmTransaction(provider, txHash).catch(() => {});
+      }
+      return result;
     }
 
     const rawAmount = opts?.amount?.toString() || null;
@@ -170,6 +192,20 @@ export async function routeTransaction(
     );
     notifyComplete(wardResult.approved, wardResult.txHash);
     if (wardResult.approved && wardResult.txHash) {
+      saveTransaction({
+        wallet_address: wallet.starkAddress,
+        tx_hash: wardResult.txHash,
+        type: action,
+        token,
+        amount: opts?.amount || null,
+        recipient: opts?.recipient || null,
+        status: "pending",
+        account_type: "ward",
+        network: "sepolia",
+        platform: "extension",
+      }).catch(() => {});
+      const provider = getProvider();
+      confirmTransaction(provider, wardResult.txHash).catch(() => {});
       return { txHash: wardResult.txHash };
     }
     throw new Error(wardResult.error || "Ward approval failed");
@@ -193,16 +229,50 @@ export async function routeTransaction(
     });
     notifyComplete(result.approved, result.txHash);
     if (result.approved && result.txHash) {
+      saveTransaction({
+        wallet_address: wallet.starkAddress,
+        tx_hash: result.txHash,
+        type: action,
+        token,
+        amount: opts?.amount || null,
+        recipient: opts?.recipient || null,
+        status: "pending",
+        account_type: "normal",
+        network: "sepolia",
+        platform: "extension",
+      }).catch(() => {});
+      const provider = getProvider();
+      confirmTransaction(provider, result.txHash).catch(() => {});
       return { txHash: result.txHash };
     }
     throw new Error(result.error || "Transaction not approved");
   }
 
   // 4. Direct execution
-  if (action === "fund") return acct.fund(BigInt(opts?.amount!));
-  if (action === "transfer") return acct.transfer(opts?.recipient!, BigInt(opts?.amount!));
-  if (action === "withdraw") return acct.withdraw(BigInt(opts?.amount!));
-  return acct.rollover();
+  let directResult: any;
+  if (action === "fund") directResult = await acct.fund(BigInt(opts?.amount!));
+  else if (action === "transfer") directResult = await acct.transfer(opts?.recipient!, BigInt(opts?.amount!));
+  else if (action === "withdraw") directResult = await acct.withdraw(BigInt(opts?.amount!));
+  else directResult = await acct.rollover();
+
+  const directTxHash = directResult.txHash || directResult.transaction_hash;
+  if (directTxHash) {
+    saveTransaction({
+      wallet_address: wallet.starkAddress,
+      tx_hash: directTxHash,
+      type: action,
+      token,
+      amount: opts?.amount || null,
+      recipient: opts?.recipient || null,
+      status: "pending",
+      account_type: "normal",
+      network: "sepolia",
+      platform: "extension",
+    }).catch(() => {});
+    const provider = getProvider();
+    confirmTransaction(provider, directTxHash).catch(() => {});
+  }
+  return directResult;
 }
 
 /**
@@ -234,7 +304,23 @@ export async function routeRawCalls(
         signer: wallet.privateKey,
       });
       const result = await account.execute(calls);
-      return { transaction_hash: result.transaction_hash };
+      const rawTxHash = result.transaction_hash;
+      if (rawTxHash) {
+        saveTransaction({
+          wallet_address: wallet.starkAddress,
+          tx_hash: rawTxHash,
+          type: "transfer",
+          token: "STRK",
+          amount: null,
+          recipient: null,
+          status: "pending",
+          account_type: "ward",
+          network: "sepolia",
+          platform: "extension",
+        }).catch(() => {});
+        confirmTransaction(provider, rawTxHash).catch(() => {});
+      }
+      return { transaction_hash: rawTxHash };
     }
 
     const localWardEnvelope = needsLocalWardSignature
@@ -263,6 +349,20 @@ export async function routeRawCalls(
     );
     notifyComplete(wardResult.approved, wardResult.txHash);
     if (wardResult.approved && wardResult.txHash) {
+      saveTransaction({
+        wallet_address: wallet.starkAddress,
+        tx_hash: wardResult.txHash,
+        type: "transfer",
+        token: "STRK",
+        amount: null,
+        recipient: null,
+        status: "pending",
+        account_type: "ward",
+        network: "sepolia",
+        platform: "extension",
+      }).catch(() => {});
+      const provider = getProvider();
+      confirmTransaction(provider, wardResult.txHash).catch(() => {});
       return { transaction_hash: wardResult.txHash };
     }
     throw new Error(wardResult.error || "Ward approval failed");
@@ -286,6 +386,20 @@ export async function routeRawCalls(
     });
     notifyComplete(result.approved, result.txHash);
     if (result.approved && result.txHash) {
+      saveTransaction({
+        wallet_address: wallet.starkAddress,
+        tx_hash: result.txHash,
+        type: "transfer",
+        token: "STRK",
+        amount: null,
+        recipient: null,
+        status: "pending",
+        account_type: "normal",
+        network: "sepolia",
+        platform: "extension",
+      }).catch(() => {});
+      const provider = getProvider();
+      confirmTransaction(provider, result.txHash).catch(() => {});
       return { transaction_hash: result.txHash };
     }
     throw new Error(result.error || "Transaction not approved");
@@ -298,6 +412,22 @@ export async function routeRawCalls(
     address: wallet.starkAddress,
     signer: wallet.privateKey,
   });
-  const result = await account.execute(calls);
-  return { transaction_hash: result.transaction_hash };
+  const directRawResult = await account.execute(calls);
+  const directRawTxHash = directRawResult.transaction_hash;
+  if (directRawTxHash) {
+    saveTransaction({
+      wallet_address: wallet.starkAddress,
+      tx_hash: directRawTxHash,
+      type: "transfer",
+      token: "STRK",
+      amount: null,
+      recipient: null,
+      status: "pending",
+      account_type: "normal",
+      network: "sepolia",
+      platform: "extension",
+    }).catch(() => {});
+    confirmTransaction(provider, directRawTxHash).catch(() => {});
+  }
+  return { transaction_hash: directRawTxHash };
 }

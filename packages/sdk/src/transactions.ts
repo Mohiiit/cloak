@@ -1,0 +1,178 @@
+/**
+ * Transaction tracking — persistent history in Supabase.
+ *
+ * All three frontends (web, extension, mobile) use these functions to save
+ * and query transaction records. Records survive app reinstalls and are
+ * available cross-device since they live in Supabase rather than local storage.
+ */
+
+import { SupabaseLite } from "./supabase";
+import { normalizeAddress } from "./ward";
+import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY } from "./config";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export type TransactionStatus = "pending" | "confirmed" | "failed";
+export type AccountType = "normal" | "ward" | "guardian";
+export type TransactionType = "fund" | "transfer" | "withdraw" | "rollover";
+
+export interface TransactionRecord {
+  id?: string;
+  wallet_address: string;
+  tx_hash: string;
+  type: TransactionType;
+  token: string;
+  amount?: string | null;
+  recipient?: string | null;
+  recipient_name?: string | null;
+  note?: string | null;
+  status: TransactionStatus;
+  error_message?: string | null;
+  account_type: AccountType;
+  ward_address?: string | null;
+  fee?: string | null;
+  network: string;
+  platform?: string | null;
+  created_at?: string;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+let _sharedSb: SupabaseLite | null = null;
+
+function getDefaultSb(): SupabaseLite {
+  if (!_sharedSb) {
+    _sharedSb = new SupabaseLite(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY);
+  }
+  return _sharedSb;
+}
+
+// ─── Core Functions ─────────────────────────────────────────────────────────
+
+/**
+ * Save a transaction record to Supabase.
+ * Normalizes wallet_address and ward_address.
+ * Fire-and-forget safe — callers should `.catch(() => {})`.
+ */
+export async function saveTransaction(
+  record: Omit<TransactionRecord, "id" | "created_at">,
+  sb?: SupabaseLite,
+): Promise<TransactionRecord | null> {
+  const client = sb || getDefaultSb();
+  const row: Record<string, any> = {
+    ...record,
+    wallet_address: normalizeAddress(record.wallet_address),
+    ward_address: record.ward_address ? normalizeAddress(record.ward_address) : null,
+  };
+  // Remove undefined fields
+  for (const key of Object.keys(row)) {
+    if (row[key] === undefined) row[key] = null;
+  }
+  try {
+    const rows = await client.insert<TransactionRecord>("transactions", row);
+    return rows[0] || null;
+  } catch (err) {
+    console.warn("[transactions] saveTransaction failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Update a transaction's status (pending → confirmed/failed).
+ * Optionally set error_message and fee.
+ */
+export async function updateTransactionStatus(
+  txHash: string,
+  status: TransactionStatus,
+  errorMessage?: string,
+  fee?: string,
+  sb?: SupabaseLite,
+): Promise<void> {
+  const client = sb || getDefaultSb();
+  const data: Record<string, any> = { status };
+  if (errorMessage !== undefined) data.error_message = errorMessage;
+  if (fee !== undefined) data.fee = fee;
+  try {
+    await client.update("transactions", `tx_hash=eq.${txHash}`, data);
+  } catch (err) {
+    console.warn("[transactions] updateTransactionStatus failed:", err);
+  }
+}
+
+/**
+ * Fetch transactions for a wallet address.
+ * Queries by wallet_address OR ward_address, deduplicates by tx_hash,
+ * and returns sorted by created_at DESC.
+ */
+export async function getTransactions(
+  walletAddress: string,
+  limit = 100,
+  sb?: SupabaseLite,
+): Promise<TransactionRecord[]> {
+  const client = sb || getDefaultSb();
+  const normalized = normalizeAddress(walletAddress);
+
+  // Fetch both: transactions where this address is the wallet, and where it's the ward
+  const [byWallet, byWard] = await Promise.all([
+    client.select<TransactionRecord>(
+      "transactions",
+      `wallet_address=eq.${normalized}`,
+      "created_at.desc",
+    ),
+    client.select<TransactionRecord>(
+      "transactions",
+      `ward_address=eq.${normalized}`,
+      "created_at.desc",
+    ),
+  ]);
+
+  // Deduplicate by tx_hash (same tx may appear in both queries)
+  const seen = new Set<string>();
+  const all: TransactionRecord[] = [];
+  for (const tx of [...byWallet, ...byWard]) {
+    if (!seen.has(tx.tx_hash)) {
+      seen.add(tx.tx_hash);
+      all.push(tx);
+    }
+  }
+
+  // Sort descending by created_at
+  all.sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return tb - ta;
+  });
+
+  return all.slice(0, limit);
+}
+
+/**
+ * Wait for on-chain confirmation, then update status.
+ * Reads fee from receipt if available.
+ */
+export async function confirmTransaction(
+  provider: any,
+  txHash: string,
+  sb?: SupabaseLite,
+): Promise<void> {
+  try {
+    const receipt = await provider.waitForTransaction(txHash);
+    const isReverted = (receipt as any).execution_status === "REVERTED";
+    const revertReason = (receipt as any).revert_reason;
+
+    // Extract actual fee from receipt
+    let fee: string | undefined;
+    if ((receipt as any).actual_fee) {
+      const feeObj = (receipt as any).actual_fee;
+      fee = typeof feeObj === "object" ? feeObj.amount : String(feeObj);
+    }
+
+    if (isReverted) {
+      await updateTransactionStatus(txHash, "failed", revertReason || "Transaction reverted", fee, sb);
+    } else {
+      await updateTransactionStatus(txHash, "confirmed", undefined, fee, sb);
+    }
+  } catch (err: any) {
+    await updateTransactionStatus(txHash, "failed", err?.message || "Confirmation failed", undefined, sb);
+  }
+}

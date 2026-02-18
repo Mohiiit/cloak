@@ -4,6 +4,7 @@ import { useTxHistory, type TxEvent } from "../hooks/useTxHistory";
 
 interface Props {
   onBack: () => void;
+  walletAddress?: string;
 }
 
 function TxIcon({ type }: { type: string }) {
@@ -31,8 +32,8 @@ function TxLabel({ type }: { type: string }) {
   }
 }
 
-export function ActivityScreen({ onBack }: Props) {
-  const { events, isLoading, error, refresh } = useTxHistory();
+export function ActivityScreen({ onBack, walletAddress }: Props) {
+  const { events, isLoading, error, refresh } = useTxHistory(walletAddress);
 
   return (
     <div className="flex flex-col h-[580px] bg-cloak-bg animate-fade-in">

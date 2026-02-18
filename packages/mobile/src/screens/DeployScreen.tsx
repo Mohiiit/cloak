@@ -15,9 +15,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import { ExternalLink, Copy, RefreshCw } from "lucide-react-native";
+import { ExternalLink, Copy, RefreshCw, ArrowLeft } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useToast } from "../components/Toast";
+import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
@@ -49,6 +50,7 @@ export default function DeployScreen() {
   const wallet = useWallet();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const { showConfirm, ModalComponent } = useThemedModal();
 
   const [deploying, setDeploying] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -112,6 +114,23 @@ export default function DeployScreen() {
           <Text style={styles.markerText}>{deployStatusMarker}</Text>
         </View>
       </View>
+      {/* Back button */}
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() =>
+          showConfirm(
+            "Use different account?",
+            "This will clear the current wallet data so you can create or import a different account.",
+            () => wallet.resetWallet(),
+            { destructive: true, confirmText: "Reset" },
+          )
+        }
+        hitSlop={12}
+      >
+        <ArrowLeft size={20} color={colors.textSecondary} />
+        <Text style={styles.backButtonText}>Back</Text>
+      </TouchableOpacity>
+
       {/* Header */}
       <View style={styles.header}>
         <DeployLogoBadge />
@@ -221,6 +240,7 @@ export default function DeployScreen() {
           </TouchableOpacity>
         ) : null}
       </View>
+      {ModalComponent}
     </KeyboardSafeScreen>
   );
 }
@@ -234,6 +254,17 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 30,
     gap: 18,
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+  },
+  backButtonText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontFamily: typography.secondary,
   },
   header: {
     alignItems: "center",

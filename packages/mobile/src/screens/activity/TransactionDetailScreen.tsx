@@ -11,6 +11,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { ArrowLeft, ArrowUpRight, Check, Copy, ExternalLink } from "lucide-react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import {
+  SupabaseLite,
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_KEY,
+  type TransactionRecord,
+} from "@cloak-wallet/sdk";
 import { colors, borderRadius, typography } from "../../lib/theme";
 import type { RootStackParamList } from "../../navigation/types";
 import { getTxNotes, type TxMetadata } from "../../lib/storage";
@@ -18,6 +24,14 @@ import { TOKENS, type TokenKey } from "../../lib/tokens";
 import { testIDs, testProps } from "../../testing/testIDs";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TransactionDetail">;
+
+/** Extended metadata including Supabase-sourced fields */
+interface TxMetadataExtended extends TxMetadata {
+  status?: string;
+  errorMessage?: string;
+  accountType?: string;
+  fee?: string;
+}
 
 function truncateMiddle(value: string, start = 6, end = 4): string {
   if (!value) return "";
@@ -49,6 +63,20 @@ function formatTokenAmountFixed2(unitsStr: string, token: TokenKey): string {
   return `${whole.toString()}.${frac.toString().padStart(2, "0")}`;
 }
 
+function formatFeeDisplay(feeWei?: string): string {
+  if (!feeWei) return "--";
+  try {
+    const value = BigInt(feeWei);
+    const unit = 10n ** 18n;
+    const scaled = (value * 10000n) / unit;
+    const w = scaled / 10000n;
+    const f = scaled % 10000n;
+    return `${w.toString()}.${f.toString().padStart(4, "0")} STRK`;
+  } catch {
+    return feeWei;
+  }
+}
+
 function typeLabel(type?: TxMetadata["type"] | string): string {
   switch (type) {
     case "send":
@@ -70,23 +98,85 @@ function isDebit(type?: TxMetadata["type"] | string): boolean {
   return type === "send" || type === "withdraw";
 }
 
+/** Status pill colors */
+function getStatusPill(status?: string): { label: string; dotColor: string; bgColor: string; borderColor: string } {
+  switch (status) {
+    case "failed":
+      return {
+        label: "Failed",
+        dotColor: colors.error,
+        bgColor: "rgba(239, 68, 68, 0.14)",
+        borderColor: "rgba(239, 68, 68, 0.22)",
+      };
+    case "pending":
+      return {
+        label: "Pending",
+        dotColor: "#F59E0B",
+        bgColor: "rgba(245, 158, 11, 0.14)",
+        borderColor: "rgba(245, 158, 11, 0.22)",
+      };
+    default:
+      return {
+        label: "Confirmed",
+        dotColor: colors.success,
+        bgColor: "rgba(16, 185, 129, 0.14)",
+        borderColor: "rgba(16, 185, 129, 0.22)",
+      };
+  }
+}
+
 export default function TransactionDetailScreen({ navigation, route }: Props) {
   const { txHash } = route.params;
 
-  const [meta, setMeta] = useState<TxMetadata | null>(null);
+  const [meta, setMeta] = useState<TxMetadataExtended | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
-    getTxNotes()
-      .then((notes) => {
-        if (!isMounted) return;
-        setMeta(notes?.[txHash] || null);
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setMeta(null);
-      });
+
+    async function loadData() {
+      // 1. Try Supabase first
+      try {
+        const sb = new SupabaseLite(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY);
+        const records = await sb.select<TransactionRecord>(
+          "transactions",
+          `tx_hash=eq.${txHash}`,
+        );
+        if (isMounted && records && records.length > 0) {
+          const r = records[0];
+          setMeta({
+            txHash: r.tx_hash,
+            recipient: r.recipient || undefined,
+            recipientName: r.recipient_name || undefined,
+            note: r.note || undefined,
+            privacyLevel: "private",
+            timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+            type: r.type === "transfer" ? "send" : (r.type as any),
+            token: r.token || "STRK",
+            amount: r.amount || undefined,
+            status: r.status,
+            errorMessage: r.error_message || undefined,
+            accountType: r.account_type || undefined,
+            fee: r.fee || undefined,
+          });
+          return;
+        }
+      } catch {
+        // Fall through to local
+      }
+
+      // 2. Fallback: local AsyncStorage
+      try {
+        const notes = await getTxNotes();
+        if (isMounted) {
+          setMeta(notes?.[txHash] || null);
+        }
+      } catch {
+        if (isMounted) setMeta(null);
+      }
+    }
+
+    loadData();
     return () => {
       isMounted = false;
     };
@@ -103,8 +193,9 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
 
   const dateValue = formatDateTime(meta?.timestamp);
   const typeValue = typeLabel(meta?.type);
-  const feeValue = "0.0034 STRK";
-  const networkValue = "Starknet Mainnet";
+  const feeValue = formatFeeDisplay(meta?.fee);
+  const networkValue = "Starknet Sepolia";
+  const statusPill = getStatusPill(meta?.status);
 
   const handleCopy = () => {
     Clipboard.setString(txHash);
@@ -131,11 +222,27 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
         <View style={styles.hero}>
           <View style={styles.heroIconCircle}>{headerIcon}</View>
           <Text style={styles.heroAmount}>{signedAmount}</Text>
-          <View style={styles.confirmPill}>
-            <View style={styles.confirmDot} />
-            <Text style={styles.confirmText}>Confirmed</Text>
+          <View
+            style={[
+              styles.confirmPill,
+              { backgroundColor: statusPill.bgColor, borderColor: statusPill.borderColor },
+            ]}
+          >
+            <View style={[styles.confirmDot, { backgroundColor: statusPill.dotColor }]} />
+            <Text style={[styles.confirmText, { color: statusPill.dotColor }]}>
+              {statusPill.label}
+            </Text>
           </View>
         </View>
+
+        {/* Error message for failed transactions */}
+        {meta?.status === "failed" && meta?.errorMessage ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorBoxText} numberOfLines={3}>
+              {meta.errorMessage}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.detailsCard}>
           <View style={styles.detailRow}>
@@ -150,7 +257,16 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
           <View style={styles.detailDivider} />
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Type</Text>
-            <Text style={[styles.detailValue, styles.detailValueType]}>{typeValue}</Text>
+            <View style={styles.typeRow}>
+              <Text style={[styles.detailValue, styles.detailValueType]}>{typeValue}</Text>
+              {meta?.accountType && meta.accountType !== "normal" ? (
+                <View style={styles.accountTypeBadge}>
+                  <Text style={styles.accountTypeBadgeText}>
+                    {meta.accountType === "ward" ? "Ward" : meta.accountType === "guardian" ? "Guardian" : meta.accountType}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
           <View style={styles.detailDivider} />
           <View style={styles.detailRow}>
@@ -272,6 +388,22 @@ const styles = StyleSheet.create({
     fontFamily: typography.primarySemibold,
   },
 
+  errorBox: {
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  errorBoxText: {
+    fontSize: 12,
+    color: colors.error,
+    fontFamily: typography.secondary,
+    lineHeight: 17,
+  },
+
   detailsCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
@@ -303,6 +435,22 @@ const styles = StyleSheet.create({
   },
   detailValueType: {
     color: colors.secondary,
+    fontFamily: typography.primarySemibold,
+  },
+  typeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  accountTypeBadge: {
+    backgroundColor: "rgba(59, 130, 246, 0.18)",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  accountTypeBadgeText: {
+    fontSize: 10,
+    color: colors.primary,
     fontFamily: typography.primarySemibold,
   },
 

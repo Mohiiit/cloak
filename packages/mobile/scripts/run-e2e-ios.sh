@@ -29,6 +29,10 @@ IOS_DERIVED_DATA="${IOS_DERIVED_DATA:-${MOBILE_DIR}/ios/build/e2e}"
 IOS_SIMULATOR_NAME="${IOS_SIMULATOR_NAME:-iPhone 16}"
 IOS_SIMULATOR_UDID="${IOS_SIMULATOR_UDID:-}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
+START_METRO="${START_METRO:-1}"
+SKIP_METRO="${SKIP_METRO:-0}"
+METRO_HOST="${METRO_HOST:-127.0.0.1}"
+METRO_PORT="${METRO_PORT:-8081}"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -36,11 +40,60 @@ log() {
   printf '[%s][ios-e2e] %s\n' "$(date -u +%H:%M:%S)" "$*"
 }
 
+stop_metro() {
+  if [[ -n "${METRO_PID:-}" ]]; then
+    log "Stopping Metro (PID ${METRO_PID})"
+    kill "${METRO_PID}" >/dev/null 2>&1 || true
+  fi
+}
+
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     log "Required command not found: $1"
     exit 1
   fi
+}
+
+wait_for_metro() {
+  for _ in {1..40}; do
+    if curl -fsS "http://${METRO_HOST}:${METRO_PORT}/status" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+start_metro() {
+  if [[ "${SKIP_METRO}" == "1" ]]; then
+    log "Skipping metro startup because SKIP_METRO=1"
+    return
+  fi
+
+  if (( START_METRO != 1 )); then
+    log "Skipping metro startup because START_METRO=${START_METRO}"
+    return
+  fi
+
+  if curl -fsS "http://${METRO_HOST}:${METRO_PORT}/status" >/dev/null 2>&1; then
+    log "Metro already running at http://${METRO_HOST}:${METRO_PORT}"
+    return
+  fi
+
+  log "Starting Metro at http://${METRO_HOST}:${METRO_PORT}"
+  (
+    cd "${MOBILE_DIR}"
+    yarn start --host "${METRO_HOST}" --port "${METRO_PORT}" --reset-cache > "${ARTIFACT_DIR}/metro.log" 2>&1
+  ) &
+  METRO_PID=$!
+  export METRO_PID
+
+  if wait_for_metro; then
+    log "Metro started (PID ${METRO_PID})"
+    return
+  fi
+
+  log "Metro did not become reachable after startup"
 }
 
 resolve_sim_udid() {
@@ -51,6 +104,9 @@ resolve_sim_udid() {
 require_cmd "${MAESTRO_BIN}"
 require_cmd xcodebuild
 require_cmd xcrun
+require_cmd curl
+
+trap stop_metro EXIT
 
 if [[ -z "${IOS_SIMULATOR_UDID}" ]]; then
   IOS_SIMULATOR_UDID="$(resolve_sim_udid "${IOS_SIMULATOR_NAME}")"
@@ -70,6 +126,8 @@ log "Simulator: ${IOS_SIMULATOR_NAME} (${IOS_SIMULATOR_UDID})"
 xcrun simctl list devices available > "${ARTIFACT_DIR}/simulators.available.txt" || true
 xcrun simctl boot "${IOS_SIMULATOR_UDID}" >/dev/null 2>&1 || true
 xcrun simctl bootstatus "${IOS_SIMULATOR_UDID}" -b
+
+start_metro
 
 if [[ "${SKIP_BUILD}" != "1" ]]; then
   log "Building iOS app (scheme=${IOS_SCHEME}, configuration=${IOS_CONFIGURATION})"

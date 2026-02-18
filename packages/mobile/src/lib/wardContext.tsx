@@ -34,6 +34,7 @@ import {
   requestWardApproval as sdkRequestWardApproval,
   serializeCalls,
   formatWardAmount,
+  saveTransaction,
   DEFAULT_RPC,
   CLOAK_WARD_CLASS_HASH,
   STRK_ADDRESS,
@@ -1142,6 +1143,23 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           final_tx_hash: txResponse.transaction_hash,
           responded_at: new Date().toISOString(),
         });
+
+        // Save failed transaction to persistent history for guardian
+        saveTransaction({
+          wallet_address: wallet.keys.starkAddress,
+          tx_hash: txResponse.transaction_hash,
+          type: (request.action || "transfer") as any,
+          token: request.token || "STRK",
+          amount: request.amount || null,
+          recipient: request.recipient || null,
+          status: "failed",
+          error_message: revertReason,
+          account_type: "guardian",
+          ward_address: request.ward_address,
+          network: "sepolia",
+          platform: "mobile",
+        }).catch(() => {});
+
         await fetchGuardianRequests();
         throw new Error(`Transaction reverted: ${revertReason}`);
       }
@@ -1156,6 +1174,21 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         updateBody.guardian_2fa_sig_json = JSON.stringify(guardian2faSig);
       }
       await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+
+      // Save confirmed transaction to persistent history for guardian
+      saveTransaction({
+        wallet_address: wallet.keys.starkAddress,
+        tx_hash: txResponse.transaction_hash,
+        type: (request.action || "transfer") as any,
+        token: request.token || "STRK",
+        amount: request.amount || null,
+        recipient: request.recipient || null,
+        status: "confirmed",
+        account_type: "guardian",
+        ward_address: request.ward_address,
+        network: "sepolia",
+        platform: "mobile",
+      }).catch(() => {});
 
       await fetchGuardianRequests();
       showToast("Guardian approval confirmed on-chain", "success");

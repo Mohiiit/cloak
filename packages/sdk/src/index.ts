@@ -89,6 +89,20 @@ export type {
   FeeRetryInfo,
 } from "./ward";
 
+// Transaction tracking
+export {
+  saveTransaction,
+  updateTransactionStatus,
+  getTransactions,
+  confirmTransaction,
+} from "./transactions";
+export type {
+  TransactionRecord,
+  TransactionStatus,
+  TransactionType,
+  AccountType,
+} from "./transactions";
+
 // Types
 export type {
   TokenKey,

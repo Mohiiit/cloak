@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: ./settings-top.yaml
+- scrollUntilVisible:
+    element:
+      id: settings.keys.open.press
+    direction: DOWN
+- tapOn:
+    id: settings.keys.open.press
+- waitForAnimationToEnd
+- assertVisible:
+    text: Key Backup
+- takeScreenshot: 15-LcWF3-ios

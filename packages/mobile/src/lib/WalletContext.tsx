@@ -5,7 +5,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { hash, CallData, Account, RpcProvider } from "starknet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTongoBridge } from "../bridge/useTongoBridge";
-import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet } from "./keys";
+import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet, clearWallet } from "./keys";
 import { TokenKey, TOKENS } from "./tokens";
 import { useToast } from "../components/Toast";
 import { DEFAULT_RPC, CLOAK_ACCOUNT_CLASS_HASH } from "@cloak-wallet/sdk";
@@ -52,6 +52,7 @@ type WalletState = {
   // Actions
   createWallet: () => Promise<WalletKeys>;
   importWallet: (starkPrivateKey: string, starkAddress?: string) => Promise<WalletKeys>;
+  resetWallet: () => Promise<void>;
   refreshBalance: () => Promise<void>;
   refreshAllBalances: () => Promise<void>;
   fund: (amount: string) => Promise<{ txHash: string }>;
@@ -375,17 +376,31 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       };
 
       await saveWalletKeys(newKeys);
-      await AsyncStorage.setItem(MOCK_DEPLOY_FLAG_KEY, "false");
+
+      // Check if the account is already deployed on-chain before setting state
+      let deployed = false;
+      try {
+        const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+        await provider.getNonceForAddress(resolvedAddress);
+        deployed = true;
+      } catch {
+        // Account not deployed yet — that's fine
+      }
+
       setKeys(newKeys);
       setIsWalletCreated(true);
       setIsInitialized(true);
-      setIsDeployed(false);
+      setIsDeployed(deployed);
 
       // Refresh balance immediately
-      const state = await bridge.getState();
-      setBalance(state.balance);
-      setPending(state.pending);
-      setNonce(state.nonce);
+      try {
+        const state = await bridge.getState();
+        setBalance(state.balance);
+        setPending(state.pending);
+        setNonce(state.nonce);
+      } catch (e) {
+        console.warn("[WalletContext] Balance refresh after import failed:", e);
+      }
 
       return newKeys;
     },
@@ -450,6 +465,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return bridge.prepareRollover(keys.starkAddress);
   }, [bridge, keys]);
 
+  const resetWallet = useCallback(async () => {
+    await clearWallet();
+    setKeys(null);
+    setIsWalletCreated(false);
+    setIsInitialized(false);
+    setIsDeployed(false);
+  }, []);
+
   const validateAddress = useCallback(
     async (base58: string): Promise<boolean> => {
       if (!bridge.isReady) return false;
@@ -483,6 +506,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         deployAccount,
         createWallet,
         importWallet,
+        resetWallet,
         refreshBalance,
         refreshAllBalances,
         fund,

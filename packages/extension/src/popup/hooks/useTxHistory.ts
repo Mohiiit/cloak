@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { sendMessage } from "@/shared/messages";
+import { getTransactions, type TransactionRecord } from "@cloak-wallet/sdk";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
 
 export interface TxEvent {
@@ -12,45 +12,70 @@ export interface TxEvent {
   recipientName?: string;
   timestamp?: number;
   token?: string;
+  status?: string;
+  errorMessage?: string;
+  accountType?: string;
+  fee?: string;
 }
 
-export function useTxHistory() {
+function recordToEvent(r: TransactionRecord): TxEvent {
+  return {
+    txHash: r.tx_hash,
+    type: r.type === "transfer" ? "send" : r.type,
+    amount: r.amount || undefined,
+    to: r.recipient || undefined,
+    note: r.note || undefined,
+    recipientName: r.recipient_name || undefined,
+    timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+    token: r.token || "STRK",
+    status: r.status,
+    errorMessage: r.error_message || undefined,
+    accountType: r.account_type || undefined,
+    fee: r.fee || undefined,
+  };
+}
+
+export function useTxHistory(walletAddress?: string) {
   const [events, setEvents] = useState<TxEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!walletAddress) return;
     setIsLoading(true);
     setError(null);
     try {
-      const history = await sendMessage({ type: "GET_TX_HISTORY", fromNonce: 0 });
-      const notes = await getTxNotes();
-
-      const enriched: TxEvent[] = (history || []).map((event: any) => {
-        const txHash = event.txHash || event.transaction_hash || "";
-        const meta = notes[txHash];
-        return {
-          txHash,
-          type: event.type || meta?.type || "unknown",
-          amount: event.amount,
-          to: event.to,
-          from: event.from,
-          note: meta?.note,
-          recipientName: meta?.recipientName,
-          timestamp: meta?.timestamp || event.timestamp,
-          token: meta?.token,
-        };
-      });
-
-      enriched.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      setEvents(enriched);
+      // Primary: Supabase
+      const records = await getTransactions(walletAddress);
+      if (records.length > 0) {
+        setEvents(records.map(recordToEvent));
+        return;
+      }
     } catch {
-      // Silenced — on-chain getTxHistory often fails.
-      // Will be replaced with Supabase reads.
+      // Fall through to local fallback
+    }
+    try {
+      // Fallback: local storage notes
+      const notes = await getTxNotes();
+      const local: TxEvent[] = Object.values(notes || {})
+        .filter(Boolean)
+        .map((m: TxMetadata) => ({
+          txHash: m.txHash,
+          type: m.type || "unknown",
+          amount: m.amount,
+          note: m.note,
+          recipientName: m.recipientName,
+          timestamp: m.timestamp,
+          token: m.token,
+        }))
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      setEvents(local);
+    } catch {
+      // Silenced
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
