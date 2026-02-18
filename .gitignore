@@ -17,5 +17,11 @@ package-lock.json
 **/.env*
 !**/.env.example
 
+# Design files
+*.pen
+
+# E2E test artifacts
+packages/mobile/e2e/artifacts/
+
 # Build outputs
 **/dist
