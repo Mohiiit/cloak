@@ -5,7 +5,8 @@ export default {
     extend: {
       colors: {
         cloak: {
-          bg: "#0F172A",
+          bg: "#0A0F1C",
+          "input-bg": "#0F172A",
           card: "#1E293B",
           "surface-light": "#334155",
           border: "rgba(59, 130, 246, 0.2)",
