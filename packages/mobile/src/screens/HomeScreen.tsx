@@ -802,32 +802,7 @@ export default function HomeScreen({ navigation }: any) {
             txHash: hash || undefined,
           };
         })
-      : [
-          {
-            id: "placeholder-sent",
-            kind: "sent",
-            title: "Sent to alice.stark",
-            subtitle: "2 min ago",
-            amountLabel: "-50 units",
-            amountColor: colors.primaryLight,
-          },
-          {
-            id: "placeholder-received",
-            kind: "received",
-            title: "Received shielded",
-            subtitle: "15 min ago",
-            amountLabel: "+500 units",
-            amountColor: colors.success,
-          },
-          {
-            id: "placeholder-shielded",
-            kind: "shielded",
-            title: "Shielded funds",
-            subtitle: "30 min ago",
-            amountLabel: "-30 units",
-            amountColor: colors.primaryLight,
-          },
-        ];
+      : [];
 
   const handleClaim = async () => {
     setIsClaiming(true);

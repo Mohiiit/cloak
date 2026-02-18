@@ -354,10 +354,7 @@ export default function SendScreen({ navigation }: any) {
           label: c.nickname || `${c.tongoAddress.slice(0, 6)}...`,
           address: c.tongoAddress,
         }))
-      : [
-          { id: "fallback-alice", label: "alice.stark", address: "alice.stark" },
-          { id: "fallback-bob", label: "bob.g.stark", address: "bob.g.stark" },
-        ];
+      : [];
 
   const validateAmount = (): boolean => {
     const parsed = parseInt(amount, 10);
@@ -494,40 +491,6 @@ export default function SendScreen({ navigation }: any) {
         }}
         onCancel={() => setFailedModalVisible(false)}
       />
-
-      {/* Dev-only debug triggers */}
-      {__DEV__ && (
-        <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-          <TouchableOpacity
-            onPress={() => setSendingModalVisible(true)}
-            style={{ padding: 4, backgroundColor: "#333", borderRadius: 4 }}
-          >
-            <Text style={{ color: "#fff", fontSize: 10 }}>Test Send</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              setTxHash(
-                "0x7a3f1234567890abcdef1234567890abcdef1234567890abcdef1234e2b1",
-              );
-              setSuccessModalVisible(true);
-            }}
-            style={{ padding: 4, backgroundColor: "#333", borderRadius: 4 }}
-          >
-            <Text style={{ color: "#fff", fontSize: 10 }}>Test Success</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              setFailedError(
-                "Insufficient balance for gas fee. Fund your account and retry.",
-              );
-              setFailedModalVisible(true);
-            }}
-            style={{ padding: 4, backgroundColor: "#333", borderRadius: 4 }}
-          >
-            <Text style={{ color: "#fff", fontSize: 10 }}>Test Failed</Text>
-          </TouchableOpacity>
-        </View>
-      )}
 
       <View style={styles.progressRow}>
         <View style={[styles.progressSegment, styles.progressSegmentActive]} />

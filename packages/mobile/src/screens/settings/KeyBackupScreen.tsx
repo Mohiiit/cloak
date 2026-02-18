@@ -1,20 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, AlertTriangle, Copy, Info, KeyRound, Lock } from "lucide-react-native";
 import { useWallet } from "../../lib/WalletContext";
 import { borderRadius, colors, typography } from "../../lib/theme";
 import { testIDs, testProps } from "../../testing/testIDs";
 
-const SCREENSHOT_MODE_KEY = "cloak_ui_screenshot_mode";
-
-const SAMPLE = {
-  starkPk: "0x02a4c9b1...7e3f8d21",
-  starkAddr: "0x04a3...8f2d",
-  tongoPk: "0x07f2e8a3...4b1c9d56",
-  tongoAddr: "0x07f2...9d56",
-};
 
 function shortenMiddle(value: string, prefixLen: number, suffixLen: number): string {
   const v = value || "";
@@ -64,40 +55,21 @@ function KeyCard({
 
 export default function KeyBackupScreen({ navigation }: any) {
   const wallet = useWallet();
-  const [screenshotMode, setScreenshotMode] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(SCREENSHOT_MODE_KEY)
-      .then((val) => {
-        if (!mounted) return;
-        setScreenshotMode(val === "1" || val === "true");
-      })
-      .catch(() => {});
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   const starkPkDisplay = useMemo(() => {
-    if (screenshotMode !== false) return SAMPLE.starkPk;
     return shortenMiddle(wallet.keys?.starkPrivateKey || "", 10, 8);
-  }, [screenshotMode, wallet.keys?.starkPrivateKey]);
+  }, [wallet.keys?.starkPrivateKey]);
 
   const starkAddrDisplay = useMemo(() => {
-    if (screenshotMode !== false) return SAMPLE.starkAddr;
     return shortenMiddle(wallet.keys?.starkAddress || "", 6, 4);
-  }, [screenshotMode, wallet.keys?.starkAddress]);
+  }, [wallet.keys?.starkAddress]);
 
   const tongoPkDisplay = useMemo(() => {
-    if (screenshotMode !== false) return SAMPLE.tongoPk;
     return shortenMiddle(wallet.keys?.tongoPrivateKey || "", 10, 8);
-  }, [screenshotMode, wallet.keys?.tongoPrivateKey]);
+  }, [wallet.keys?.tongoPrivateKey]);
 
   const tongoAddrDisplay = useMemo(() => {
-    if (screenshotMode !== false) return SAMPLE.tongoAddr;
     return shortenMiddle(wallet.keys?.tongoAddress || "", 8, 6);
-  }, [screenshotMode, wallet.keys?.tongoAddress]);
+  }, [wallet.keys?.tongoAddress]);
 
   return (
     <View style={styles.container}>

@@ -783,59 +783,16 @@ export default function SettingsScreen({ navigation }: any) {
 
   const isBiometric2faEnabled = twoFactor.isEnabled;
 
-  const previewWards: Array<{
-    id: string;
-    name: string;
-    status: "active" | "frozen";
-    spendingLimit: string;
-    whitelist: string;
-  }> = [
-    {
-      id: "preview-family",
-      name: "Family Ward",
-      status: "active",
-      spendingLimit: "100 STRK/day",
-      whitelist: "STRK only",
-    },
-    {
-      id: "preview-travel",
-      name: "Travel Ward",
-      status: "frozen",
-      spendingLimit: "50 STRK/day",
-      whitelist: "STRK only",
-    },
-  ];
+  const wardItems = ward.wards.map((w) => ({
+    id: w.wardAddress,
+    name: shortenMiddle(w.wardAddress, 6, 4),
+    status: w.status === "frozen" ? ("frozen" as const) : ("active" as const),
+    spendingLimit: w.spendingLimitPerTx ? `${w.spendingLimitPerTx} STRK/tx` : "-- STRK/day",
+    whitelist: "STRK only",
+    raw: w,
+  }));
 
-  const wardItems = (() => {
-    if (ward.wards.length > 0) {
-      return ward.wards.map((w) => ({
-        id: w.wardAddress,
-        name: shortenMiddle(w.wardAddress, 6, 4),
-        status: w.status === "frozen" ? ("frozen" as const) : ("active" as const),
-        spendingLimit: w.spendingLimitPerTx ? `${w.spendingLimitPerTx} STRK/tx` : "-- STRK/day",
-        whitelist: "STRK only",
-        raw: w,
-      }));
-    }
-
-    if (__DEV__) {
-      return previewWards.map((w) => ({ ...w, raw: null as WardEntry | null }));
-    }
-
-    return [] as Array<any>;
-  })();
-
-  const previewContacts = [
-    { id: "preview-alice", nickname: "Alice", starknetAddress: "0x2563...8f3a" },
-    { id: "preview-bob", nickname: "Bob", starknetAddress: "0x7891...4c2d" },
-    { id: "preview-charlie", nickname: "Charlie", starknetAddress: "0x01ab...9b1e" },
-  ];
-
-  const contactItems = (() => {
-    if (contacts.length > 0) return contacts;
-    if (__DEV__) return previewContacts as any;
-    return contacts;
-  })();
+  const contactItems = contacts;
 
   if (!wallet.keys) {
     return (
