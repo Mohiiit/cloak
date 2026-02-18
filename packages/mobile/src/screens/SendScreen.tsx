@@ -505,7 +505,7 @@ export default function SendScreen({ navigation }: any) {
           <TextInput
             {...testProps(testIDs.send.recipientInput)}
             style={styles.recipientInput}
-            placeholder="alice.stark or 0x..."
+            placeholder="Recipient address or name..."
             placeholderTextColor={colors.textMuted}
             value={recipient}
             onChangeText={(t) => {
