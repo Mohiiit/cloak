@@ -1,0 +1,12 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: ../shared/open-tab.yaml
+    env:
+      TAB_ID: nav.tab.settings.press
+      ASSERT_TEXT: Settings
+- scrollUntilVisible:
+    element:
+      id: settings.cloak.qr.open.press
+    direction: UP
+- waitForAnimationToEnd

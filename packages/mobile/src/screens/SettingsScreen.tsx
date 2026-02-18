@@ -13,13 +13,13 @@ import {
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, Snowflake, Sun, ChevronDown, ChevronUp, RefreshCw, X } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, RefreshCw, X, Gem, QrCode } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
 import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
 import { useWardContext, type WardEntry, type WardCreationProgress, type WardCreationOptions } from "../lib/wardContext";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { KeyboardSafeScreen, KeyboardSafeModal } from "../components/KeyboardSafeContainer";
 import { testIDs, testProps } from "../testing/testIDs";
@@ -348,7 +348,13 @@ function WardCreationSetupModal({
   );
 }
 
-function CopyRow({ label, value }: { label: string; value: string }) {
+function shortenMiddle(value: string, prefixLen: number, suffixLen: number): string {
+  const v = value || "";
+  if (v.length <= prefixLen + suffixLen + 3) return v;
+  return `${v.slice(0, prefixLen)}...${v.slice(-suffixLen)}`;
+}
+
+function CopyRow({ label, value, displayValue }: { label: string; value: string; displayValue?: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -362,15 +368,15 @@ function CopyRow({ label, value }: { label: string; value: string }) {
       <Text style={styles.copyLabel}>{label}</Text>
       <TouchableOpacity style={styles.copyValueRow} onPress={handleCopy}>
         <Text style={styles.copyValue} numberOfLines={1}>
-          {value}
+          {displayValue ?? value}
         </Text>
-        <Text style={styles.copyBtn}>{copied ? "Copied!" : "Copy"}</Text>
+        <Text style={styles.copyBtn}>{copied ? "Copy" : "Copy"}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-function AddressQR({ value, glowColor }: { value: string; glowColor: "blue" | "violet" }) {
+function QrPreview({ glowColor }: { glowColor: "blue" | "violet" }) {
   return (
     <View style={styles.qrContainer}>
       {/* Subtle glow effect */}
@@ -378,14 +384,8 @@ function AddressQR({ value, glowColor }: { value: string; glowColor: "blue" | "v
         styles.qrGlow,
         glowColor === "blue" ? styles.qrGlowBlue : styles.qrGlowViolet
       ]} />
-      {/* White background for QR code readability */}
-      <View style={styles.qrWhiteBg}>
-        <QRCode
-          value={value}
-          size={120}
-          backgroundColor="#FFFFFF"
-          color="#000000"
-        />
+      <View style={styles.qrPlaceholder}>
+        <QrCode size={46} color={"rgba(148, 163, 184, 0.55)"} />
       </View>
     </View>
   );
@@ -466,7 +466,6 @@ export default function SettingsScreen({ navigation }: any) {
   const [wardInitialFundingAmount, setWardInitialFundingAmount] = useState("0.5");
   const [wardRetryMode, setWardRetryMode] = useState(false);
   const [wardLastOptions, setWardLastOptions] = useState<WardCreationOptions>({});
-  const [expandedWard, setExpandedWard] = useState<string | null>(null);
   const [wardAction, setWardAction] = useState<string | null>(null);
 
   const wardProgressCallback: WardCreationProgress = (step, _total, message) => {
@@ -566,6 +565,60 @@ export default function SettingsScreen({ navigation }: any) {
     setWardResult(null);
   };
 
+  const previewWards: Array<{
+    id: string;
+    name: string;
+    status: "active" | "frozen";
+    spendingLimit: string;
+    whitelist: string;
+  }> = [
+    {
+      id: "preview-family",
+      name: "Family Ward",
+      status: "active",
+      spendingLimit: "100 STRK/day",
+      whitelist: "STRK only",
+    },
+    {
+      id: "preview-travel",
+      name: "Travel Ward",
+      status: "frozen",
+      spendingLimit: "50 STRK/day",
+      whitelist: "STRK only",
+    },
+  ];
+
+  const wardItems = (() => {
+    if (ward.wards.length > 0) {
+      return ward.wards.map((w) => ({
+        id: w.wardAddress,
+        name: shortenMiddle(w.wardAddress, 6, 4),
+        status: w.status === "frozen" ? ("frozen" as const) : ("active" as const),
+        spendingLimit: w.spendingLimitPerTx ? `${w.spendingLimitPerTx} STRK/tx` : "-- STRK/day",
+        whitelist: "STRK only",
+        raw: w,
+      }));
+    }
+
+    if (__DEV__) {
+      return previewWards.map((w) => ({ ...w, raw: null as WardEntry | null }));
+    }
+
+    return [] as Array<any>;
+  })();
+
+  const previewContacts = [
+    { id: "preview-alice", nickname: "Alice", starknetAddress: "0x2563...8f3a" },
+    { id: "preview-bob", nickname: "Bob", starknetAddress: "0x7891...4c2d" },
+    { id: "preview-charlie", nickname: "Charlie", starknetAddress: "0x01ab...9b1e" },
+  ];
+
+  const contactItems = (() => {
+    if (contacts.length > 0) return contacts;
+    if (__DEV__) return previewContacts as any;
+    return contacts;
+  })();
+
   if (!wallet.keys) {
     return (
       <View style={styles.center}>
@@ -623,7 +676,7 @@ export default function SettingsScreen({ navigation }: any) {
       {/* Cloak Address */}
       <View style={[styles.section, styles.addressSection]}>
         <View style={styles.sectionHeader}>
-          <Shield size={18} color={colors.primary} />
+          <Gem size={18} color={colors.primary} />
           <Text style={styles.sectionTitle}>Your Cloak Address</Text>
         </View>
         <Text style={styles.sectionDesc}>
@@ -633,9 +686,12 @@ export default function SettingsScreen({ navigation }: any) {
           {...testProps(testIDs.settings.cloakQrOpen)}
           onPress={() => setQrModal({ label: "Cloak Address", value: wallet.keys!.tongoAddress })}
         >
-          <CopyRow label="Tongo Address" value={wallet.keys.tongoAddress} />
-          <AddressQR value={wallet.keys.tongoAddress} glowColor="blue" />
-          <Text style={styles.tapHint}>Tap to enlarge QR</Text>
+          <CopyRow
+            label="TONGO ADDRESS"
+            value={wallet.keys.tongoAddress}
+            displayValue={shortenMiddle(wallet.keys.tongoAddress, 12, 6)}
+          />
+          <QrPreview glowColor="blue" />
         </TouchableOpacity>
       </View>
 
@@ -652,27 +708,135 @@ export default function SettingsScreen({ navigation }: any) {
           {...testProps(testIDs.settings.starkQrOpen)}
           onPress={() => setQrModal({ label: "Starknet Address", value: wallet.keys!.starkAddress })}
         >
-          <CopyRow label="Starknet Address" value={wallet.keys.starkAddress} />
-          <AddressQR value={wallet.keys.starkAddress} glowColor="violet" />
-          <Text style={styles.tapHint}>Tap to enlarge QR</Text>
+          <CopyRow
+            label="STARKNET ADDRESS"
+            value={wallet.keys.starkAddress}
+            displayValue={shortenMiddle(wallet.keys.starkAddress, 10, 6)}
+          />
+          <QrPreview glowColor="violet" />
         </TouchableOpacity>
       </View>
 
+      {/* Manage Wards (Guardian features) */}
+      {!ward.isWard && (
+        <View style={[styles.section, styles.wardsCard]}>
+          <View style={styles.rowBetween}>
+            <View style={styles.sectionHeader}>
+              <ShieldAlert size={18} color={colors.warning} />
+              <Text style={styles.sectionTitle}>Manage Wards</Text>
+            </View>
+            {ward.isLoadingWards && <ActivityIndicator size="small" color={colors.warning} />}
+          </View>
+          <Text style={styles.sectionDesc}>
+            Create and manage ward accounts with spending limits that require your approval.
+          </Text>
+
+          {/* Ward Creation Modal */}
+          <WardCreationModal
+            visible={wardModalVisible}
+            currentStep={wardStep}
+            stepMessage={wardStepMessage}
+            failed={wardFailed}
+            errorMessage={wardError}
+            onRetry={() => openWardSetup("retry")}
+            onClose={handleWardModalClose}
+          />
+
+          <TouchableOpacity
+            {...testProps(testIDs.settings.wardCreate)}
+            style={styles.wardsCreateBtn}
+            onPress={() => navigation.getParent()?.navigate("WardSetup")}
+          >
+            <Plus size={14} color={colors.warning} />
+            <Text style={styles.wardsCreateBtnText}>Create New Ward</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.subheadLabel}>ACTIVE WARDS</Text>
+
+          <View style={styles.wardsListCard}>
+            {wardItems.map((w: any, idx: number) => {
+              const isFrozen = w.status === "frozen";
+              const showDivider = idx < wardItems.length - 1;
+              return (
+                <View key={w.id} style={[styles.wardRow, showDivider && styles.wardRowDivider]}>
+                  <View style={[styles.wardIconCircle, isFrozen ? styles.wardIconCircleFrozen : styles.wardIconCircleActive]}>
+                    <Shield size={14} color={isFrozen ? colors.error : colors.primaryLight} />
+                  </View>
+
+                  <View style={styles.wardLeft}>
+                    <View style={styles.wardNameRow}>
+                      <Text style={styles.wardNameText}>{w.name}</Text>
+                      <View style={styles.wardStatusInline}>
+                        <View style={[styles.statusDot, isFrozen ? styles.statusDotFrozen : styles.statusDotActive]} />
+                        <Text style={[styles.wardStatusTextInline, isFrozen ? styles.wardStatusFrozenText : styles.wardStatusActiveText]}>
+                          {isFrozen ? "Frozen" : "Active"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.wardMetaRow}>
+                      <Text style={styles.wardMetaLabel}>Spending Limit</Text>
+                      <Text style={styles.wardMetaValue}>{w.spendingLimit}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.wardRight}>
+                    <View style={styles.wardToggleRow}>
+                      <Text style={[styles.wardToggleLabel, isFrozen && { color: colors.error }]}>
+                        {isFrozen ? "Frozen" : "Freeze"}
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.toggleTrack, isFrozen && styles.toggleTrackOn]}
+                        onPress={async () => {
+                          if (!w.raw) return;
+                          setWardAction(w.raw.wardAddress);
+                          try {
+                            if (isFrozen) {
+                              await ward.unfreezeWard(w.raw.wardAddress);
+                            } else {
+                              await ward.freezeWard(w.raw.wardAddress);
+                            }
+                          } catch (e: any) {
+                            modal.showError("Failed", e.message || "Action failed", e.message);
+                          } finally {
+                            setWardAction(null);
+                          }
+                        }}
+                        disabled={!!wardAction || !w.raw}
+                      >
+                        <View style={[styles.toggleKnob, isFrozen && styles.toggleKnobOn]} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.wardMetaRight}>
+                      <Text style={styles.wardMetaLabel}>Whitelist</Text>
+                      <Text style={styles.wardMetaValue}>{w.whitelist}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       {/* Contacts */}
       <View style={styles.section}>
-        <View style={styles.contactsSectionHeader}>
+        <View style={styles.rowBetween}>
           <View style={styles.sectionHeader}>
-            <Users size={18} color={colors.primary} />
+            <Users size={18} color={colors.success} />
             <Text style={styles.sectionTitle}>Contacts</Text>
           </View>
           <TouchableOpacity
             {...testProps(testIDs.settings.contactsAddToggle)}
+            style={styles.contactsAddBtn}
             onPress={() => setShowAddContact(!showAddContact)}
           >
-            <Plus size={20} color={colors.primary} />
+            <Plus size={14} color="#fff" />
+            <Text style={styles.contactsAddBtnText}>Add</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.sectionDesc}>Saved addresses for quick sending</Text>
+        <Text style={styles.sectionDesc}>Save addresses for quick transfers.</Text>
 
         {showAddContact && (
           <View style={styles.addContactForm}>
@@ -685,7 +849,7 @@ export default function SettingsScreen({ navigation }: any) {
             />
             <TextInput
               style={styles.addContactInput}
-              placeholder="Tongo address (base58)"
+              placeholder="Starknet address (0x...)"
               placeholderTextColor={colors.textMuted}
               value={newContactAddr}
               onChangeText={setNewContactAddr}
@@ -701,6 +865,7 @@ export default function SettingsScreen({ navigation }: any) {
               onPress={async () => {
                 await addContact({
                   tongoAddress: newContactAddr.trim(),
+                  starknetAddress: newContactAddr.trim(),
                   nickname: newContactName.trim() || undefined,
                   isFavorite: false,
                   lastInteraction: Date.now(),
@@ -715,211 +880,46 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
         )}
 
-        {contacts.length === 0 && !showAddContact && (
-          <View style={styles.emptyContacts}>
-            <Users size={24} color={colors.textMuted} />
-            <Text style={styles.emptyContactsText}>No contacts saved</Text>
-          </View>
-        )}
-
-        {contacts.map((c) => (
-          <View key={c.id} style={styles.contactRow}>
-            <View style={styles.contactAvatar}>
-              <Text style={styles.contactAvatarText}>
-                {(c.nickname || c.tongoAddress)?.[0]?.toUpperCase() || "?"}
-              </Text>
-            </View>
-            <View style={styles.contactInfo}>
-              {c.nickname && <Text style={styles.contactName}>{c.nickname}</Text>}
-              <Text style={styles.contactAddr} numberOfLines={1}>{c.tongoAddress}</Text>
-            </View>
-            <TouchableOpacity onPress={() => removeContact(c.id)}>
-              <Trash2 size={16} color={colors.error} />
-            </TouchableOpacity>
-          </View>
-        ))}
-      </View>
-
-      {/* Manage Wards (Guardian features) */}
-      {!ward.isWard && (
-        <View style={[styles.section, styles.wardSection]}>
-          <View style={styles.contactsSectionHeader}>
-            <View style={styles.sectionHeader}>
-              <ShieldAlert size={18} color={colors.warning} />
-              <Text style={styles.sectionTitle}>Manage Wards</Text>
-            </View>
-            {ward.isLoadingWards && <ActivityIndicator size="small" color={colors.warning} />}
-          </View>
-          <Text style={styles.sectionDesc}>
-            Create and manage ward accounts. Wards are sub-accounts with spending limits that require your approval.
-          </Text>
-
-          {/* Ward Creation Modal */}
-          <WardCreationModal
-            visible={wardModalVisible}
-            currentStep={wardStep}
-            stepMessage={wardStepMessage}
-            failed={wardFailed}
-            errorMessage={wardError}
-            onRetry={() => openWardSetup("retry")}
-            onClose={handleWardModalClose}
-          />
-
-          {/* Partial ward recovery banner */}
-          {ward.partialWard && !isCreatingWard && (
-            <View style={styles.partialWardBanner}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.partialWardTitle}>Ward creation incomplete</Text>
-                <Text style={styles.partialWardDesc}>
-                  A ward was deployed but setup didn't finish. Resume to complete it.
-                </Text>
-              </View>
-              <View style={styles.partialWardActions}>
-                <TouchableOpacity
-                  {...testProps(testIDs.settings.wardPartialResume)}
-                  style={styles.partialWardRetryBtn}
-                  onPress={() => navigation.getParent()?.navigate("WardSetup")}
-                >
-                  <RefreshCw size={14} color="#fff" />
-                  <Text style={styles.partialWardRetryText}>Resume</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  {...testProps(testIDs.settings.wardPartialDismiss)}
-                  style={styles.partialWardDismissBtn}
-                  onPress={() => ward.clearPartialWard()}
-                >
-                  <Text style={styles.partialWardDismissText}>Dismiss</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* Create Ward Button */}
-          <TouchableOpacity
-            {...testProps(testIDs.settings.wardCreate)}
-            style={[styles.wardCreateBtn, (isCreatingWard || !wallet.isDeployed) && { opacity: 0.5 }]}
-            disabled={isCreatingWard || !wallet.isDeployed}
-            onPress={() => {
-              navigation.getParent()?.navigate("WardSetup");
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-              <Plus size={16} color="#fff" />
-              <Text style={styles.wardCreateBtnText}>Create New Ward</Text>
-            </View>
-          </TouchableOpacity>
-
-          {!wallet.isDeployed && (
-            <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: spacing.xs }}>
-              Deploy your account first to create wards.
-            </Text>
-          )}
-
-          {/* Ward List */}
-          {ward.wards.length === 0 && !ward.isLoadingWards && (
-            <View style={styles.emptyContacts}>
-              <ShieldAlert size={24} color={colors.textMuted} />
-              <Text style={styles.emptyContactsText}>No ward accounts yet</Text>
-            </View>
-          )}
-
-          {ward.wards.map((w: WardEntry) => {
-            const isExpanded = expandedWard === w.wardAddress;
-            const isFrozen = w.status === "frozen";
+        <View style={styles.contactsList}>
+          {contactItems.map((c: any, idx: number) => {
+            const name = c.nickname || "Contact";
+            const addr = c.starknetAddress || c.tongoAddress || "";
+            const initial = (name?.[0] || "?").toUpperCase();
+            const colorVariant = initial === "A" ? "blue" : initial === "B" ? "violet" : "green";
+            const divider = idx < contactItems.length - 1;
             return (
-              <View key={w.wardAddress} style={styles.wardCard}>
-                <TouchableOpacity
-                  style={styles.wardCardHeader}
-                  onPress={() => setExpandedWard(isExpanded ? null : w.wardAddress)}
-                >
-                  <View style={styles.wardCardLeft}>
-                    <View style={[styles.contactAvatar, { backgroundColor: isFrozen ? "rgba(239, 68, 68, 0.2)" : "rgba(245, 158, 11, 0.2)" }]}>
-                      <Text style={[styles.contactAvatarText, { color: isFrozen ? colors.error : colors.warning }]}>
-                        W
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.contactAddr} numberOfLines={1}>
-                        {w.wardAddress.slice(0, 10)}...{w.wardAddress.slice(-6)}
-                      </Text>
-                      <View style={[styles.wardStatusBadge, isFrozen ? styles.wardStatusFrozen : styles.wardStatusActive]}>
-                        <Text style={[styles.wardStatusText, isFrozen ? { color: colors.error } : { color: colors.success }]}>
-                          {isFrozen ? "Frozen" : "Active"}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  {isExpanded ? <ChevronUp size={18} color={colors.textMuted} /> : <ChevronDown size={18} color={colors.textMuted} />}
+              <View key={c.id} style={[styles.contactRowNew, divider && styles.contactRowDivider]}>
+                <View style={[
+                  styles.contactAvatarNew,
+                  colorVariant === "blue"
+                    ? styles.contactAvatarBlue
+                    : colorVariant === "violet"
+                    ? styles.contactAvatarViolet
+                    : styles.contactAvatarGreen,
+                ]}>
+                  <Text style={[
+                    styles.contactAvatarTextNew,
+                    colorVariant === "blue"
+                      ? { color: colors.primaryLight }
+                      : colorVariant === "violet"
+                      ? { color: colors.secondary }
+                      : { color: colors.success },
+                  ]}>
+                    {initial}
+                  </Text>
+                </View>
+                <View style={styles.contactInfoNew}>
+                  <Text style={styles.contactNameNew}>{name}</Text>
+                  <Text style={styles.contactAddrNew} numberOfLines={1}>{addr}</Text>
+                </View>
+                <TouchableOpacity onPress={() => (contacts.length ? removeContact(c.id) : undefined)} disabled={!contacts.length}>
+                  <Trash2 size={16} color={colors.error} />
                 </TouchableOpacity>
-
-                {isExpanded && (
-                  <View style={styles.wardCardActions}>
-                    <View style={styles.wardInfoRow}>
-                      <Text style={styles.wardInfoLabel}>Address</Text>
-                      <TouchableOpacity onPress={() => {
-                        Clipboard.setString(w.wardAddress);
-                      }}>
-                        <Text style={styles.wardInfoValue}>{w.wardAddress.slice(0, 14)}... <Text style={{ color: colors.primary, fontSize: fontSize.xs }}>Copy</Text></Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.wardInfoRow}>
-                      <Text style={styles.wardInfoLabel}>Guardian Required</Text>
-                      <Text style={styles.wardInfoValue}>{w.requireGuardianForAll ? "All txs" : "Above limit"}</Text>
-                    </View>
-
-                    {/* Action Buttons */}
-                    <View style={styles.wardActionsRow}>
-                      {/* Freeze / Unfreeze */}
-                      <TouchableOpacity
-                        style={[styles.wardActionBtn, isFrozen ? styles.wardActionUnfreeze : styles.wardActionFreeze]}
-                        disabled={wardAction === w.wardAddress}
-                        onPress={async () => {
-                          setWardAction(w.wardAddress);
-                          try {
-                            if (isFrozen) {
-                              await ward.unfreezeWard(w.wardAddress);
-                            } else {
-                              await ward.freezeWard(w.wardAddress);
-                            }
-                          } catch (e: any) {
-                            modal.showError("Failed", e.message || "Action failed", e.message);
-                          } finally {
-                            setWardAction(null);
-                          }
-                        }}
-                      >
-                        {wardAction === w.wardAddress ? (
-                          <ActivityIndicator size="small" color={isFrozen ? colors.success : colors.error} />
-                        ) : isFrozen ? (
-                          <>
-                            <Sun size={14} color={colors.success} />
-                            <Text style={{ color: colors.success, fontSize: fontSize.xs, fontWeight: "600" }}>Unfreeze</Text>
-                          </>
-                        ) : (
-                          <>
-                            <Snowflake size={14} color={colors.error} />
-                            <Text style={{ color: colors.error, fontSize: fontSize.xs, fontWeight: "600" }}>Freeze</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-
-                      {/* Show QR */}
-                      <TouchableOpacity
-                        style={styles.wardActionBtnSecondary}
-                        onPress={() => {
-                          setQrModal({ label: "Ward Address", value: w.wardAddress });
-                        }}
-                      >
-                        <Text style={{ color: colors.primary, fontSize: fontSize.xs, fontWeight: "600" }}>Show QR</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
               </View>
             );
           })}
         </View>
-      )}
+      </View>
 
       {/* Key Backup */}
       <View style={[styles.section, styles.dangerSection]}>
@@ -1168,13 +1168,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: fontSize.lg,
-    fontWeight: "600",
+    fontFamily: typography.secondarySemibold,
     color: colors.text,
   },
   sectionDesc: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginBottom: spacing.md,
+    fontFamily: typography.secondary,
   },
   addressSection: {
     borderLeftWidth: 3,
@@ -1186,26 +1187,37 @@ const styles = StyleSheet.create({
   },
 
   copyRow: { marginBottom: spacing.md },
-  copyLabel: { fontSize: fontSize.xs, color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 },
+  copyLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
+    fontFamily: typography.primarySemibold,
+  },
   copyValueRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.bg,
+    backgroundColor: colors.inputBg,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
-  copyValue: { flex: 1, fontSize: fontSize.sm, color: colors.text, fontFamily: "monospace" },
-  copyBtn: { fontSize: fontSize.xs, color: colors.primary, fontWeight: "600", marginLeft: spacing.sm },
+  copyValue: { flex: 1, fontSize: fontSize.sm, color: colors.text, fontFamily: typography.primary },
+  copyBtn: { fontSize: fontSize.xs, color: colors.primaryLight, fontFamily: typography.primarySemibold, marginLeft: spacing.sm },
 
   qrContainer: {
     position: "relative",
     alignItems: "center",
     padding: spacing.lg,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.inputBg,
     borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   qrGlow: {
     position: "absolute",
@@ -1219,6 +1231,13 @@ const styles = StyleSheet.create({
   },
   qrGlowViolet: {
     backgroundColor: colors.secondary,
+  },
+  qrPlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: borderRadius.lg,
+    alignItems: "center",
+    justifyContent: "center",
   },
   qrWhiteBg: {
     backgroundColor: "#FFFFFF",
@@ -1277,13 +1296,162 @@ const styles = StyleSheet.create({
   },
   dangerBtnText: { color: colors.error, fontWeight: "600" },
 
-  tapHint: {
-    fontSize: fontSize.xs,
-    color: colors.primary,
-    textAlign: "center",
-    marginTop: -spacing.xs,
-    marginBottom: spacing.sm,
+  rowBetween: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
+
+  // Wards + Contacts (qGVuO parity)
+  wardsCard: {
+    borderColor: "rgba(245, 158, 11, 0.15)",
+  },
+  wardsCreateBtn: {
+    height: 38,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    backgroundColor: "rgba(245, 158, 11, 0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  wardsCreateBtnText: {
+    color: colors.warning,
+    fontSize: fontSize.sm,
+    fontFamily: typography.primarySemibold,
+  },
+  subheadLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    marginBottom: 10,
+    fontFamily: typography.primarySemibold,
+  },
+  wardsListCard: {
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    overflow: "hidden",
+  },
+  wardRow: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  wardRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(45, 59, 77, 0.7)",
+  },
+  wardIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  wardIconCircleActive: {
+    backgroundColor: "rgba(59, 130, 246, 0.18)",
+  },
+  wardIconCircleFrozen: {
+    backgroundColor: "rgba(239, 68, 68, 0.18)",
+  },
+  wardLeft: { flex: 1, gap: 6 },
+  wardNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  wardNameText: { color: colors.text, fontSize: fontSize.sm, fontFamily: typography.secondarySemibold },
+  wardStatusInline: { flexDirection: "row", alignItems: "center", gap: 5 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusDotActive: { backgroundColor: colors.success },
+  statusDotFrozen: { backgroundColor: colors.error },
+  wardStatusTextInline: { fontSize: 11, fontFamily: typography.secondarySemibold },
+  wardStatusActiveText: { color: colors.success },
+  wardStatusFrozenText: { color: colors.error },
+  wardMetaRow: { flexDirection: "row", gap: 8 },
+  wardMetaLabel: { fontSize: 11, color: colors.textMuted, fontFamily: typography.secondary },
+  wardMetaValue: { fontSize: 11, color: colors.textSecondary, fontFamily: typography.secondarySemibold },
+  wardRight: { alignItems: "flex-end", gap: 8, minWidth: 112 },
+  wardToggleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  wardToggleLabel: { fontSize: 11, color: colors.textSecondary, fontFamily: typography.secondarySemibold },
+  toggleTrack: {
+    width: 34,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: "rgba(100, 116, 139, 0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    padding: 2,
+    justifyContent: "center",
+  },
+  toggleTrackOn: {
+    backgroundColor: "rgba(239, 68, 68, 0.65)",
+  },
+  toggleKnob: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#E2E8F0",
+    alignSelf: "flex-start",
+  },
+  toggleKnobOn: {
+    alignSelf: "flex-end",
+    backgroundColor: "#FFFFFF",
+  },
+  wardMetaRight: { alignItems: "flex-end", gap: 2 },
+
+  contactsAddBtn: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: colors.success,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  contactsAddBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontFamily: typography.primarySemibold,
+  },
+  contactsList: {
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    overflow: "hidden",
+  },
+  contactRowNew: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  contactRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(45, 59, 77, 0.7)",
+  },
+  contactAvatarNew: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  contactAvatarBlue: { backgroundColor: "rgba(59, 130, 246, 0.18)" },
+  contactAvatarViolet: { backgroundColor: "rgba(139, 92, 246, 0.18)" },
+  contactAvatarGreen: { backgroundColor: "rgba(16, 185, 129, 0.18)" },
+  contactAvatarTextNew: { fontSize: 13, fontFamily: typography.primarySemibold },
+  contactInfoNew: { flex: 1, gap: 3 },
+  contactNameNew: { color: colors.text, fontSize: fontSize.sm, fontFamily: typography.secondarySemibold },
+  contactAddrNew: { color: colors.textMuted, fontSize: 11, fontFamily: typography.primary },
 
   // QR Modal
   qrModalOverlay: {
