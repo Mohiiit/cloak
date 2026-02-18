@@ -143,6 +143,12 @@ export const testIDs = {
     tfaDisable: "settings.twofa.disable.press",
     clearAllData: "settings.data.clearall.press",
   },
+  keyBackup: {
+    back: "keybackup.back.press",
+    starkCopy: "keybackup.stark.copy.press",
+    tongoCopy: "keybackup.tongo.copy.press",
+    done: "keybackup.done.press",
+  },
   activity: {
     rowPrefix: "activity.row.item",
   },

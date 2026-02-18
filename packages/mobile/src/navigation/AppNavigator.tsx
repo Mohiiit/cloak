@@ -122,6 +122,7 @@ export default function AppNavigator() {
   return (
     <View style={styles.root}>
       <Tab.Navigator
+        id="tabs"
         initialRouteName={initialRouteName}
         screenOptions={({ route }) => ({
           headerStyle: { backgroundColor: colors.bg, elevation: 0, shadowOpacity: 0 },

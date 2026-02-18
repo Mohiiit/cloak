@@ -906,7 +906,7 @@ export default function SettingsScreen({ navigation }: any) {
           <TouchableOpacity
             {...testProps(testIDs.settings.keyBackupOpen)}
             style={styles.securityActionBtn}
-            onPress={() => navigation.getParent()?.navigate("KeyBackup")}
+            onPress={() => navigation.getParent("root")?.navigate("KeyBackup" as never)}
           >
             <Download size={14} color={colors.textSecondary} />
             <Text style={styles.securityActionText}>Export</Text>
