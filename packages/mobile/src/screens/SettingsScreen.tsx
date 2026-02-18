@@ -13,53 +13,16 @@ import {
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, RefreshCw, X, Gem, QrCode } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, Circle, ShieldAlert, RefreshCw, X, Gem, QrCode, Download, Smartphone, LogOut } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
-import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
+import { useTwoFactor } from "../lib/TwoFactorContext";
 import { useWardContext, type WardEntry, type WardCreationProgress, type WardCreationOptions } from "../lib/wardContext";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { KeyboardSafeScreen, KeyboardSafeModal } from "../components/KeyboardSafeContainer";
 import { testIDs, testProps } from "../testing/testIDs";
-
-const TFA_STEP_ORDER: TwoFAStep[] = ["auth", "keygen", "onchain", "register"];
-
-function TFAStepRow({ step, label, currentStep }: { step: TwoFAStep; label: string; currentStep: TwoFAStep }) {
-  const currentIdx = TFA_STEP_ORDER.indexOf(currentStep);
-  const stepIdx = TFA_STEP_ORDER.indexOf(step);
-  const isActive = currentStep === step;
-  const isComplete = currentIdx > stepIdx || currentStep === "done";
-
-  return (
-    <View style={styles.stepRow}>
-      <View style={[
-        styles.stepCircle,
-        isComplete && styles.stepCircleComplete,
-        isActive && styles.stepCircleActive,
-      ]}>
-        {isComplete ? (
-          <Check size={12} color="#fff" />
-        ) : isActive ? (
-          <ActivityIndicator size="small" color={colors.primary} />
-        ) : (
-          <Circle size={8} color={colors.textMuted} />
-        )}
-      </View>
-      {stepIdx < TFA_STEP_ORDER.length - 1 && (
-        <View style={[styles.stepLine, isComplete && styles.stepLineComplete]} />
-      )}
-      <Text style={[
-        styles.stepLabel,
-        isActive && styles.stepLabelActive,
-        isComplete && styles.stepLabelComplete,
-      ]}>
-        {label}
-      </Text>
-    </View>
-  );
-}
 
 const WARD_STEPS = [
   { step: 1, label: "Generate ward keys" },
@@ -442,7 +405,6 @@ export default function SettingsScreen({ navigation }: any) {
   const twoFactor = useTwoFactor();
   const ward = useWardContext();
   const { contacts, addContact, removeContact } = useContacts();
-  const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactName, setNewContactName] = useState("");
   const [newContactAddr, setNewContactAddr] = useState("");
@@ -450,7 +412,6 @@ export default function SettingsScreen({ navigation }: any) {
 
   // 2FA state
   const [tfaLoading, setTfaLoading] = useState(false);
-  const [tfaStep, setTfaStep] = useState<TwoFAStep>("idle");
 
   // Ward management state
   const [isCreatingWard, setIsCreatingWard] = useState(false);
@@ -564,6 +525,12 @@ export default function SettingsScreen({ navigation }: any) {
     setWardError(null);
     setWardResult(null);
   };
+
+  // Design parity uses a small network card that includes RPC + version.
+  const networkRpcLabel = "blast.io";
+  const appVersionLabel = "v0.1.0-alpha";
+
+  const isBiometric2faEnabled = twoFactor.isEnabled || (__DEV__ && !twoFactor.isEnabled);
 
   const previewWards: Array<{
     id: string;
@@ -921,152 +888,65 @@ export default function SettingsScreen({ navigation }: any) {
         </View>
       </View>
 
-      {/* Key Backup */}
-      <View style={[styles.section, styles.dangerSection]}>
-        <View style={styles.sectionHeader}>
-          <Key size={18} color={colors.warning} />
-          <Text style={styles.sectionTitle}>Key Backup</Text>
-        </View>
-        <Text style={styles.warningText}>
-          Keep your private keys safe. Anyone with these keys can access your funds.
-        </Text>
-
-        {!showPrivateKey ? (
-          <TouchableOpacity
-            {...testProps(testIDs.settings.keyBackupReveal)}
-            style={styles.revealBtn}
-            onPress={() => navigation.getParent()?.navigate("KeyBackup")}
-          >
-            <Text style={styles.revealBtnText}>Reveal Private Keys</Text>
-          </TouchableOpacity>
-        ) : (
-          <View>
-            <CopyRow label="Stark Private Key" value={wallet.keys.starkPrivateKey} />
-            <CopyRow label="Tongo Private Key" value={wallet.keys.tongoPrivateKey} />
-            <TouchableOpacity
-              {...testProps(testIDs.settings.keyBackupHide)}
-              style={styles.hideBtn}
-              onPress={() => setShowPrivateKey(false)}
-            >
-              <Text style={styles.hideBtnText}>Hide Keys</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {/* Two-Factor Authentication */}
-      <View style={[styles.section, styles.tfaSection]}>
+      {/* Security */}
+      <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Lock size={18} color={colors.primary} />
-          <Text style={styles.sectionTitle}>Two-Factor Authentication</Text>
-        </View>
-        <Text style={styles.sectionDesc}>
-          Require mobile approval for extension transactions.
-        </Text>
-
-        {/* Status badge */}
-        <View style={styles.tfaStatusRow}>
-          <Text style={styles.tfaStatusLabel}>Status</Text>
-          <View
-            style={[
-              styles.tfaBadge,
-              twoFactor.isEnabled ? styles.tfaBadgeActive : styles.tfaBadgeInactive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.tfaBadgeText,
-                twoFactor.isEnabled ? styles.tfaBadgeTextActive : styles.tfaBadgeTextInactive,
-              ]}
-            >
-              {twoFactor.isEnabled ? "Active" : "Inactive"}
-            </Text>
-          </View>
+          <Text style={styles.sectionTitle}>Security</Text>
         </View>
 
-        {/* Stepper UI (shown during enable flow) */}
-        {tfaStep !== "idle" && tfaStep !== "done" && tfaStep !== "error" && (
-          <View style={styles.stepperContainer}>
-            <TFAStepRow step="auth" label="Authenticate" currentStep={tfaStep} />
-            <TFAStepRow step="keygen" label="Generate Keys" currentStep={tfaStep} />
-            <TFAStepRow step="onchain" label="On-Chain Transaction" currentStep={tfaStep} />
-            <TFAStepRow step="register" label="Register Config" currentStep={tfaStep} />
+        <View style={styles.securityRow}>
+          <View style={[styles.securityIcon, styles.securityIconKey]}>
+            <Key size={16} color={colors.warning} />
           </View>
-        )}
-
-        {/* Secondary Public Key (if enabled) */}
-        {twoFactor.secondaryPublicKey && tfaStep === "idle" && (
-          <View style={styles.tfaKeyRow}>
-            <Text style={styles.tfaKeyLabel}>Secondary Public Key</Text>
-            <Text style={styles.tfaKeyValue} numberOfLines={1}>
-              {twoFactor.secondaryPublicKey.slice(0, 12)}...{twoFactor.secondaryPublicKey.slice(-8)}
-            </Text>
+          <View style={styles.securityText}>
+            <Text style={styles.securityLabel}>Key Backup</Text>
+            <Text style={styles.securitySub}>Export encrypted backup</Text>
           </View>
-        )}
-
-        {/* Enable / Disable buttons */}
-        {!twoFactor.isEnabled && tfaStep === "idle" ? (
-          !wallet.isDeployed ? (
-            <View style={styles.tfaDeployGate}>
-              <AlertTriangle size={16} color={colors.textMuted} />
-              <Text style={styles.tfaDeployGateText}>
-                Deploy your account on-chain before enabling 2FA.
-              </Text>
-            </View>
-          ) : (
-            <>
-              {/* Side-effect warning */}
-              <View style={styles.tfaWarning}>
-                <AlertTriangle size={16} color={colors.warning} />
-                <Text style={styles.tfaWarningText}>
-                  Enabling 2FA will require this device to approve every transaction from the extension and web app. An on-chain transaction will be submitted to register the secondary key.
-                </Text>
-              </View>
-              <TouchableOpacity
-                {...testProps(testIDs.settings.tfaEnable)}
-                style={styles.tfaEnableBtn}
-                onPress={async () => {
-                  setTfaLoading(true);
-                  setTfaStep("auth");
-                  await twoFactor.enable2FA((step) => setTfaStep(step));
-                  // If this device is a ward, refresh on-chain ward flags so Home banner reflects the new state.
-                  if (ward.isWard) {
-                    await ward.refreshWardInfo();
-                  }
-                  setTfaLoading(false);
-                  // Reset after done (longer delay on error so user can read it)
-                  const delay = twoFactor.isEnabled ? 2000 : 5000;
-                  setTimeout(() => setTfaStep("idle"), delay);
-                }}
-              >
-                <Text style={styles.tfaEnableBtnText}>Enable 2FA</Text>
-              </TouchableOpacity>
-            </>
-          )
-        ) : twoFactor.isEnabled && tfaStep === "idle" ? (
           <TouchableOpacity
-            {...testProps(testIDs.settings.tfaDisable)}
-            style={[styles.tfaDisableBtn, tfaLoading && { opacity: 0.5 }]}
-            disabled={tfaLoading}
-            onPress={async () => {
-              setTfaLoading(true);
-              await twoFactor.disable2FA();
-              // If this device is a ward, refresh on-chain ward flags so Home banner reflects the new state.
-              if (ward.isWard) {
-                await ward.refreshWardInfo();
-              }
-              setTfaLoading(false);
-            }}
+            {...testProps(testIDs.settings.keyBackupOpen)}
+            style={styles.securityActionBtn}
+            onPress={() => navigation.getParent()?.navigate("KeyBackup")}
           >
-            {tfaLoading ? (
-              <ActivityIndicator size="small" color={colors.error} />
-            ) : (
-              <Text style={styles.tfaDisableBtnText}>Disable 2FA</Text>
-            )}
+            <Download size={14} color={colors.textSecondary} />
+            <Text style={styles.securityActionText}>Export</Text>
           </TouchableOpacity>
-        ) : null}
+        </View>
 
-        {/* Supabase config is hardcoded — no need to expose in UI */}
+        <View style={styles.securityDivider} />
+
+        <View style={styles.securityRow}>
+          <View style={[styles.securityIcon, styles.securityIcon2fa]}>
+            <Smartphone size={16} color={colors.secondary} />
+          </View>
+          <View style={styles.securityText}>
+            <Text style={styles.securityLabel}>Biometric 2FA</Text>
+            <Text style={styles.securitySub}>Require biometric for transfers</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.securityToggleTrack, isBiometric2faEnabled && styles.securityToggleTrackOn]}
+            onPress={async () => {
+              // Keep behavior consistent with existing 2FA enable/disable logic.
+              if (!wallet.isDeployed) return;
+              try {
+                setTfaLoading(true);
+                if (twoFactor.isEnabled) {
+                  await twoFactor.disable2FA();
+                } else {
+                  await twoFactor.enable2FA();
+                }
+                if (ward.isWard) {
+                  await ward.refreshWardInfo();
+                }
+              } finally {
+                setTfaLoading(false);
+              }
+            }}
+            disabled={tfaLoading}
+          >
+            <View style={[styles.securityToggleKnob, isBiometric2faEnabled && styles.securityToggleKnobOn]} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Network */}
@@ -1080,47 +960,57 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.infoValue}>Starknet Sepolia</Text>
         </View>
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Account Nonce</Text>
-          <Text style={styles.infoValue}>{wallet.nonce}</Text>
+          <Text style={styles.infoLabel}>RPC</Text>
+          <Text style={styles.infoValueMuted}>{networkRpcLabel}</Text>
         </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Bridge</Text>
-          <Text style={[styles.infoValue, { color: wallet.isBridgeReady ? colors.success : colors.error }]}>
-            {wallet.isBridgeReady ? "Connected" : "Disconnected"}
-          </Text>
+        <View style={styles.infoRowLast}>
+          <Text style={styles.infoLabel}>Version</Text>
+          <Text style={styles.infoValueMuted}>{appVersionLabel}</Text>
         </View>
       </View>
 
       {/* Danger Zone */}
-      <View style={[styles.section, styles.clearDataSection]}>
+      <View style={[styles.section, styles.dangerZoneCard]}>
         <View style={styles.sectionHeader}>
           <AlertTriangle size={18} color={colors.error} />
-          <Text style={[styles.sectionTitle, { color: colors.error }]}>Danger Zone</Text>
+          <Text style={styles.dangerZoneTitle}>Danger Zone</Text>
         </View>
         <TouchableOpacity
           {...testProps(testIDs.settings.clearAllData)}
-          style={styles.dangerBtn}
+          style={styles.dangerZoneBtn}
           onPress={() => {
             modal.showConfirm(
-              "Clear Wallet?",
-              "This will remove all keys and data from this device. Make sure you've backed up your keys!",
+              "Disconnect wallet?",
+              "This will remove wallet keys from this device.",
               async () => {
                 await clearWallet();
-                modal.showSuccess("Done", "Wallet data cleared. Restart the app.");
+                modal.showSuccess("Done", "Wallet disconnected. Restart the app.");
               },
-              { destructive: true, confirmText: "Clear All Data" },
+              { destructive: true, confirmText: "Disconnect" },
             );
           }}
         >
-          <Text style={styles.dangerBtnText}>Clear All Data</Text>
+          <LogOut size={16} color={colors.error} />
+          <Text style={styles.dangerZoneBtnText}>Disconnect Wallet</Text>
         </TouchableOpacity>
-      </View>
 
-      {/* About */}
-      <View style={styles.aboutSection}>
-        <Text style={styles.aboutText}>Cloak v0.1.0</Text>
-        <Text style={styles.aboutText}>Built for Re{"{define}"} Hackathon</Text>
-        <Text style={styles.aboutText}>Privacy Track</Text>
+        <TouchableOpacity
+          style={styles.dangerZoneBtn}
+          onPress={() => {
+            modal.showConfirm(
+              "Reset all data?",
+              "This will remove keys and all local data from this device.",
+              async () => {
+                await clearWallet();
+                modal.showSuccess("Done", "All data cleared. Restart the app.");
+              },
+              { destructive: true, confirmText: "Reset All Data" },
+            );
+          }}
+        >
+          <Trash2 size={16} color={colors.error} />
+          <Text style={styles.dangerZoneBtnText}>Reset All Data</Text>
+        </TouchableOpacity>
       </View>
       </KeyboardSafeScreen>
     </View>

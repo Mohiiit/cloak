@@ -1,0 +1,9 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: ./settings-top.yaml
+- scrollUntilVisible:
+    element:
+      id: settings.data.clearall.press
+    direction: DOWN
+- waitForAnimationToEnd
