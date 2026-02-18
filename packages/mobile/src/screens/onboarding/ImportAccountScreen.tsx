@@ -17,7 +17,6 @@ import { useThemedModal } from '../../components/ThemedModal';
 
 export default function ImportAccountScreen({ navigation }: { navigation: any }) {
   const [privateKey, setPrivateKey] = useState('');
-  const [address, setAddress] = useState('');
   const [importing, setImporting] = useState(false);
   const wallet = useWallet();
   const { showError, ModalComponent } = useThemedModal();
@@ -31,24 +30,14 @@ export default function ImportAccountScreen({ navigation }: { navigation: any })
     }
   };
 
-  const handlePasteAddress = async () => {
-    try {
-      const text = await Clipboard.getString();
-      if (text) setAddress(text.trim());
-    } catch (err) {
-      console.warn('[ImportAccount] Failed to read clipboard:', err);
-    }
-  };
-
   const handleImport = async () => {
     const trimmedKey = privateKey.trim();
-    const trimmedAddr = address.trim();
     if (!trimmedKey) {
       showError('Missing Key', 'Please enter your Stark private key.');
       return;
     }
-    if (!trimmedAddr || !trimmedAddr.startsWith('0x')) {
-      showError('Missing Address', 'Please enter a valid Starknet address.');
+    if (!trimmedKey.startsWith('0x')) {
+      showError('Invalid Key', 'Private key must start with 0x.');
       return;
     }
 
@@ -61,8 +50,8 @@ export default function ImportAccountScreen({ navigation }: { navigation: any })
         'cloak_ward_address',
       ]);
 
-      await wallet.importWallet(trimmedKey, trimmedAddr);
-      // WalletContext handles navigation on successful import
+      // Address is derived automatically from the private key
+      await wallet.importWallet(trimmedKey);
     } catch (err: any) {
       const message =
         err?.message || 'Failed to import account. Please check your private key and try again.';
@@ -87,8 +76,8 @@ export default function ImportAccountScreen({ navigation }: { navigation: any })
       <View style={styles.content}>
         {/* Description */}
         <Text style={styles.description}>
-          Import your existing Cloak account by entering your Stark private key. Your Tongo address
-          will be derived automatically.
+          Import your existing Cloak account by entering your Stark private key. Your Starknet
+          address and Tongo address will be derived automatically.
         </Text>
 
         {/* Stark Private Key Field */}
@@ -114,29 +103,6 @@ export default function ImportAccountScreen({ navigation }: { navigation: any })
           </View>
         </View>
 
-        {/* Starknet Address Field */}
-        <View style={styles.fieldContainer}>
-          <Text style={styles.fieldLabel}>Starknet Address</Text>
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={styles.textInput}
-              value={address}
-              onChangeText={setAddress}
-              placeholder="0x..."
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect={false}
-              autoCapitalize="none"
-              textAlignVertical="top"
-            />
-            <TouchableOpacity style={styles.pasteButton} onPress={handlePasteAddress} hitSlop={8}>
-              <ClipboardPaste size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* Info Box */}
         <View style={styles.infoBox}>
           <View style={styles.infoHeader}>
@@ -144,13 +110,13 @@ export default function ImportAccountScreen({ navigation }: { navigation: any })
             <Text style={styles.infoHeaderText}>What happens on import</Text>
           </View>
           <Text style={styles.infoBullet}>
-            1. Your Tongo address is derived from the Stark key
+            1. Your Starknet address is computed from the key
           </Text>
           <Text style={styles.infoBullet}>
-            2. Keys are encrypted and stored securely on device
+            2. Your Tongo address is derived automatically
           </Text>
           <Text style={styles.infoBullet}>
-            3. Your balance and history will be synced
+            3. Keys are stored securely on device
           </Text>
         </View>
 

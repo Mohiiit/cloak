@@ -640,8 +640,8 @@ export default function HomeScreen({ navigation }: any) {
                   />
                   <TouchableOpacity
                     {...testProps(testIDs.onboarding.importExistingSubmit)}
-                    style={[styles.createButton, (!importPK || !importAddr || isImporting) && { opacity: 0.4 }]}
-                    disabled={!importPK || !importAddr || isImporting}
+                    style={[styles.createButton, (!importPK || isImporting) && { opacity: 0.4 }]}
+                    disabled={!importPK || isImporting}
                     onPress={async () => {
                       setIsImporting(true);
                       try {
@@ -650,7 +650,7 @@ export default function HomeScreen({ navigation }: any) {
                           "cloak_guardian_address",
                           "cloak_ward_info_cache",
                         ]);
-                        await wallet.importWallet(importPK.trim(), importAddr.trim());
+                        await wallet.importWallet(importPK.trim(), importAddr.trim() || undefined);
                         modal.showSuccess("Success", "Wallet imported!");
                       } catch (e: any) {
                         modal.showError("Error", e.message || "Import failed", e.message);

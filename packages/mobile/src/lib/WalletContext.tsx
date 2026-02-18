@@ -51,7 +51,7 @@ type WalletState = {
 
   // Actions
   createWallet: () => Promise<WalletKeys>;
-  importWallet: (starkPrivateKey: string, starkAddress: string) => Promise<WalletKeys>;
+  importWallet: (starkPrivateKey: string, starkAddress?: string) => Promise<WalletKeys>;
   refreshBalance: () => Promise<void>;
   refreshAllBalances: () => Promise<void>;
   fund: (amount: string) => Promise<{ txHash: string }>;
@@ -337,8 +337,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [bridge]);
 
   const importWallet = useCallback(
-    async (starkPrivateKey: string, starkAddress: string): Promise<WalletKeys> => {
+    async (starkPrivateKey: string, starkAddress?: string): Promise<WalletKeys> => {
       if (!bridge.isReady) throw new Error("Bridge not ready");
+
+      // Derive public key first — needed for address computation
+      const pubKey = await bridge.derivePublicKey(starkPrivateKey);
+
+      // Compute address from public key if not provided
+      const resolvedAddress = starkAddress || (() => {
+        const constructorCalldata = CallData.compile({ publicKey: pubKey.x });
+        return hash.calculateContractAddressFromHash(
+          pubKey.x, // salt
+          CLOAK_ACCOUNT_CLASS_HASH,
+          constructorCalldata,
+          0, // deployer = 0 (counterfactual)
+        );
+      })();
 
       // Use the stark private key as the tongo private key too
       const tongoPrivateKey = starkPrivateKey;
@@ -346,16 +360,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       await bridge.initialize({
         tongoPrivateKey,
         token: "STRK",
-        starkAddress,
+        starkAddress: resolvedAddress,
         starkPrivateKey,
       });
 
       const tongoAddress = await bridge.getTongoAddress();
-      const pubKey = await bridge.derivePublicKey(starkPrivateKey);
 
       const newKeys: WalletKeys = {
         starkPrivateKey,
-        starkAddress,
+        starkAddress: resolvedAddress,
         starkPublicKey: pubKey.x, // store x coordinate
         tongoPrivateKey,
         tongoAddress,
