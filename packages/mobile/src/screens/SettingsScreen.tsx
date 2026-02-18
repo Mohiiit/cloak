@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Gem, Download, Smartphone, LogOut, LockOpen, TriangleAlert } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Gem, Download, Smartphone, LogOut, LockOpen, TriangleAlert, ChevronRight } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
@@ -969,60 +969,33 @@ export default function SettingsScreen({ navigation }: any) {
             <Text style={styles.wardsCreateBtnText}>Create New Ward</Text>
           </TouchableOpacity>
 
-          <Text style={styles.subheadLabel}>ACTIVE WARDS</Text>
-
-          <View style={styles.wardsListCard}>
-            {wardItems.map((w: any, idx: number) => {
+          {wardItems.map((w: any, idx: number) => {
               const isFrozen = w.status === "frozen";
               const showDivider = idx < wardItems.length - 1;
               return (
-                <View key={w.id} style={[styles.wardRow, showDivider && styles.wardRowDivider]}>
-                  {/* Top row: icon+name ... freeze toggle */}
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                      <View style={[styles.wardIconCircle, isFrozen ? styles.wardIconCircleFrozen : styles.wardIconCircleActive]}>
-                        <Shield size={18} color={isFrozen ? colors.error : colors.primaryLight} />
-                      </View>
-                      <Text style={[styles.wardNameText, isFrozen && { opacity: 0.6 }]}>{w.name}</Text>
-                    </View>
-                    <View style={styles.wardToggleRow}>
-                      <Text style={[styles.wardToggleLabel, isFrozen && styles.wardToggleLabelFrozen]}>
-                        {isFrozen ? "Frozen" : "Freeze"}
+                <TouchableOpacity
+                  key={w.id}
+                  style={[styles.wardRow, showDivider && styles.wardRowDivider]}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.getParent("root")?.navigate("WardDetail", { wardAddress: w.raw?.wardAddress, wardName: w.name, isFrozen, spendingLimit: w.spendingLimit })}
+                >
+                  <View style={[styles.wardIconCircle, isFrozen ? styles.wardIconCircleFrozen : styles.wardIconCircleActive]}>
+                    <Shield size={18} color={isFrozen ? "#EF4444" : "#3B82F6"} />
+                  </View>
+                  <View style={styles.wardInfoCol}>
+                    <Text style={[styles.wardNameText, isFrozen && { opacity: 0.6 }]}>{w.name}</Text>
+                    <View style={styles.wardMetaRow}>
+                      <View style={[styles.statusDot, isFrozen ? styles.statusDotFrozen : styles.statusDotActive]} />
+                      <Text style={[styles.wardStatusTextInline, isFrozen ? styles.wardStatusFrozenText : styles.wardStatusActiveText]}>
+                        {isFrozen ? "Frozen" : "Active"}
                       </Text>
-                      <TouchableOpacity
-                        style={[styles.toggleTrack, isFrozen && styles.toggleTrackOn]}
-                        onPress={async () => {
-                          if (!w.raw) return;
-                          if (isFrozen) {
-                            setWardAction(w.raw.wardAddress);
-                            try {
-                              await ward.unfreezeWard(w.raw.wardAddress);
-                            } catch (e: any) {
-                              modal.showError("Failed", e.message || "Action failed", e.message);
-                            } finally {
-                              setWardAction(null);
-                            }
-                          } else {
-                            setFreezeModalWard(w.raw.wardAddress);
-                          }
-                        }}
-                        disabled={!!wardAction || !w.raw}
-                      >
-                        <View style={[styles.toggleKnob, isFrozen && styles.toggleKnobOn]} />
-                      </TouchableOpacity>
+                      {w.spendingLimit ? <Text style={styles.wardMetaLimit}>{w.spendingLimit}</Text> : null}
                     </View>
                   </View>
-                  {/* Bottom row: spending limit */}
-                  <View style={styles.wardDetailsRow}>
-                    <View style={styles.wardDetailCol}>
-                      <Text style={styles.wardMetaLabel}>Spending Limit</Text>
-                      <Text style={[styles.wardMetaValue, isFrozen && { opacity: 0.5 }]}>{w.spendingLimit}</Text>
-                    </View>
-                  </View>
-                </View>
+                  <ChevronRight size={18} color={colors.textMuted} />
+                </TouchableOpacity>
               );
             })}
-          </View>
         </View>
       )}
 
@@ -1642,85 +1615,43 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontFamily: typography.primarySemibold,
   },
-  subheadLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    letterSpacing: 1.1,
-    marginBottom: 10,
-    fontFamily: typography.primarySemibold,
-  },
-  wardsListCard: {
-    backgroundColor: "rgba(15, 23, 42, 0.35)",
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-    overflow: "hidden",
-  },
   wardRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
+    paddingVertical: 12,
+    gap: 10,
   },
   wardRowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: "rgba(45, 59, 77, 0.7)",
   },
   wardIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
   },
   wardIconCircleActive: {
-    backgroundColor: "rgba(59, 130, 246, 0.08)",
+    backgroundColor: "rgba(59, 130, 246, 0.07)",
+    borderColor: "rgba(59, 130, 246, 0.19)",
   },
   wardIconCircleFrozen: {
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    backgroundColor: "rgba(239, 68, 68, 0.07)",
+    borderColor: "rgba(239, 68, 68, 0.19)",
   },
-  wardLeft: { flex: 1, gap: 2 },
-  wardNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  wardNameText: { color: colors.text, fontSize: 13, fontFamily: typography.primarySemibold },
-  wardStatusInline: { flexDirection: "row", alignItems: "center", gap: 6 },
+  wardInfoCol: { flex: 1, gap: 3 },
+  wardNameText: { color: colors.text, fontSize: 14, fontFamily: typography.primarySemibold },
+  wardMetaRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusDotActive: { backgroundColor: colors.success },
   statusDotFrozen: { backgroundColor: colors.error },
   wardStatusTextInline: { fontSize: 10, fontFamily: typography.primarySemibold },
   wardStatusActiveText: { color: colors.success },
   wardStatusFrozenText: { color: colors.error },
-  wardDetailsRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", paddingBottom: 4 },
-  wardDetailCol: { gap: 1 },
-  wardMetaRow: { flexDirection: "row", gap: 8 },
-  wardMetaLabel: { fontSize: 9, color: colors.textMuted, fontFamily: typography.primarySemibold, letterSpacing: 1 },
-  wardMetaValue: { fontSize: 12, color: colors.textSecondary, fontFamily: typography.primarySemibold },
-  wardRight: { alignItems: "flex-end", gap: 8 },
-  wardToggleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  wardToggleLabel: { fontSize: 10, color: colors.textMuted, fontFamily: typography.primarySemibold },
-  wardToggleLabelFrozen: { color: colors.error },
-  toggleTrack: {
-    width: 32,
-    height: 20,
-    backgroundColor: "#0F172A",
-    borderWidth: 1,
-    borderColor: "#2D3B4D",
-    padding: 4,
-    justifyContent: "center",
-  },
-  toggleTrackOn: {
-    backgroundColor: colors.error,
-    borderColor: colors.error,
-  },
-  toggleKnob: {
-    width: 12,
-    height: 12,
-    backgroundColor: "#64748B",
-    alignSelf: "flex-start",
-  },
-  toggleKnobOn: {
-    alignSelf: "flex-end",
-    backgroundColor: "#FFFFFF",
-  },
-  wardMetaRight: { alignItems: "flex-end", gap: 2 },
+  wardMetaLimit: { fontSize: 10, color: colors.textMuted, fontFamily: typography.primarySemibold },
 
   contactsAddBtn: {
     height: 28,

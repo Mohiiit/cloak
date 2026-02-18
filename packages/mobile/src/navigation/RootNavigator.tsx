@@ -7,6 +7,7 @@ import TransactionDetailScreen from "../screens/activity/TransactionDetailScreen
 import KeyBackupScreen from "../screens/settings/KeyBackupScreen";
 import WardSetupScreen from "../screens/settings/WardSetupScreen";
 import WardCreatedScreen from "../screens/settings/WardCreatedScreen";
+import WardDetailScreen from "../screens/settings/WardDetailScreen";
 import ImportAccountScreen from "../screens/onboarding/ImportAccountScreen";
 import ImportWardScreen from "../screens/onboarding/ImportWardScreen";
 import { colors } from "../lib/theme";
@@ -49,6 +50,11 @@ export default function RootNavigator() {
         <Stack.Screen
           name="WardCreated"
           component={WardCreatedScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="WardDetail"
+          component={WardDetailScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen

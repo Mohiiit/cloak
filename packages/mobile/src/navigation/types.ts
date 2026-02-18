@@ -21,6 +21,12 @@ export type RootStackParamList = {
     pseudoName?: string;
     initialFundingAmountWei?: string;
   };
+  WardDetail: {
+    wardAddress: string;
+    wardName: string;
+    isFrozen: boolean;
+    spendingLimit: string;
+  };
   TransactionDetail: {
     txHash: string;
     type?: string;
