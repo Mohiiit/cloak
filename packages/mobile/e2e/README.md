@@ -187,3 +187,4 @@ These screenshots intentionally exclude private keys and secret material.
 | 10 | `09FBd` | Activity | `packages/mobile/src/screens/ActivityScreen.tsx` | `2a8c0dc` | `packages/mobile/e2e/screenshots/2026-02-17/10-09FBd-ios.png` | pending | n/a | passed |
 | 11 | `XzS0q` | Transaction Detail | `packages/mobile/src/screens/activity/TransactionDetailScreen.tsx`, `packages/mobile/src/navigation/RootNavigator.tsx` | `ecca20d` | `packages/mobile/e2e/screenshots/2026-02-17/11-XzS0q-ios.png` | pending | n/a | passed |
 | 12 | `1uUTh` | Settings (top) | `packages/mobile/src/screens/SettingsScreen.tsx` | `b2bc46d` | `packages/mobile/e2e/screenshots/2026-02-17/12-1uUTh-ios.png` | pending | n/a | passed |
+| 13 | `qGVuO` | Settings (scrolled) | `packages/mobile/src/screens/SettingsScreen.tsx` | `b69b6cd` | `packages/mobile/e2e/screenshots/2026-02-17/13-qGVuO-ios.png` | pending | n/a | passed |
