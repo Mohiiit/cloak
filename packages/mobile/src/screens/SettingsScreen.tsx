@@ -214,19 +214,19 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
 }
 
 const TFA_ENABLE_STEPS: { step: TwoFAStep; label: string }[] = [
-  { step: "auth", label: "Authenticating" },
-  { step: "keygen", label: "Generating keys" },
-  { step: "onchain", label: "Submitting on-chain" },
-  { step: "register", label: "Registering" },
-  { step: "done", label: "Complete" },
+  { step: "auth", label: "Verifying biometric identity" },
+  { step: "keygen", label: "Generating secondary key pair" },
+  { step: "onchain", label: "Submitting key to smart contract" },
+  { step: "register", label: "Registering 2FA in database" },
+  { step: "done", label: "2FA enabled successfully" },
 ];
 
 const TFA_DISABLE_STEPS: { step: TwoFAStep; label: string }[] = [
-  { step: "auth", label: "Authenticating" },
-  { step: "keygen", label: "Removing key" },
-  { step: "onchain", label: "Submitting on-chain" },
-  { step: "register", label: "Confirming" },
-  { step: "done", label: "Complete" },
+  { step: "auth", label: "Verifying biometric identity" },
+  { step: "keygen", label: "Clearing secondary key material" },
+  { step: "onchain", label: "Removing key from smart contract" },
+  { step: "register", label: "Removing 2FA from database" },
+  { step: "done", label: "2FA disabled successfully" },
 ];
 
 function TwoFAConfirmModal({
@@ -352,27 +352,8 @@ function TwoFAProgressModal({
 
   // Find the index of the current active step
   const activeIndex = steps.findIndex((s) => s.step === currentStep);
-  const progressFraction = isDone
-    ? 1
-    : isError
-    ? (activeIndex >= 0 ? activeIndex : 0) / steps.length
-    : activeIndex >= 0
-    ? activeIndex / steps.length
-    : 0;
 
   const isEnabling = action === "enable";
-  const accentColor = isEnabling ? "#3B82F6" : "#EF4444";
-
-  // Step status text
-  const statusTextMap: Record<string, string> = {
-    idle: "Preparing...",
-    auth: "Verifying biometric identity...",
-    keygen: isEnabling ? "Generating secondary key pair..." : "Retrieving key material...",
-    onchain: isEnabling ? "Submitting set_secondary_key..." : "Submitting remove_secondary_key...",
-    register: isEnabling ? "Registering config in database..." : "Removing config from database...",
-    done: isEnabling ? "2FA successfully enabled" : "2FA successfully disabled",
-    error: "Operation failed",
-  };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => { if (isDone || isError) onClose(); }}>
@@ -385,7 +366,7 @@ function TwoFAProgressModal({
               {isError ? (
                 <X size={32} color={colors.error} />
               ) : isDone ? (
-                <Check size={32} color={colors.success} />
+                <Check size={32} color={isEnabling ? colors.success : "#EF4444"} />
               ) : isEnabling ? (
                 <ShieldCheck size={32} color="#3B82F6" />
               ) : (
@@ -442,23 +423,14 @@ function TwoFAProgressModal({
             </View>
           </View>
 
-          {/* bottomSection */}
-          <View style={tfaModalStyles.bottomSection}>
-            {/* Progress bar */}
-            <View style={tfaModalStyles.progressContainer}>
-              <View style={tfaModalStyles.progressTrack}>
-                <View style={[tfaModalStyles.progressFill, { width: `${progressFraction * 100}%`, backgroundColor: accentColor }]} />
-              </View>
-              <Text style={tfaModalStyles.statusText}>{statusTextMap[currentStep] || "Processing..."}</Text>
-            </View>
-
-            {/* Error close button */}
-            {isError && (
+          {/* Error close button */}
+          {isError && (
+            <View style={tfaModalStyles.bottomSection}>
               <TouchableOpacity style={tfaModalStyles.closeBtn} onPress={onClose}>
                 <Text style={tfaModalStyles.closeBtnText}>Close</Text>
               </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          )}
         </View>
       </View>
     </Modal>

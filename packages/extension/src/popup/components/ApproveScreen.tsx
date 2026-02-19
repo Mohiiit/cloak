@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 
+// ─── Types ──────────────────────────────────────────────────────────
 interface PendingRequest {
   id: string;
   method: string;
@@ -16,7 +17,11 @@ interface ApprovalFlowMeta {
   shouldWaitForExternalApproval: boolean;
 }
 
-/** Human-readable labels for RPC methods */
+type TerminalState = "success" | "rejected" | "expired" | null;
+
+// ─── Constants ──────────────────────────────────────────────────────
+const APPROVAL_TIMEOUT_SECONDS = 600; // 10 minutes
+
 const METHOD_LABELS: Record<string, string> = {
   cloak_fund: "Shield Tokens",
   cloak_transfer: "Private Transfer",
@@ -26,9 +31,9 @@ const METHOD_LABELS: Record<string, string> = {
   wallet_signTypedData: "Sign Message",
 };
 
-/** Methods that move funds — show amount/recipient */
 const FUND_METHODS = ["cloak_fund", "cloak_transfer", "cloak_withdraw"];
 
+// ─── Helpers ────────────────────────────────────────────────────────
 function formatAmount(units: string, token: string): string {
   const n = parseInt(units, 10);
   if (isNaN(n)) return `${units} ${token}`;
@@ -41,6 +46,12 @@ function truncateAddress(addr: string): string {
   return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
 }
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 function getApprovalFlowMeta(params?: any): ApprovalFlowMeta {
   const fallback2FA = !!params?._is2FA;
   const legacyMeta: ApprovalFlowMeta = {
@@ -51,7 +62,6 @@ function getApprovalFlowMeta(params?: any): ApprovalFlowMeta {
     needsGuardian2FA: !!params?._needsGuardian2FA,
     shouldWaitForExternalApproval: !!params?._postApproveWait || fallback2FA,
   };
-
   const raw = params?._approvalFlow;
   if (!raw || typeof raw !== "object") return legacyMeta;
   return {
@@ -74,57 +84,137 @@ function getInitialWaitingStatus(meta: ApprovalFlowMeta): string {
   return "Submitting transaction...";
 }
 
-function getFlowNotice(meta: ApprovalFlowMeta): string | null {
-  if (!meta.shouldWaitForExternalApproval) return null;
+/** Info notice text for the initial approval screen */
+function getFlowNotice(meta: ApprovalFlowMeta): string {
   if (meta.isWard) {
-    if (meta.needsWard2FA && meta.needsGuardian) {
-      return meta.needsGuardian2FA
-        ? "After approving here, this request goes to ward mobile first, then guardian mobile (guardian 2FA enabled)."
-        : "After approving here, this request goes to ward mobile first, then guardian mobile.";
-    }
-    if (meta.needsWard2FA) {
-      return "After approving here, ward mobile signature is required before execution.";
-    }
-    if (meta.needsGuardian) {
-      return meta.needsGuardian2FA
-        ? "After approving here, guardian approval is required (guardian 2FA enabled)."
-        : "After approving here, guardian approval is required on mobile.";
-    }
-    return "This transaction will continue in the approval flow.";
+    if (meta.needsWard2FA) return "Next: a 10:00 approval window starts for 2FA + guardian.";
+    if (meta.needsGuardian) return "Next: a 10:00 approval window starts for guardian approval.";
   }
-  if (meta.is2FA) {
-    return "Two-Factor Authentication is enabled. After approving here, confirm on your mobile device.";
-  }
-  return null;
+  if (meta.is2FA) return "Next: a 10:00 approval window starts for mobile 2FA.";
+  return "Next: a 10:00 approval window starts.";
 }
 
-function getWaitingTitle(meta: ApprovalFlowMeta): string {
-  if (meta.isWard) return "Waiting for Ward/Guardian Approval";
-  if (meta.is2FA) return "Waiting for 2FA Approval";
-  return "Submitting Transaction";
+// ─── Shared Sub-Components ──────────────────────────────────────────
+
+/** Cloak Wallet header bar */
+function WalletHeader({ subtitle, iconColor }: { subtitle: string; iconColor?: string }) {
+  const color = iconColor || "#3B82F6";
+  return (
+    <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid #1E293B" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <div style={{
+          width: 24, height: 24, borderRadius: 6,
+          background: `linear-gradient(135deg, ${color}, #7C3AED)`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "#F8FAFC" }}>Cloak Wallet</span>
+      </div>
+      <p style={{ fontSize: 12, color: "#94A3B8", margin: 0 }}>{subtitle}</p>
+    </div>
+  );
 }
 
-function getWaitingSubtitle(meta: ApprovalFlowMeta): string {
-  if (meta.isWard) {
-    if (meta.needsWard2FA && meta.needsGuardian) return "Approval chain: ward mobile -> guardian mobile";
-    if (meta.needsWard2FA) return "Approval chain: ward mobile";
-    if (meta.needsGuardian) return "Approval chain: guardian mobile";
-  }
-  if (meta.is2FA) return "Approval chain: mobile 2FA";
-  return "Please keep this window open";
+/** Transaction detail card (dark bg, labeled rows) */
+function TxDetailCard({ origin, action, amount, token, recipient }: {
+  origin?: string; action: string; amount?: string; token: string; recipient?: string;
+}) {
+  return (
+    <div style={{
+      borderRadius: 10, backgroundColor: "#0F172A", border: "1px solid #1E293B",
+      padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10,
+    }}>
+      {origin && (
+        <div>
+          <p style={{ fontSize: 9, fontWeight: 600, color: "#64748B", letterSpacing: "1.2px", textTransform: "uppercase", margin: 0 }}>Requesting Site</p>
+          <p style={{ fontSize: 12, color: "#CBD5E1", fontFamily: "'JetBrains Mono', monospace", margin: "2px 0 0" }}>{origin}</p>
+        </div>
+      )}
+      <div>
+        <p style={{ fontSize: 9, fontWeight: 600, color: "#64748B", letterSpacing: "1.2px", textTransform: "uppercase", margin: 0 }}>Action</p>
+        <p style={{ fontSize: 14, fontWeight: 600, color: "#F8FAFC", margin: "2px 0 0" }}>{action}</p>
+      </div>
+      {amount && (
+        <div>
+          <p style={{ fontSize: 9, fontWeight: 600, color: "#64748B", letterSpacing: "1.2px", textTransform: "uppercase", margin: 0 }}>Amount</p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "#F59E0B", fontFamily: "'JetBrains Mono', monospace", margin: "2px 0 0" }}>
+            {formatAmount(amount, token)}
+          </p>
+        </div>
+      )}
+      {recipient && (
+        <div>
+          <p style={{ fontSize: 9, fontWeight: 600, color: "#64748B", letterSpacing: "1.2px", textTransform: "uppercase", margin: 0 }}>Recipient</p>
+          <p style={{ fontSize: 12, color: "#CBD5E1", fontFamily: "'JetBrains Mono', monospace", margin: "2px 0 0" }}>{truncateAddress(recipient)}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
+/** Colored info box */
+function InfoBox({ children, color }: { children: React.ReactNode; color: "blue" | "amber" | "green" | "red" | "gray" }) {
+  const styles: Record<string, { bg: string; border: string; text: string }> = {
+    blue: { bg: "rgba(59,130,246,0.08)", border: "rgba(59,130,246,0.2)", text: "#60A5FA" },
+    amber: { bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)", text: "#FBBF24" },
+    green: { bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.2)", text: "#34D399" },
+    red: { bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.2)", text: "#F87171" },
+    gray: { bg: "rgba(100,116,139,0.06)", border: "rgba(100,116,139,0.15)", text: "#94A3B8" },
+  };
+  const s = styles[color];
+  return (
+    <div style={{ borderRadius: 8, backgroundColor: s.bg, border: `1px solid ${s.border}`, padding: "8px 12px" }}>
+      <p style={{ fontSize: 12, color: s.text, margin: 0, lineHeight: 1.4 }}>{children}</p>
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────
 export default function ApproveScreen() {
   const [request, setRequest] = useState<PendingRequest | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [waitingApproval, setWaitingApproval] = useState(false);
   const [approvalStatus, setApprovalStatus] = useState("Preparing...");
-  const [approvalComplete, setApprovalComplete] = useState(false);
-  const [approvalApproved, setApprovalApproved] = useState(false);
+  const [terminal, setTerminal] = useState<TerminalState>(null);
+
+  // Countdown timer
+  const [timeLeft, setTimeLeft] = useState(APPROVAL_TIMEOUT_SECONDS);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const flowMeta = getApprovalFlowMeta(request?.params);
+  const token = request?.params?.token || "STRK";
+  const amount = request?.params?.amount;
+  const recipient = request?.params?.to;
+  const label = request ? (METHOD_LABELS[request.method] || request.method) : "";
+  const isFundMethod = request ? FUND_METHODS.includes(request.method) : false;
 
+  // Start countdown timer
+  const startTimer = useCallback(() => {
+    setTimeLeft(APPROVAL_TIMEOUT_SECONDS);
+    timerRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setTerminal("expired");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  // Cleanup timer
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  // Fetch pending request
   useEffect(() => {
     chrome.runtime.sendMessage({ type: "GET_PENDING_APPROVAL" }, (response) => {
       if (response?.data) setRequest(response.data);
@@ -132,24 +222,45 @@ export default function ApproveScreen() {
     });
   }, []);
 
+  // Listen for status updates
   useEffect(() => {
     if (!waitingApproval) return;
-
     const listener = (msg: any) => {
       if (msg.type === "2FA_STATUS_UPDATE") {
         setApprovalStatus(msg.status);
       }
       if (msg.type === "2FA_COMPLETE") {
-        setApprovalComplete(true);
-        setApprovalApproved(!!msg.approved);
-        setApprovalStatus(msg.approved ? "Approved!" : (msg.error || "Rejected"));
-        setTimeout(() => window.close(), 2000);
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (msg.approved) {
+          setTerminal("success");
+        } else {
+          setTerminal("rejected");
+          setApprovalStatus(msg.error || "Rejected");
+        }
       }
     };
-
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [waitingApproval]);
+
+  // Auto-close on success, rejected, and expired — unless it's a chain error
+  useEffect(() => {
+    if (terminal === "success" || terminal === "expired") {
+      const t = setTimeout(() => window.close(), 3000);
+      return () => clearTimeout(t);
+    }
+    if (terminal === "rejected") {
+      const s = (approvalStatus || "").toLowerCase();
+      // Chain errors contain technical details — keep window open for those
+      const isChainError = s.includes("execution_reverted") || s.includes("revert") ||
+        s.includes("insufficient") || s.includes("nonce") || s.includes("gas") ||
+        s.includes("0x") || s.includes("error:") || s.includes("failed to");
+      if (!isChainError) {
+        const t = setTimeout(() => window.close(), 3000);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [terminal, approvalStatus]);
 
   const handleApprove = () => {
     if (!request) return;
@@ -158,10 +269,10 @@ export default function ApproveScreen() {
       id: request.id,
       approved: true,
     });
-
     if (flowMeta.shouldWaitForExternalApproval) {
       setWaitingApproval(true);
       setApprovalStatus(getInitialWaitingStatus(flowMeta));
+      startTimer();
       return;
     }
     window.close();
@@ -177,6 +288,7 @@ export default function ApproveScreen() {
     window.close();
   };
 
+  // ─── Loading ────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#0A0F1C]">
@@ -189,209 +301,294 @@ export default function ApproveScreen() {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#0A0F1C] text-white p-6">
         <p className="text-sm text-gray-400">No pending transaction.</p>
-        <button
-          onClick={() => window.close()}
-          className="mt-4 text-xs text-blue-400 hover:text-blue-300"
-        >
-          Close
-        </button>
+        <button onClick={() => window.close()} className="mt-4 text-xs text-blue-400 hover:text-blue-300">Close</button>
       </div>
     );
   }
 
-  if (waitingApproval) {
+  // ─── Terminal: Success (NAnyN) ──────────────────────────────────
+  if (terminal === "success") {
     return (
-      <div className="flex flex-col h-screen bg-[#0A0F1C] text-white">
-        <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
-                  fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <span className="text-sm font-semibold">Cloak Wallet</span>
-          </div>
-          <p className="text-xs text-gray-400">{getWaitingSubtitle(flowMeta)}</p>
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "#0A0F1C", color: "#F8FAFC" }}>
+        <WalletHeader subtitle="Transaction submitted" iconColor="#10B981" />
+        <div style={{ flex: 1, padding: "16px 20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+          <TxDetailCard origin={request.origin} action={label} amount={isFundMethod ? amount : undefined} token={token} recipient={recipient} />
+          <InfoBox color="green">Transaction submitted successfully.</InfoBox>
+          <InfoBox color="gray">This window will close automatically in a few seconds.</InfoBox>
         </div>
+        <div style={{ padding: "12px 20px 20px", borderTop: "1px solid #1E293B", display: "flex", justifyContent: "center" }}>
+          <button onClick={() => window.close()} style={{
+            width: "100%", height: 40, borderRadius: 12, backgroundColor: "#1E293B", border: "1px solid #334155",
+            color: "#94A3B8", fontSize: 13, fontWeight: 600, cursor: "pointer",
+          }}>Close</button>
+        </div>
+      </div>
+    );
+  }
 
-        <div className="flex-1 flex flex-col items-center justify-center px-6">
-          {!approvalComplete && (
-            <div className="relative mb-6">
-              <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center animate-pulse">
-                <svg
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-blue-400"
-                >
-                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                  <line x1="12" y1="18" x2="12.01" y2="18" />
-                </svg>
+  // ─── Terminal: Rejected (mdt3i) ─────────────────────────────────
+  if (terminal === "rejected") {
+    const s = (approvalStatus || "").toLowerCase();
+    const isChainError = s.includes("execution_reverted") || s.includes("revert") ||
+      s.includes("insufficient") || s.includes("nonce") || s.includes("gas") ||
+      s.includes("0x") || s.includes("error:") || s.includes("failed to");
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "#0A0F1C", color: "#F8FAFC" }}>
+        <WalletHeader subtitle={isChainError ? "Transaction failed" : "Request rejected"} iconColor="#EF4444" />
+        <div style={{ flex: 1, padding: "16px 20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+          <TxDetailCard origin={request.origin} action={label} amount={isFundMethod ? amount : undefined} token={token} recipient={recipient} />
+          {isChainError ? (
+            <>
+              <InfoBox color="red">Transaction failed on-chain.</InfoBox>
+              <div style={{
+                borderRadius: 8, backgroundColor: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)",
+                padding: "8px 12px", maxHeight: 120, overflowY: "auto",
+              }}>
+                <p style={{ fontSize: 11, color: "#F87171", margin: 0, lineHeight: 1.5, fontFamily: "'JetBrains Mono', monospace", wordBreak: "break-all" }}>
+                  {approvalStatus}
+                </p>
               </div>
-              <div className="absolute inset-0 w-16 h-16 rounded-full bg-blue-500/10 animate-ping" />
-            </div>
+            </>
+          ) : (
+            <>
+              <InfoBox color="red">This transfer was rejected. No on-chain action was taken.</InfoBox>
+              <InfoBox color="gray">This window will close automatically.</InfoBox>
+            </>
           )}
+        </div>
+        <div style={{ padding: "12px 20px 20px", borderTop: "1px solid #1E293B", display: "flex", justifyContent: "center" }}>
+          <button onClick={() => window.close()} style={{
+            width: "100%", height: 40, borderRadius: 12, backgroundColor: "#1E293B", border: "1px solid #334155",
+            color: "#94A3B8", fontSize: 13, fontWeight: 600, cursor: "pointer",
+          }}>Close</button>
+        </div>
+      </div>
+    );
+  }
 
-          {approvalComplete && (
-            <div className="mb-6">
-              <div
-                className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                  approvalApproved ? "bg-green-500/20" : "bg-red-500/20"
-                }`}
-              >
-                {approvalApproved ? (
-                  <svg
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-green-400"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
+  // ─── Terminal: Expired (ULAlQ) ──────────────────────────────────
+  if (terminal === "expired") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "#0A0F1C", color: "#F8FAFC" }}>
+        <WalletHeader subtitle="Request expired" iconColor="#F59E0B" />
+        <div style={{ flex: 1, padding: "16px 20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+          <TxDetailCard origin={request.origin} action={label} amount={isFundMethod ? amount : undefined} token={token} recipient={recipient} />
+          <InfoBox color="amber">This approval request expired.</InfoBox>
+          <InfoBox color="gray">This window will close automatically.</InfoBox>
+        </div>
+        <div style={{ padding: "12px 20px 20px", borderTop: "1px solid #1E293B", display: "flex", justifyContent: "center" }}>
+          <button onClick={() => window.close()} style={{
+            width: "100%", height: 40, borderRadius: 12, backgroundColor: "#1E293B", border: "1px solid #334155",
+            color: "#94A3B8", fontSize: 13, fontWeight: 600, cursor: "pointer",
+          }}>Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Waiting Screen (eX8pN / I0KJN / OwfM3) ───────────────────
+  if (waitingApproval) {
+    const statusLower = approvalStatus.toLowerCase();
+    const phase: "init" | "2fa" | "guardian" | "done" =
+      statusLower.includes("guardian") ? "guardian"
+      : statusLower.includes("ward mobile") || statusLower.includes("ward signing") ? "2fa"
+      : "init";
+    const tfaDone = phase === "guardian";
+    const guardianActive = phase === "guardian" || (!flowMeta.needsWard2FA);
+    const showWardSteps = flowMeta.isWard;
+    const show2FAStep = flowMeta.needsWard2FA;
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "#0A0F1C", color: "#F8FAFC" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 20px", gap: 14 }}>
+          {/* Title */}
+          <h3 style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#F8FAFC", textAlign: "center", margin: 0, whiteSpace: "pre-line" }}>
+            {showWardSteps
+              ? (show2FAStep ? "Approvals Required" : "Guardian Approval\nRequired")
+              : "Waiting for Mobile\nApproval"}
+          </h3>
+
+          {/* Subtitle */}
+          <p style={{ fontSize: 12, color: "#94A3B8", textAlign: "center", margin: 0, lineHeight: 1.4, whiteSpace: "pre-line" }}>
+            {showWardSteps
+              ? (show2FAStep
+                ? "This ward transaction requires\nboth 2FA and guardian approval."
+                : "This request needs guardian approval only.")
+              : "Approve this transaction on your\nmobile device to continue."}
+          </p>
+
+          {/* Timer pill — shown on all waiting screens */}
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            borderRadius: 20, padding: "6px 14px",
+            backgroundColor: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.25)",
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#FBBF24" }}>
+              Time left: {formatTime(timeLeft)}
+            </span>
+          </div>
+
+          {showWardSteps ? (
+            /* ── Ward step indicators ── */
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* 2FA step (only if ward has 2FA) */}
+              {show2FAStep && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  borderRadius: 10, padding: "10px 12px",
+                  backgroundColor: tfaDone ? "rgba(16, 185, 129, 0.08)" : "rgba(139, 92, 246, 0.08)",
+                  border: `1px solid ${tfaDone ? "rgba(16, 185, 129, 0.25)" : "rgba(139, 92, 246, 0.2)"}`,
+                }}>
+                  {tfaDone ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="waiting-spin" style={{ flexShrink: 0 }}>
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                  )}
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: tfaDone ? "#10B981" : "#C4B5FD", margin: 0 }}>
+                      {tfaDone ? "2FA Approved" : "2FA Approval"}
+                    </p>
+                    <p style={{ fontSize: 10, color: "#64748B", margin: 0 }}>
+                      {tfaDone ? "Biometric verified on mobile" : "Waiting for mobile verification..."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Guardian step */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                borderRadius: 10, padding: "10px 12px",
+                backgroundColor: guardianActive ? "rgba(245, 158, 11, 0.08)" : "rgba(100, 116, 139, 0.06)",
+                border: `1px solid ${guardianActive ? "rgba(245, 158, 11, 0.25)" : "rgba(100, 116, 139, 0.15)"}`,
+              }}>
+                {guardianActive ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="waiting-spin" style={{ flexShrink: 0 }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                 ) : (
-                  <svg
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-red-400"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
+                  <div style={{ width: 20, height: 20, borderRadius: 10, border: "1.5px solid #475569", flexShrink: 0 }} />
                 )}
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: guardianActive ? "#FBBF24" : "#64748B", margin: 0 }}>
+                    Guardian Approval
+                  </p>
+                  <p style={{ fontSize: 10, color: "#64748B", margin: 0 }}>
+                    {guardianActive ? "Waiting for guardian to approve..." : "Pending previous step"}
+                  </p>
+                </div>
               </div>
             </div>
+          ) : (
+            /* ── 2FA-only: action card + polling dots ── */
+            <>
+              <div style={{ width: "100%", borderRadius: 10, backgroundColor: "#0F172A", padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "#64748B" }}>Action</span>
+                <span style={{ fontSize: 11, fontWeight: 500, color: "#F8FAFC" }}>{approvalStatus}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="animate-poll-dot-1" style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#8B5CF6" }} />
+                <span className="animate-poll-dot-2" style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#8B5CF6" }} />
+                <span className="animate-poll-dot-3" style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#8B5CF6" }} />
+                <span style={{ fontSize: 10, color: "#64748B", marginLeft: 2 }}>Polling...</span>
+              </div>
+            </>
           )}
 
-          <p className="text-sm font-medium text-white mb-2 text-center">
-            {approvalComplete
-              ? approvalApproved
-                ? "Transaction Approved!"
-                : "Transaction Failed"
-              : getWaitingTitle(flowMeta)}
-          </p>
-          <p className="text-xs text-gray-400 mb-6 text-center break-words">{approvalStatus}</p>
+          {/* Detail card with Amount / To / Time left */}
+          <div style={{
+            width: "100%", borderRadius: 10, backgroundColor: "#0F172A",
+            padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6,
+          }}>
+            {amount && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "#64748B" }}>Amount</span>
+                <span style={{ fontSize: 11, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#F8FAFC" }}>
+                  {formatAmount(amount, token)}
+                </span>
+              </div>
+            )}
+            {recipient && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "#64748B" }}>To</span>
+                <span style={{ fontSize: 11, fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", color: "#F8FAFC" }}>
+                  {truncateAddress(recipient)}
+                </span>
+              </div>
+            )}
+          </div>
 
-          {!approvalComplete && (
-            <button
-              onClick={() => window.close()}
-              className="px-6 py-2 rounded-xl text-sm font-medium bg-[#1E293B] border border-[#334155] text-gray-300 hover:bg-[#334155] transition-colors"
-            >
-              Close
-            </button>
-          )}
+          {/* Cancel */}
+          <button
+            onClick={() => window.close()}
+            style={{
+              width: "100%", height: 40, borderRadius: 10,
+              backgroundColor: "transparent", border: "1px solid #334155",
+              fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace",
+              color: "#94A3B8", cursor: "pointer",
+            }}
+          >
+            Cancel Request
+          </button>
         </div>
+
+        <style>{`
+          @keyframes pollingDot { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+          .animate-poll-dot-1 { animation: pollingDot 1.4s ease-in-out infinite; }
+          .animate-poll-dot-2 { animation: pollingDot 1.4s ease-in-out 0.2s infinite; }
+          .animate-poll-dot-3 { animation: pollingDot 1.4s ease-in-out 0.4s infinite; }
+          @keyframes waiting-spin { to { transform: rotate(360deg); } }
+          .waiting-spin { animation: waiting-spin 1.5s linear infinite; }
+        `}</style>
       </div>
     );
   }
 
-  const label = METHOD_LABELS[request.method] || request.method;
-  const isFundMethod = FUND_METHODS.includes(request.method);
-  const token = request.params?.token || "STRK";
-  const amount = request.params?.amount;
-  const recipient = request.params?.to;
+  // ─── Initial Approval Screen (zba54) ────────────────────────────
   const flowNotice = getFlowNotice(flowMeta);
 
   return (
-    <div className="flex flex-col h-screen bg-[#0A0F1C] text-white">
-      <div className="px-5 pt-5 pb-3 border-b border-[#334155]">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
-                fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-          <span className="text-sm font-semibold">Cloak Wallet</span>
-        </div>
-        <p className="text-xs text-gray-400">Transaction approval required</p>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: "#0A0F1C", color: "#F8FAFC" }}>
+      <WalletHeader subtitle={`Transaction approval required (${formatTime(APPROVAL_TIMEOUT_SECONDS)} expiry)`} />
+
+      <div style={{ flex: 1, padding: "16px 20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+        <TxDetailCard
+          origin={request.origin}
+          action={label}
+          amount={isFundMethod ? amount : undefined}
+          token={token}
+          recipient={recipient}
+        />
+
+        {flowMeta.shouldWaitForExternalApproval && (
+          <InfoBox color="blue">{flowNotice}</InfoBox>
+        )}
+
+        <InfoBox color="amber">Only approve requests from sites you trust. This action cannot be undone.</InfoBox>
       </div>
 
-      <div className="flex-1 px-5 py-4 overflow-y-auto">
-        {request.origin && (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
-            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
-              Requesting site
-            </p>
-            <p className="text-xs font-mono text-gray-300 truncate">{request.origin}</p>
-          </div>
-        )}
-
-        <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
-          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
-            Action
-          </p>
-          <p className="text-sm font-semibold text-white">{label}</p>
-        </div>
-
-        {isFundMethod && amount && (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
-            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
-              Amount
-            </p>
-            <p className="text-sm font-semibold text-amber-400">
-              {formatAmount(amount, token)}
-            </p>
-          </div>
-        )}
-
-        {recipient && (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
-            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
-              Recipient
-            </p>
-            <p className="text-xs font-mono text-gray-300">
-              {truncateAddress(recipient)}
-            </p>
-          </div>
-        )}
-
-        {flowNotice && (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-            <p className="text-xs text-blue-400">{flowNotice}</p>
-          </div>
-        )}
-
-        <div className="mt-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-          <p className="text-xs text-amber-400">
-            Only approve transactions from sites you trust. This action cannot
-            be undone.
-          </p>
-        </div>
-      </div>
-
-      <div className="px-5 pb-5 pt-3 border-t border-[#334155] flex gap-3">
+      <div style={{ padding: "12px 20px 20px", borderTop: "1px solid #1E293B", display: "flex", gap: 12 }}>
         <button
           onClick={handleReject}
-          className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-[#1E293B] border border-[#334155] text-gray-300 hover:bg-[#334155] transition-colors"
+          style={{
+            flex: 1, height: 40, borderRadius: 12, backgroundColor: "#1E293B", border: "1px solid #334155",
+            color: "#94A3B8", fontSize: 13, fontWeight: 600, cursor: "pointer",
+          }}
         >
           Reject
         </button>
         <button
           onClick={handleApprove}
-          className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          style={{
+            flex: 1, height: 40, borderRadius: 12, backgroundColor: "#3B82F6", border: "none",
+            color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer",
+          }}
         >
-          Approve
+          Approve & Next
         </button>
       </div>
     </div>

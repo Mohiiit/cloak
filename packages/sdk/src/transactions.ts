@@ -139,7 +139,7 @@ export async function getTransactions(
     ),
   ]);
 
-  // Deduplicate by tx_hash (same tx may appear in both queries)
+  // Deduplicate by tx_hash — prefer byWallet (user's own record) over byWard (other user's record)
   const seen = new Set<string>();
   const all: TransactionRecord[] = [];
   for (const tx of [...byWallet, ...byWard]) {
@@ -148,6 +148,8 @@ export async function getTransactions(
       all.push(tx);
     }
   }
+  // If a tx_hash appears in BOTH byWallet and byWard, ensure byWallet version wins
+  // (byWallet is iterated first, so this is already guaranteed by the loop above)
 
   // Sort descending by created_at
   all.sort((a, b) => {

@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function ShieldForm({ wallet: w, onBack }: Props) {
-  const { isWard } = useWard(w.wallet?.starkAddress);
+  const { isWard, wardInfo } = useWard(w.wallet?.starkAddress);
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -158,14 +158,19 @@ export function ShieldForm({ wallet: w, onBack }: Props) {
       )}
 
       <TwoFactorWaiting
-        isOpen={show2FAWaiting}
-        status={twoFAStatus}
+        isOpen={loading}
+        status={twoFAStatus || "Submitting to network..."}
         onCancel={() => {
           abortController.current?.abort();
           setShow2FAWaiting(false);
           setLoading(false);
         }}
-        isWard={isWard}
+        title={!show2FAWaiting ? "Shielding Tokens" : undefined}
+        subtitle={!show2FAWaiting ? "Your transaction is being submitted\nto the Starknet network." : undefined}
+        isWard={show2FAWaiting ? isWard : false}
+        wardHas2fa={show2FAWaiting ? wardInfo?.is2faEnabled : false}
+        amount={amount}
+        token={w.selectedToken}
       />
 
       <FeeRetryModal

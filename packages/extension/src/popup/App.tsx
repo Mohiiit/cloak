@@ -25,7 +25,6 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("main");
   const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
   const [wardExpanded, setWardExpanded] = useState(false);
-  const [claiming, setClaiming] = useState(false);
   const [copied, setCopied] = useState(false);
   const txHistory = useTxHistory(w.wallet?.starkAddress);
   const [toast, setToast] = useState<string | null>(null);
@@ -206,36 +205,6 @@ export default function App() {
           <p className="text-xs text-cloak-text-dim">
             ({shieldedDisplay} {w.selectedToken})
           </p>
-
-          {/* Pending claim row */}
-          {w.balances.pending > 0n && (
-            <div className="flex items-center justify-between mt-1 bg-cloak-warning/10 border border-cloak-warning/25 rounded-lg p-2">
-              <div className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-cloak-warning" />
-                <span className="text-[11px] text-cloak-warning">
-                  +{w.balances.pending.toString()} pending
-                </span>
-              </div>
-              <button
-                onClick={async () => {
-                  setClaiming(true);
-                  try {
-                    const txHash = await w.rollover();
-                    if (txHash) {
-                      setClaimTxHash(txHash);
-                      setScreen("claim-success");
-                    }
-                  } finally {
-                    setClaiming(false);
-                  }
-                }}
-                disabled={claiming}
-                className="text-[11px] font-semibold text-cloak-warning hover:text-yellow-300 bg-cloak-warning/20 border border-cloak-warning/40 px-2.5 py-1 rounded-full transition-colors disabled:opacity-50"
-              >
-                {claiming ? "Claiming..." : "Claim"}
-              </button>
-            </div>
-          )}
 
           {/* Unshielded row */}
           <div className="flex items-center justify-between pt-2 border-t border-cloak-border-light mt-1">

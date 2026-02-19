@@ -948,13 +948,18 @@ export default function HomeScreen({ navigation }: any) {
           const token = (tx.token || "STRK") as TokenKey;
           const isPublic = txType === "erc20_transfer";
           // Guardian ward ops: amount stored as STRK display (from formatWardAmount)
-          const isGuardianWardOp = tx.account_type === "guardian" && !isPublic;
+          const isGuardianWardOp = tx.account_type === "guardian";
+          // Detect if amount has a token suffix (e.g. "1 STRK") — means it's display format
+          const hasTokenSuffix = /\s*(STRK|ETH|USDC)\s*$/i.test(tx.amount || "");
           if (tx.amount) {
             const raw = tx.amount.trim().replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
-            if (isPublic) {
+            if (isPublic && !isGuardianWardOp) {
               amountLabel = `${raw} ${token}`;
-            } else if (isGuardianWardOp && raw.includes(".")) {
-              // Reverse-convert STRK display → tongo units (e.g. "0.05" → "1")
+            } else if (isGuardianWardOp && isPublic) {
+              // Guardian ward public transfer: amount is ERC-20 display
+              amountLabel = `${raw} ${token}`;
+            } else if (isGuardianWardOp && (raw.includes(".") || hasTokenSuffix)) {
+              // Guardian ward shielded ops: reverse-convert STRK display → tongo units
               const cfg = TOKENS[token];
               try {
                 const parts = raw.split(".");
@@ -1093,11 +1098,6 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={styles.balanceSecondary}>
             {balanceHidden ? "****" : `(${displayBalance} ${wallet.selectedToken})`}
           </Text>
-          {hasPending && (
-            <Text style={styles.pendingText}>
-              {balanceHidden ? "+**** pending" : `+${wallet.pending} units (${displayPending} ${wallet.selectedToken}) pending`}
-            </Text>
-          )}
           <Text style={styles.erc20Label}>Unshielded (On-chain)</Text>
           <Text style={styles.erc20Amount}>
             {balanceHidden ? "****" : displayErc20}{" "}

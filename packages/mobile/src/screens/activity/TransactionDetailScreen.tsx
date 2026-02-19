@@ -15,6 +15,7 @@ import {
   SupabaseLite,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_KEY,
+  normalizeAddress,
   type TransactionRecord,
   type AmountUnit,
 } from "@cloak-wallet/sdk";
@@ -73,9 +74,9 @@ function formatTokenAmountFixed2(unitsStr: string, token: TokenKey): string {
   return `${whole.toString()}.${frac.toString().padStart(2, "0")}`;
 }
 
-/** Check if amount string is a STRK display value (has decimal point) */
+/** Check if amount string is a STRK display value (has decimal point or token suffix) */
 function isDisplayAmount(raw: string): boolean {
-  return stripTokenSuffix(raw).includes(".");
+  return stripTokenSuffix(raw).includes(".") || /\s*(STRK|ETH|USDC)\s*$/i.test(raw);
 }
 
 /** Reverse-convert STRK display → tongo units (e.g. "0.05" STRK → "1") */
@@ -195,7 +196,12 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
           `tx_hash=eq.${txHash}`,
         );
         if (isMounted && records && records.length > 0) {
-          const r = records[0];
+          // Prefer the record matching the current user's wallet address
+          const myAddr = wallet.keys?.starkAddress;
+          const myNormalized = myAddr ? normalizeAddress(myAddr) : "";
+          const r = (myNormalized && records.length > 1
+            ? records.find(rec => normalizeAddress(rec.wallet_address) === myNormalized)
+            : null) || records[0];
           setMeta({
             txHash: r.tx_hash,
             recipient: r.recipient || undefined,
@@ -250,11 +256,12 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
 
   // Guardian-submitted ward operations — only show guardian perspective if viewer IS the guardian
   const SHIELDED_TYPES = ["fund", "transfer", "send", "withdraw", "rollover"];
-  const isGuardianWardOp = !viewingAsWard && meta?.accountType === "guardian" && SHIELDED_TYPES.includes(meta?.type || "");
+  const GUARDIAN_WARD_TYPES = [...SHIELDED_TYPES, "erc20_transfer"];
+  const isGuardianWardOp = !viewingAsWard && meta?.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(meta?.type || "");
   const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(meta?.type || "");
   // Type determines shielded vs public — NOT amount_unit (old records may have wrong amount_unit)
   const isShieldedOp = SHIELDED_TYPES.includes(meta?.type || "") && !isGuardianWardOp;
-  const isPublicOp = meta?.type === "erc20_transfer" || isWardAdmin || (viewingAsWard && meta?.accountType === "guardian");
+  const isPublicOp = (meta?.type === "erc20_transfer" && !isGuardianWardOp) || isWardAdmin || (viewingAsWard && meta?.accountType === "guardian");
   const prefix = isDebit(meta?.type) ? "-" : "+";
   const cleanAmount = stripTokenSuffix(amountRaw);
 
@@ -262,7 +269,10 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   let signedAmount: string;
   let heroSecondary = "";
 
-  if (isShieldedOp || isGuardianWardOp) {
+  if (isGuardianWardOp && meta?.type === "erc20_transfer") {
+    // Guardian ward public transfer: amount is ERC-20 display (e.g. "1 STRK")
+    signedAmount = `${cleanAmount} ${token}`;
+  } else if (isShieldedOp || isGuardianWardOp) {
     // Both shielded user ops AND guardian ward shielded ops show units + STRK secondary
     const units = toTongoUnits(amountRaw, token);
     signedAmount = isGuardianWardOp ? unitLabel(units) : `${prefix}${unitLabel(units)}`;

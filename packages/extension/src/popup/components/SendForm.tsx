@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function SendForm({ wallet: w, onBack }: Props) {
-  const { isWard } = useWard(w.wallet?.starkAddress);
+  const { isWard, wardInfo } = useWard(w.wallet?.starkAddress);
   const { contacts } = useContacts();
   const [sendMode, setSendMode] = useState<"private" | "public">("private");
   const [recipient, setRecipient] = useState("");
@@ -252,14 +252,20 @@ export function SendForm({ wallet: w, onBack }: Props) {
       )}
 
       <TwoFactorWaiting
-        isOpen={show2FAWaiting}
-        status={twoFAStatus}
+        isOpen={loading}
+        status={twoFAStatus || "Submitting to network..."}
         onCancel={() => {
           abortController.current?.abort();
           setShow2FAWaiting(false);
           setLoading(false);
         }}
-        isWard={isWard}
+        title={!show2FAWaiting ? (isPublic ? "Public Transfer" : "Private Transfer") : undefined}
+        subtitle={!show2FAWaiting ? "Your transaction is being submitted\nto the Starknet network." : undefined}
+        isWard={show2FAWaiting ? isWard : false}
+        wardHas2fa={show2FAWaiting ? wardInfo?.is2faEnabled : false}
+        amount={amount}
+        token={w.selectedToken}
+        recipient={recipient.trim()}
       />
 
       <FeeRetryModal

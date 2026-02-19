@@ -43,6 +43,18 @@ function truncate(str: string, front = 8, back = 6): string {
   return `${str.slice(0, front)}...${str.slice(-back)}`;
 }
 
+function formatAction(action: string): { label: string; isPrivate: boolean } {
+  const map: Record<string, { label: string; isPrivate: boolean }> = {
+    fund: { label: "Shield Tokens", isPrivate: true },
+    shield: { label: "Shield Tokens", isPrivate: true },
+    transfer: { label: "Private Transfer", isPrivate: true },
+    withdraw: { label: "Unshield Tokens", isPrivate: false },
+    unshield: { label: "Unshield Tokens", isPrivate: false },
+    rollover: { label: "Claim Pending", isPrivate: true },
+  };
+  return map[action] || { label: action, isPrivate: false };
+}
+
 function useCountdown(expiresAt: string): string {
   const [timeLeft, setTimeLeft] = useState("");
 
@@ -219,6 +231,28 @@ function GuardianCardContent({
 
       {/* Detail card */}
       <View style={styles.detailCard}>
+        {(() => {
+          const actionInfo = formatAction(request.action);
+          return (
+            <>
+              <DetailRow label="Action" value={actionInfo.label} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Type</Text>
+                <View style={[
+                  styles.typeBadge,
+                  actionInfo.isPrivate ? styles.typeBadgePrivate : styles.typeBadgePublic,
+                ]}>
+                  <Text style={[
+                    styles.typeBadgeText,
+                    actionInfo.isPrivate ? styles.typeBadgeTextPrivate : styles.typeBadgeTextPublic,
+                  ]}>
+                    {actionInfo.isPrivate ? "Shielded" : "Public"}
+                  </Text>
+                </View>
+              </View>
+            </>
+          );
+        })()}
         <DetailRow label="Ward" value={wardDisplay} />
         {request.recipient && (
           <DetailRow label="Recipient" value={truncate(request.recipient)} />
@@ -401,6 +435,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     color: colors.text,
+  },
+
+  // Type badge
+  typeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  typeBadgePrivate: {
+    backgroundColor: "rgba(139, 92, 246, 0.12)",
+  },
+  typeBadgePublic: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+  },
+  typeBadgeText: {
+    fontSize: 12,
+    fontWeight: "600" as const,
+    fontFamily: typography.primarySemibold,
+  },
+  typeBadgeTextPrivate: {
+    color: "#A78BFA",
+  },
+  typeBadgeTextPublic: {
+    color: "#FBBF24",
   },
 
   // Expiry section

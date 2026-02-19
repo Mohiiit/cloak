@@ -29,16 +29,16 @@ function truncate(str: string, front = 8, back = 6): string {
   return `${str.slice(0, front)}...${str.slice(-back)}`;
 }
 
-function formatAction(action: string): string {
-  const map: Record<string, string> = {
-    fund: "Shield (Fund)",
-    shield: "Shield (Fund)",
-    transfer: "Transfer",
-    withdraw: "Withdraw (Unshield)",
-    unshield: "Withdraw (Unshield)",
-    rollover: "Claim (Rollover)",
+function formatAction(action: string): { label: string; type: string } {
+  const map: Record<string, { label: string; type: string }> = {
+    fund: { label: "Shield Tokens", type: "Private" },
+    shield: { label: "Shield Tokens", type: "Private" },
+    transfer: { label: "Private Transfer", type: "Private" },
+    withdraw: { label: "Unshield Tokens", type: "Public" },
+    unshield: { label: "Unshield Tokens", type: "Public" },
+    rollover: { label: "Claim Pending", type: "Private" },
   };
-  return map[action] || action;
+  return map[action] || { label: action, type: "Unknown" };
 }
 
 function useCountdown(expiresAt: string): string {
@@ -210,10 +210,28 @@ export default function WardApprovalModal() {
 
           {/* ── Details card ── */}
           <View style={styles.detailsCard}>
-            <DetailRow
-              label="Action"
-              value={formatAction(request?.action ?? "")}
-            />
+            {(() => {
+              const actionInfo = formatAction(request?.action ?? "");
+              return (
+                <>
+                  <DetailRow label="Action" value={actionInfo.label} />
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Type</Text>
+                    <View style={[
+                      styles.typeBadge,
+                      actionInfo.type === "Private" ? styles.typeBadgePrivate : styles.typeBadgePublic,
+                    ]}>
+                      <Text style={[
+                        styles.typeBadgeText,
+                        actionInfo.type === "Private" ? styles.typeBadgeTextPrivate : styles.typeBadgeTextPublic,
+                      ]}>
+                        {actionInfo.type === "Private" ? "Shielded" : "Public"}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              );
+            })()}
             <DetailRow label="Token" value={request?.token ?? ""} />
             {request?.amount ? (
               <DetailRow label="Amount" value={request.amount} />
@@ -354,6 +372,30 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: "500",
     fontFamily: typography.primary,
+  },
+
+  // Type badge
+  typeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  typeBadgePrivate: {
+    backgroundColor: "rgba(139, 92, 246, 0.12)",
+  },
+  typeBadgePublic: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+  },
+  typeBadgeText: {
+    fontSize: 12,
+    fontWeight: "600" as const,
+    fontFamily: typography.primarySemibold,
+  },
+  typeBadgeTextPrivate: {
+    color: "#A78BFA",
+  },
+  typeBadgeTextPublic: {
+    color: "#FBBF24",
   },
 
   // Polling dots

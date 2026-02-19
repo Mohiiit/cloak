@@ -95,7 +95,7 @@ function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => s
   }
   const isGuardianSubmittedWardOp =
     tx.accountType === "guardian" &&
-    ["fund", "transfer", "send", "withdraw", "rollover"].includes(tx.type);
+    ["fund", "transfer", "send", "withdraw", "rollover", "erc20_transfer"].includes(tx.type);
 
   // Ward ops: title is just the ward name
   if (isGuardianSubmittedWardOp) {
@@ -134,6 +134,7 @@ function getWardActionLabel(tx: TxMetadataExtended): string {
     case "fund": return "Shielded";
     case "transfer":
     case "send": return "Sent";
+    case "erc20_transfer": return "Public Send";
     case "withdraw": return "Unshielded";
     case "rollover": return "Claimed";
     default: return "Transaction";
@@ -145,7 +146,7 @@ function getTxStatus(tx: TxMetadataExtended): string {
   if (tx.status === "failed") return "Failed";
   if (tx.status === "pending") return "Pending";
   // Guardian-submitted ward operations get a "Ward" badge
-  if (tx.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(tx.type)) {
+  if (tx.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover", "erc20_transfer"].includes(tx.type)) {
     return "Ward";
   }
   switch (tx.type) {
@@ -271,10 +272,10 @@ function stripTokenSuffix(raw: string): string {
   return raw.replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
 }
 
-/** Check if amount string is already a STRK display value (contains a decimal point) */
+/** Check if amount string is already a STRK display value (contains a decimal point or token suffix) */
 function isDisplayAmount(raw: string): boolean {
   const stripped = stripTokenSuffix(raw);
-  return stripped.includes(".");
+  return stripped.includes(".") || /\s*(STRK|ETH|USDC)\s*$/i.test(raw);
 }
 
 /** Shielded operation types — amounts are in tongo units */
@@ -468,10 +469,11 @@ export default function ActivityScreen({ navigation }: any) {
                   const token = (tx.token || "STRK") as TokenKey;
                   const stripped = stripTokenSuffix(amountRaw);
                   const hasAmount = !!stripped && stripped !== "0";
-                  const isGuardianWardOp = tx.accountType === "guardian" && SHIELDED_TYPES.includes(tx.type);
+                  const GUARDIAN_WARD_TYPES = [...SHIELDED_TYPES, "erc20_transfer"];
+                  const isGuardianWardOp = tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(tx.type);
                   const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(tx.type);
                   const isShielded = SHIELDED_TYPES.includes(tx.type) && !isGuardianWardOp;
-                  const isPublic = tx.type === "erc20_transfer" || isWardAdmin;
+                  const isPublic = (tx.type === "erc20_transfer" && !isGuardianWardOp) || isWardAdmin;
 
                   const title = getTxTitle(tx, wardNameLookup, wallet.keys?.starkAddress);
                   const statusText = getTxStatus(tx);
@@ -485,8 +487,11 @@ export default function ActivityScreen({ navigation }: any) {
                   if (!hasAmount) {
                     // No amount: show status label
                     primaryAmount = tx.type === "rollover" ? "Claimed" : (isWardAdmin ? statusText : "");
+                  } else if (isGuardianWardOp && tx.type === "erc20_transfer") {
+                    // Guardian ward public transfer: amount is ERC-20 display (e.g. "1 STRK")
+                    primaryAmount = `${stripped} ${token}`;
                   } else if (isGuardianWardOp) {
-                    // Guardian ward ops: amount may be STRK display (from formatWardAmount) — convert to units
+                    // Guardian ward shielded ops: amount is STRK display (from formatWardAmount) — convert to units
                     const units = toTongoUnits(amountRaw, token);
                     primaryAmount = unitLabel(units);
                     secondaryAmount = unitsToStrkDisplay(units, token);

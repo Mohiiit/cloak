@@ -3,7 +3,7 @@ import { Shield, Send, ArrowDownToLine } from "lucide-react";
 
 interface Props {
   visible: boolean;
-  action: "shield" | "send" | "withdraw";
+  action: "shield" | "send" | "withdraw" | "public send";
   token: string;
   amount: string;
   recipient?: string;
@@ -14,6 +14,7 @@ interface Props {
 const CONFIG = {
   shield: { title: "Confirm Shield", icon: Shield, verb: "Shield Tokens" },
   send: { title: "Confirm Transfer", icon: Send, verb: "Private Transfer" },
+  "public send": { title: "Confirm Transfer", icon: Send, verb: "Public Transfer" },
   withdraw: { title: "Confirm Unshield", icon: ArrowDownToLine, verb: "Unshield Tokens" },
 } as const;
 

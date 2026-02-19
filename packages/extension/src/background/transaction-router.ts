@@ -286,7 +286,7 @@ export async function routeTransaction(
 export async function routeRawCalls(
   client: CloakClient,
   calls: any[],
-  opts?: { onStatusChange?: (s: string) => void },
+  opts?: { onStatusChange?: (s: string) => void; action?: string; token?: string; amount?: string; recipient?: string },
 ): Promise<{ transaction_hash: string }> {
   const wallet = await client.getWallet();
   if (!wallet) throw new Error("No wallet connected");
@@ -313,11 +313,11 @@ export async function routeRawCalls(
         saveTransaction({
           wallet_address: wallet.starkAddress,
           tx_hash: rawTxHash,
-          type: "transfer",
-          token: "STRK",
-          amount: null,
-          amount_unit: null,
-          recipient: null,
+          type: (opts?.action || "transfer") as any,
+          token: opts?.token || "STRK",
+          amount: opts?.amount || null,
+          amount_unit: opts?.amount ? "erc20_display" : null,
+          recipient: opts?.recipient || null,
           status: "pending",
           account_type: "ward",
           network: "sepolia",
@@ -332,14 +332,20 @@ export async function routeRawCalls(
       ? await prepareLocalWardEnvelope(wallet.starkAddress, wallet.privateKey, calls)
       : null;
 
+    const wardAction = opts?.action || "invoke";
+    const wardToken = opts?.token || "STRK";
+    const wardAmount = opts?.amount || null;
+    const wardRecipient = opts?.recipient || null;
+    const formattedAmount = wardAmount ? formatWardAmount(wardAmount, wardToken, wardAction) : null;
+
     const wardResult = await requestWardApproval(
       {
         wardAddress: wallet.starkAddress,
         guardianAddress: wardNeeds.guardianAddress,
-        action: "invoke",
-        token: "STRK",
-        amount: null,
-        recipient: null,
+        action: wardAction,
+        token: wardToken,
+        amount: formattedAmount,
+        recipient: wardRecipient,
         callsJson,
         wardSigJson: localWardEnvelope?.wardSigJson || "[]",
         nonce: localWardEnvelope?.nonce || "",
@@ -357,11 +363,11 @@ export async function routeRawCalls(
       saveTransaction({
         wallet_address: wallet.starkAddress,
         tx_hash: wardResult.txHash,
-        type: "transfer",
-        token: "STRK",
-        amount: null,
-        amount_unit: null,
-        recipient: null,
+        type: wardAction as any,
+        token: wardToken,
+        amount: wardAmount,
+        amount_unit: wardAmount ? "erc20_display" : null,
+        recipient: wardRecipient,
         status: "pending",
         account_type: "ward",
         network: "sepolia",

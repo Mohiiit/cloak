@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Eye, EyeOff, RefreshCw, Clock } from "lucide-react";
+import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import { TOKENS, formatTokenAmount } from "@cloak-wallet/sdk";
 import type { TokenKey } from "@cloak-wallet/sdk";
 import type { ShieldedBalances } from "../hooks/useExtensionWallet";
@@ -9,20 +9,14 @@ interface Props {
   erc20Balance: bigint;
   selectedToken: TokenKey;
   onRefresh: () => Promise<void>;
-  onRollover: () => Promise<string | null>;
-  onClaimSuccess: (txHash: string) => void;
 }
 
-export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, onRollover, onClaimSuccess }: Props) {
+export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh }: Props) {
   const [balanceHidden, setBalanceHidden] = useState(false);
-  const [claiming, setClaiming] = useState(false);
   const token = TOKENS[selectedToken];
 
   const shieldedErc20 = balances.balance * token.rate;
-  const pendingErc20 = balances.pending * token.rate;
-
   const shieldedDisplay = formatTokenAmount(shieldedErc20, token.decimals, 2);
-  const pendingDisplay = formatTokenAmount(pendingErc20, token.decimals, 2);
   const publicDisplay = formatTokenAmount(erc20Balance, token.decimals, 2);
 
   return (
@@ -50,35 +44,6 @@ export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, 
         <p className="text-[11px] text-cloak-text-dim mt-0.5">
           {balanceHidden ? "****" : `(${shieldedDisplay} ${selectedToken})`}
         </p>
-
-        {/* Pending */}
-        {balances.pending > 0n && (
-          <div className="flex items-center justify-between mt-2 bg-cloak-warning/10 border border-cloak-warning/25 rounded-lg p-2">
-            <div className="flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-cloak-warning" />
-              <span className="text-[11px] text-cloak-warning">
-                {balanceHidden ? "+**** pending" : `+${balances.pending.toString()} units (${pendingDisplay} ${selectedToken}) pending`}
-              </span>
-            </div>
-            <button
-              onClick={async () => {
-                setClaiming(true);
-                try {
-                  const txHash = await onRollover();
-                  if (txHash) {
-                    onClaimSuccess(txHash);
-                  }
-                } finally {
-                  setClaiming(false);
-                }
-              }}
-              disabled={claiming}
-              className="text-[11px] font-semibold text-cloak-warning hover:text-yellow-300 bg-cloak-warning/20 border border-cloak-warning/40 px-2.5 py-1 rounded-full transition-colors disabled:opacity-50"
-            >
-              {claiming ? "Claiming..." : "Claim"}
-            </button>
-          </div>
-        )}
 
         {/* Divider */}
         <div className="border-t border-cloak-border-light my-3" />

@@ -499,14 +499,19 @@ export function buildWardResourceBounds(gasPrices: BlockGasPrices, multiplier = 
  * Returns human-readable string like "0.5 STRK" or "Claim pending balance".
  */
 export function formatWardAmount(
-  tongoUnits: string | null | undefined,
+  amount: string | null | undefined,
   tokenKey: string,
   action: string,
 ): string {
-  if (!tongoUnits || action === "rollover") return "Claim pending balance";
+  if (!amount || action === "rollover") return "Claim pending balance";
   const token = TOKENS[tokenKey as TokenKey];
-  if (!token) return `${tongoUnits} units`;
-  const erc20Amount = BigInt(tongoUnits) * token.rate;
+  if (!token) return `${amount} units`;
+  // erc20_transfer amounts are already in ERC-20 display format (e.g. "1" = 1 STRK)
+  if (action === "erc20_transfer") {
+    return `${amount} ${token.symbol}`;
+  }
+  // Shielded ops: amount is in tongo units — convert to display
+  const erc20Amount = BigInt(amount) * token.rate;
   return `${formatTokenAmount(erc20Amount, token.decimals)} ${token.symbol}`;
 }
 

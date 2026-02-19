@@ -1,7 +1,7 @@
 // Service worker polyfill — starknet.js accesses `window` which doesn't exist in MV3 workers
 if (typeof window === "undefined") (globalThis as any).window = globalThis;
 
-import { CloakClient, DEFAULT_RPC, TOKENS, parseTokenAmount, saveTransaction, confirmTransaction, getProvider } from "@cloak-wallet/sdk";
+import { CloakClient, DEFAULT_RPC, TOKENS, parseTokenAmount } from "@cloak-wallet/sdk";
 import { Account, RpcProvider } from "starknet";
 import type { MessageRequest } from "@/shared/messages";
 import { check2FAEnabled } from "@/shared/two-factor";
@@ -293,27 +293,14 @@ async function handleMessage(
       const amountWei = parseTokenAmount(amount, tokenCfg.decimals);
       const acct = c.account(token);
       const { calls } = acct.prepareErc20Transfer(to, amountWei);
-      const result = await routeRawCalls(c, calls);
-      const txHash = result.transaction_hash;
-      if (txHash) {
-        const wallet = await c.getWallet();
-        saveTransaction({
-          wallet_address: wallet!.starkAddress,
-          tx_hash: txHash,
-          type: "erc20_transfer",
-          token,
-          amount: amount,
-          amount_unit: "erc20_display",
-          recipient: to,
-          status: "pending",
-          account_type: "normal",
-          network: "sepolia",
-          platform: "extension",
-        }).catch(() => {});
-        const provider = getProvider();
-        confirmTransaction(provider, txHash).catch(() => {});
-      }
-      return { txHash };
+      const result = await routeRawCalls(c, calls, {
+        action: "erc20_transfer",
+        token,
+        amount,
+        recipient: to,
+      });
+      // saveTransaction + confirmTransaction already handled inside routeRawCalls
+      return { txHash: result.transaction_hash };
     }
 
     case "PREPARE_AND_SIGN": {

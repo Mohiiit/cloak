@@ -186,16 +186,12 @@ export function useExtensionWallet() {
 
   const erc20Transfer = useCallback(async (to: string, amount: string): Promise<string | null> => {
     try {
-      setLoading(true);
       setError(null);
       const result = await sendMessage({ type: "ERC20_TRANSFER", token: selectedToken, to, amount });
       await refreshBalances();
       return result?.txHash || result?.transaction_hash || null;
     } catch (err: any) {
-      setError(err.message);
-      return null;
-    } finally {
-      setLoading(false);
+      throw err;
     }
   }, [selectedToken, refreshBalances]);
 
