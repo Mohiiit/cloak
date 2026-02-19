@@ -83,6 +83,7 @@ export default function AppNavigator() {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, Platform.OS === "android" ? 12 : 24);
   const initialRouteName: keyof AppTabParamList = "Home";
+  const isWardFrozen = ward.isWard && !!ward.wardInfo?.isFrozen;
 
   // Gate: show deploy screen if wallet exists but is not deployed (or still checking)
   if (wallet.isWalletCreated && !wallet.isDeployed && !wallet.isLoading) {
@@ -114,16 +115,24 @@ export default function AppNavigator() {
           tabBarHideOnKeyboard: true,
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
-          tabBarLabel: ({ focused, color }) => (
-            <Text style={[styles.tabLabel, { color, fontWeight: focused ? "600" : "500" }]}>
-              {route.name}
-            </Text>
-          ),
+          tabBarLabel: ({ focused, color }) => {
+            const frozenTab = isWardFrozen && (route.name === "Send" || route.name === "Wallet");
+            return (
+              <Text style={[styles.tabLabel, { color, fontWeight: focused ? "600" : "500", opacity: frozenTab ? 0.3 : 1 }]}>
+                {route.name}
+              </Text>
+            );
+          },
           tabBarButtonTestID: TAB_TEST_IDS[route.name],
           tabBarAccessibilityLabel: TAB_TEST_IDS[route.name],
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label={route.name} focused={focused} />
-          ),
+          tabBarIcon: ({ focused }) => {
+            const frozenTab = isWardFrozen && (route.name === "Send" || route.name === "Wallet");
+            return (
+              <View style={{ opacity: frozenTab ? 0.3 : 1 }}>
+                <TabIcon label={route.name} focused={focused} />
+              </View>
+            );
+          },
         })}
       >
         <Tab.Screen
@@ -143,11 +152,13 @@ export default function AppNavigator() {
           name="Send"
           component={SendScreen}
           options={{ headerTitle: "Send Shielded" }}
+          listeners={isWardFrozen ? { tabPress: (e) => e.preventDefault() } : undefined}
         />
         <Tab.Screen
           name="Wallet"
           component={WalletScreen}
           options={{ headerTitle: "Wallet" }}
+          listeners={isWardFrozen ? { tabPress: (e) => e.preventDefault() } : undefined}
         />
         <Tab.Screen
           name="Activity"
