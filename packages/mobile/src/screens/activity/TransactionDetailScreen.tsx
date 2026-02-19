@@ -15,7 +15,6 @@ import {
   SupabaseLite,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_KEY,
-  toDisplayString,
   type TransactionRecord,
   type AmountUnit,
 } from "@cloak-wallet/sdk";
@@ -202,20 +201,20 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   }, [txHash]);
 
   const token = ((meta?.token as TokenKey) || "STRK") satisfies TokenKey;
-  const amountUnits = meta?.amount || "0";
+  const amountRaw = meta?.amount || "0";
   // Guardian-submitted ward operations: guardian didn't send/receive, just approved
   const isGuardianWardOp = meta?.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(meta?.type || "");
   // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
   const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(meta?.type || "");
-  const isErc20Display = !isGuardianWardOp && (meta?.amount_unit === "erc20_display" || meta?.type === "erc20_transfer" || meta?.type === "fund_ward" || meta?.type === "configure_ward");
-  const amountToken = isGuardianWardOp
-    ? formatTokenAmountFixed2(amountUnits, token)
-    : isErc20Display
-      ? amountUnits
-      : formatTokenAmountFixed2(amountUnits, token);
+  const isPublicTransfer = meta?.amount_unit === "erc20_display" || meta?.type === "erc20_transfer" || meta?.type === "fund_ward" || meta?.type === "configure_ward";
+  // Shielded ops show units, public ops show token amount
+  const isShieldedOp = !isPublicTransfer && !isGuardianWardOp && !isWardAdmin;
+  const prefix = isDebit(meta?.type) ? "-" : "+";
   const signedAmount = isGuardianWardOp
-    ? `${amountToken} ${token}`
-    : `${isDebit(meta?.type) ? "-" : "+"}${amountToken} ${token}`;
+    ? `${formatTokenAmountFixed2(amountRaw, token)} ${token}`
+    : isShieldedOp
+      ? `${prefix}${amountRaw} units`
+      : `${prefix}${isPublicTransfer ? amountRaw : formatTokenAmountFixed2(amountRaw, token)} ${token}`;
 
   const toValue = meta?.recipient
     ? truncateMiddle(meta.recipient, 6, 4)
@@ -257,6 +256,9 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
             (isGuardianWardOp || isWardAdmin) && { backgroundColor: wardYellowBg, borderColor: wardYellowBorder },
           ]}>{headerIcon}</View>
           <Text style={styles.heroAmount}>{signedAmount}</Text>
+          {isShieldedOp && amountRaw !== "0" ? (
+            <Text style={styles.heroSubAmount}>({formatTokenAmountFixed2(amountRaw, token)} {token})</Text>
+          ) : null}
           <View
             style={[
               styles.confirmPill,
@@ -429,6 +431,12 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontFamily: typography.primarySemibold,
     letterSpacing: 0.2,
+  },
+  heroSubAmount: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontFamily: typography.primary,
+    marginTop: -4,
   },
   confirmPill: {
     flexDirection: "row",

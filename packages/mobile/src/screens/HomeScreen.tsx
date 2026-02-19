@@ -45,7 +45,7 @@ import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
 import { triggerSuccess } from "../lib/haptics";
 import { Confetti } from "../components/Confetti";
-import { getTransactions, convertAmount, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
+import { getTransactions, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
 import WebView from "react-native-webview";
 
 type WardInvitePayload = {
@@ -946,20 +946,20 @@ export default function HomeScreen({ navigation }: any) {
             : "Transaction";
           let amountLabel = "";
           const token = (tx.token || "STRK") as any;
+          const amountUnit = ((tx as any).amount_unit as AmountUnit) || "tongo_units";
+          const isPublic = txType === "erc20_transfer" || amountUnit === "erc20_display";
           if (tx.amount) {
             const raw = tx.amount.trim();
             // If amount already contains the token name (e.g. "1 STRK" from ward approval),
             // use it directly instead of trying to convert
-            if (raw.includes(token) || /[a-zA-Z]/.test(raw)) {
+            if (/[a-zA-Z]/.test(raw)) {
               amountLabel = raw;
+            } else if (isPublic) {
+              // Public / ERC-20: show in token (e.g. "10 STRK")
+              amountLabel = `${raw} ${token}`;
             } else {
-              try {
-                const unit = ((tx as any).amount_unit as AmountUnit) || "tongo_units";
-                const displayVal = convertAmount({ value: raw, unit, token }, "erc20_display");
-                amountLabel = `${displayVal} ${token}`;
-              } catch {
-                amountLabel = `${raw} ${token}`;
-              }
+              // Shielded ops: show tongo units (e.g. "1 units")
+              amountLabel = `${raw} units`;
             }
           }
           const isPositive = kind === "received" || kind === "shielded";

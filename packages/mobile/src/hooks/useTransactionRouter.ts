@@ -81,7 +81,7 @@ export function useTransactionRouter() {
       if (!walletAddress) return;
 
       // Save the initial record as "pending"
-      const amountUnit: AmountUnit = (params.action === "erc20_transfer" || params.action === "rollover") ? "erc20_display" : "tongo_units";
+      const amountUnit: AmountUnit = params.action === "erc20_transfer" ? "erc20_display" : "tongo_units";
       saveTransaction({
         wallet_address: walletAddress,
         tx_hash: txHash,
