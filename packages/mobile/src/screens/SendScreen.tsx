@@ -342,10 +342,12 @@ function QRScannerModal({
   visible,
   onScan,
   onClose,
+  sendMode = "private",
 }: {
   visible: boolean;
   onScan: (data: string) => void;
   onClose: () => void;
+  sendMode?: "private" | "public";
 }) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice("back");
@@ -399,8 +401,13 @@ function QRScannerModal({
       if (value) {
         hasScannedRef.current = true;
         const trimmed = value.trim();
-        const isValidAddress = trimmed.startsWith("0x") || trimmed.includes(".stark");
-        if (!isValidAddress) {
+        const isHex = trimmed.startsWith("0x") && trimmed.length >= 10;
+        const isStarkName = trimmed.includes(".stark");
+        const isBase58 = /^[A-HJ-NP-Za-km-z1-9]{20,}$/.test(trimmed);
+        // Private mode: only accept Tongo base58 addresses
+        // Public mode: only accept 0x hex addresses or .stark names
+        const isValid = sendMode === "private" ? isBase58 : (isHex || isStarkName);
+        if (!isValid) {
           setScanError(true);
           setTimeout(() => {
             setScanError(false);
@@ -487,7 +494,9 @@ function QRScannerModal({
             <View style={scannerStyles.errorToastTextGroup}>
               <Text style={scannerStyles.errorToastTitle}>Invalid Address</Text>
               <Text style={scannerStyles.errorToastDesc}>
-                QR code does not contain a valid Cloak or Starknet address
+                {sendMode === "private"
+                  ? "QR code does not contain a valid Cloak (Tongo) address"
+                  : "QR code does not contain a valid Starknet address"}
               </Text>
             </View>
           </View>
@@ -838,6 +847,7 @@ export default function SendScreen({ navigation }: any) {
       {/* QR Scanner */}
       <QRScannerModal
         visible={scannerVisible}
+        sendMode={sendMode}
         onScan={(data) => {
           setScannerVisible(false);
           setRecipient(data);
