@@ -322,6 +322,27 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const info = await sdkFetchWardInfo(provider as any, wallet.keys.starkAddress);
       if (info) {
+        // Supplement with Supabase-stored limits (display format like "10" for 10 STRK)
+        // On-chain spendingLimitPerTx is in wei hex, not useful for display
+        try {
+          const sb = await getSupabaseLite();
+          const normalizedAddr = normalizeAddress(wallet.keys.starkAddress);
+          const rows = await sb.select(
+            "ward_configs",
+            `ward_address=eq.${normalizedAddr}`
+          );
+          if (rows && rows.length > 0) {
+            const row = rows[0];
+            if (row.spending_limit_per_tx) {
+              info.spendingLimitPerTx = row.spending_limit_per_tx;
+            }
+            if (row.max_per_tx) {
+              info.maxPerTx = row.max_per_tx;
+            }
+          }
+        } catch {
+          // Non-critical — Supabase limits are supplementary
+        }
         setWardInfo(info);
         wardInfoRef.current = info;
         await AsyncStorage.setItem(STORAGE_KEY_GUARDIAN_ADDR, info.guardianAddress);
