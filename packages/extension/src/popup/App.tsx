@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Settings as SettingsIcon, ShieldPlus, ShieldOff, Clock, Users, ShieldAlert, ChevronDown, ChevronUp, ArrowUpRight, ArrowDownLeft, Copy, Check } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Settings as SettingsIcon, ShieldPlus, ShieldOff, Clock, Users, ShieldAlert, ChevronDown, ChevronUp, ArrowUpRight, ArrowDownLeft, Copy, Check, Smartphone } from "lucide-react";
 import { useExtensionWallet } from "./hooks/useExtensionWallet";
 import { useWard } from "./hooks/useWard";
 import { useTxHistory } from "./hooks/useTxHistory";
@@ -28,6 +28,14 @@ export default function App() {
   const [claiming, setClaiming] = useState(false);
   const [copied, setCopied] = useState(false);
   const txHistory = useTxHistory(w.wallet?.starkAddress);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
 
   // Loading state
   if (w.loading) {
@@ -108,7 +116,16 @@ export default function App() {
 
   // Main dashboard
   return (
-    <div className="flex flex-col h-[580px] bg-cloak-bg animate-fade-in">
+    <div className="flex flex-col h-[580px] bg-cloak-bg animate-fade-in relative">
+      {/* Toast */}
+      <div
+        className={`absolute top-2 left-4 right-4 z-50 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-800/95 border border-slate-600/50 shadow-lg backdrop-blur-sm transition-all duration-300 ${
+          toast ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3 pointer-events-none"
+        }`}
+      >
+        <Smartphone className="w-4 h-4 text-cloak-primary shrink-0" />
+        <span className="text-[11px] text-cloak-text leading-tight flex-1">{toast}</span>
+      </div>
       {/* Header — 48px, horizontal, space-between, bottom border */}
       <div className="flex items-center justify-between px-4 h-12 shrink-0 border-b border-cloak-border">
         <div className="flex items-center gap-2">
@@ -326,7 +343,7 @@ export default function App() {
                   <div key={ev.txHash} className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-cloak-card/50 rounded-md px-1 -mx-1 transition-colors"
                     onClick={() => {
                       if (ev.txHash) {
-                        alert("Transaction details are available on the Cloak mobile app.\n\nTx: " + ev.txHash.slice(0, 12) + "..." + ev.txHash.slice(-6));
+                        setToast("View full details on the Cloak mobile app");
                       }
                     }}
                   >

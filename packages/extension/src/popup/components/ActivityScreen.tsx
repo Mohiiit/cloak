@@ -1,5 +1,5 @@
-import React from "react";
-import { ArrowLeft, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, ExternalLink, Shield, Wallet, Settings } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { ArrowLeft, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, ExternalLink, Shield, Wallet, Settings, Smartphone } from "lucide-react";
 
 import { useTxHistory, type TxEvent } from "../hooks/useTxHistory";
 
@@ -65,11 +65,36 @@ function TxLabel({ tx }: { tx: TxEvent }) {
   }
 }
 
-export function ActivityScreen({ onBack, walletAddress }: Props) {
-  const { events, isLoading, error, refresh } = useTxHistory(walletAddress);
+/** In-app toast banner */
+function Toast({ message, visible, onDone }: { message: string; visible: boolean; onDone: () => void }) {
+  useEffect(() => {
+    if (visible) {
+      const t = setTimeout(onDone, 3000);
+      return () => clearTimeout(t);
+    }
+  }, [visible, onDone]);
 
   return (
-    <div className="flex flex-col h-[580px] bg-cloak-bg animate-fade-in">
+    <div
+      className={`absolute top-3 left-4 right-4 z-50 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-800/95 border border-slate-600/50 shadow-lg backdrop-blur-sm transition-all duration-300 ${
+        visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3 pointer-events-none"
+      }`}
+    >
+      <Smartphone className="w-4 h-4 text-cloak-primary shrink-0" />
+      <span className="text-[11px] text-cloak-text leading-tight flex-1">{message}</span>
+    </div>
+  );
+}
+
+export function ActivityScreen({ onBack, walletAddress }: Props) {
+  const { events, isLoading, error, refresh } = useTxHistory(walletAddress);
+  const [toast, setToast] = useState<string | null>(null);
+
+  return (
+    <div className="flex flex-col h-[580px] bg-cloak-bg animate-fade-in relative">
+      {/* Toast */}
+      <Toast message={toast || ""} visible={!!toast} onDone={() => setToast(null)} />
+
       {/* Header */}
       <div className="flex items-center gap-3 px-6 pt-6 pb-4">
         <button onClick={onBack} className="text-cloak-text-dim hover:text-cloak-text transition-colors">
@@ -121,7 +146,7 @@ export function ActivityScreen({ onBack, walletAddress }: Props) {
                 className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light cursor-pointer hover:border-cloak-primary/30 transition-colors"
                 onClick={() => {
                   if (tx.txHash) {
-                    alert("Transaction details are available on the Cloak mobile app.\n\nTx: " + tx.txHash.slice(0, 12) + "..." + tx.txHash.slice(-6));
+                    setToast("View full details on the Cloak mobile app");
                   }
                 }}
               >
