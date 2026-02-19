@@ -38,6 +38,9 @@ import {
   DEFAULT_RPC,
   CLOAK_WARD_CLASS_HASH,
   STRK_ADDRESS,
+  parseTokenAmount,
+  formatTokenAmount,
+  TOKENS,
 } from "@cloak-wallet/sdk";
 import type {
   WardApprovalResult,
@@ -322,8 +325,21 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const info = await sdkFetchWardInfo(provider as any, wallet.keys.starkAddress);
       if (info) {
-        // Supplement with Supabase-stored limits (display format like "10" for 10 STRK)
-        // On-chain spendingLimitPerTx is in wei hex, not useful for display
+        // Convert on-chain spendingLimitPerTx from wei hex to display format
+        // e.g. "0x8ac7230489e80000" (10 * 10^18) → "10"
+        const onChainLimit = info.spendingLimitPerTx;
+        if (onChainLimit && onChainLimit !== "0x0" && onChainLimit !== "0") {
+          try {
+            const limitWei = BigInt(onChainLimit);
+            info.spendingLimitPerTx = formatTokenAmount(limitWei, TOKENS.STRK.decimals);
+          } catch {
+            info.spendingLimitPerTx = "0";
+          }
+        } else {
+          info.spendingLimitPerTx = "0";
+        }
+
+        // maxPerTx has no on-chain entrypoint — fetch from Supabase
         try {
           const sb = await getSupabaseLite();
           const normalizedAddr = normalizeAddress(wallet.keys.starkAddress);
@@ -333,11 +349,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           );
           if (rows && rows.length > 0) {
             const row = rows[0];
-            if (row.spending_limit_per_tx) {
-              info.spendingLimitPerTx = row.spending_limit_per_tx;
-            }
             if (row.max_per_tx) {
               info.maxPerTx = row.max_per_tx;
+            }
+            // Fallback: if on-chain limit was 0 but Supabase has it, use Supabase
+            if (info.spendingLimitPerTx === "0" && row.spending_limit_per_tx) {
+              info.spendingLimitPerTx = row.spending_limit_per_tx;
             }
           }
         } catch {
@@ -480,17 +497,29 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Step 5: Add STRK as known token
+    // Step 5: Add STRK as known token + set spending limit on-chain
     if (startFromStep <= 5) {
-      onProgress?.(5, WARD_CREATION_TOTAL_STEPS, "Adding STRK as known token...");
+      onProgress?.(5, WARD_CREATION_TOTAL_STEPS, "Configuring ward on-chain...");
       try {
-        const addTokenTx = await guardianAccount.execute([
+        const calls: any[] = [
           {
             contractAddress: paddedWardAddress,
             entrypoint: "add_known_token",
             calldata: [STRK_ADDRESS],
           },
-        ]);
+        ];
+
+        // Set spending limit on-chain if provided (convert display STRK to wei)
+        if (normalizedOptions.dailyLimit && normalizedOptions.dailyLimit !== "0") {
+          const limitWei = parseTokenAmount(normalizedOptions.dailyLimit, TOKENS.STRK.decimals);
+          calls.push({
+            contractAddress: paddedWardAddress,
+            entrypoint: "set_spending_limit",
+            calldata: [limitWei.toString()],
+          });
+        }
+
+        const addTokenTx = await guardianAccount.execute(calls);
         await provider.waitForTransaction(addTokenTx.transaction_hash);
 
         // Track configure transaction
@@ -505,7 +534,9 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           ward_address: paddedWardAddress,
           network: "sepolia",
           platform: "mobile",
-          note: "Added STRK as known token on ward",
+          note: normalizedOptions.dailyLimit && normalizedOptions.dailyLimit !== "0"
+            ? `Configured ward: known token + ${normalizedOptions.dailyLimit} STRK limit`
+            : "Added STRK as known token on ward",
         }).catch(() => {});
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
