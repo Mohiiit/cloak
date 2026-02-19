@@ -1,7 +1,7 @@
 /**
  * ImportWardScreen — Two-tab screen for importing a ward account via QR scan or manual JSON entry.
  */
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,20 +9,28 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Platform,
+  Animated,
+  Keyboard,
+  Linking,
   SafeAreaView,
   ScrollView,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
-import WebView from "react-native-webview";
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useCodeScanner,
+} from "react-native-vision-camera";
 import {
   ArrowLeft,
   Download,
   ClipboardPaste,
   Info,
-  ScanLine,
+  Camera as CameraIcon,
+  AlertCircle,
 } from "lucide-react-native";
 
 import { useWallet } from "../../lib/WalletContext";
@@ -115,131 +123,6 @@ function buildWardInfoCacheFromInvite(invite: WardInvitePayload) {
 }
 
 // ---------------------------------------------------------------------------
-// QR Scanner HTML (WebView)
-// ---------------------------------------------------------------------------
-
-const QR_SCANNER_HTML = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: transparent;
-      display: flex;
-      align-items: stretch;
-      justify-content: stretch;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    .videoWrap {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: stretch;
-      justify-content: stretch;
-    }
-    video, canvas {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    canvas { display: none; }
-  </style>
-</head>
-<body>
-  <div class="videoWrap">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas"></canvas>
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const context = canvas.getContext("2d");
-    let stream = null;
-    let scanning = false;
-
-    function post(type, data) {
-      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type, data }));
-    }
-
-    async function startBarcodeDetector() {
-      if (typeof BarcodeDetector === "undefined") return false;
-      try { return new BarcodeDetector({ formats: ["qr_code"] }); } catch { return false; }
-    }
-
-    async function startLoop() {
-      if (scanning) return;
-      scanning = true;
-      const detector = await startBarcodeDetector();
-
-      while (scanning) {
-        if (video.readyState >= 2) {
-          try {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            let text = null;
-
-            if (detector && detector.detect) {
-              const detections = await detector.detect(imageData);
-              if (detections && detections.length > 0 && detections[0].rawValue) {
-                text = detections[0].rawValue;
-              }
-            }
-
-            if (!text && window.jsQR) {
-              const code = window.jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: "attemptBoth" });
-              if (code && code.data) text = code.data;
-            }
-
-            if (text) {
-              post("result", text.trim());
-              scanning = false;
-              stop();
-              break;
-            }
-          } catch (error) {
-            post("error", error && error.message ? error.message : "scan_failed");
-          }
-        }
-        await new Promise(r => requestAnimationFrame(r));
-      }
-    }
-
-    function stop() {
-      scanning = false;
-      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-    }
-
-    async function startCamera() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        post("status", "Camera not supported");
-        return;
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
-        video.srcObject = stream;
-        await video.play();
-        post("status", "Camera ready");
-        await startLoop();
-      } catch (error) {
-        post("error", error && error.message ? error.message : "camera_error");
-      }
-    }
-
-    startCamera();
-  </script>
-</body>
-</html>`;
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -301,26 +184,32 @@ export default function ImportWardScreen() {
   );
 
   // -----------------------------------------------------------------------
-  // QR scanner message handler
+  // QR scan result handler
   // -----------------------------------------------------------------------
 
-  const handleScanMessage = useCallback(
-    async (event: any) => {
-      const raw = event?.nativeEvent?.data as string | undefined;
-      if (!raw) return;
-
-      let parsed: { type?: string; data?: string } = {};
+  const handleScanResult = useCallback(
+    async (data: string) => {
+      // Directly import — on success navigate away, on fail show error
+      setIsImporting(true);
+      setActiveTab("manual");
+      setWardInviteJson(data);
       try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return;
-      }
-
-      if (parsed.type === "result" && parsed.data) {
-        await importWardAccount(parsed.data, "scan");
+        await importWardAccountFromPayload(data);
+        // Success — wallet context will update, navigate to home
+        navigation.getParent?.()?.reset?.({
+          index: 0,
+          routes: [{ name: "AppTabs" }],
+        }) || navigation.goBack();
+      } catch (e: any) {
+        modal.showError(
+          "Import Failed",
+          e?.message || "Failed to import ward invite.",
+        );
+      } finally {
+        setIsImporting(false);
       }
     },
-    [importWardAccount],
+    [importWardAccountFromPayload, navigation, modal],
   );
 
   // -----------------------------------------------------------------------
@@ -425,9 +314,8 @@ export default function ImportWardScreen() {
           {/* Tab content */}
           {activeTab === "scan" ? (
             <ScanTabContent
-              onMessage={handleScanMessage}
+              onScanResult={handleScanResult}
               isImporting={isImporting}
-              onSubmit={() => {}}
             />
           ) : (
             <ManualTabContent
@@ -471,59 +359,157 @@ export default function ImportWardScreen() {
 // ---------------------------------------------------------------------------
 
 function ScanTabContent({
-  onMessage,
+  onScanResult,
   isImporting,
 }: {
-  onMessage: (event: any) => void;
+  onScanResult: (data: string) => void;
   isImporting: boolean;
-  onSubmit: () => void;
 }) {
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice("back");
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const hasScannedRef = useRef(false);
+  const [scanError, setScanError] = useState(false);
+
+  // Request camera permission on mount
+  useEffect(() => {
+    if (!hasPermission) {
+      requestPermission();
+    }
+  }, [hasPermission, requestPermission]);
+
+  // Animated scan line
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnim, {
+          toValue: 1,
+          duration: 2500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLineAnim, {
+          toValue: 0,
+          duration: 2500,
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+  }, [scanLineAnim]);
+
+  const scanLineTranslateY = scanLineAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [40, 200],
+  });
+
+  const codeScanner = useCodeScanner({
+    codeTypes: ["qr"],
+    onCodeScanned: (codes) => {
+      if (hasScannedRef.current || isImporting) return;
+      const value = codes[0]?.value;
+      if (value) {
+        hasScannedRef.current = true;
+        const trimmed = value.trim();
+        // Quick format check — should be JSON starting with { or base64 starting with ey
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("ey")) {
+          setScanError(true);
+          setTimeout(() => {
+            setScanError(false);
+            hasScannedRef.current = false;
+          }, 3000);
+          return;
+        }
+        onScanResult(trimmed);
+      }
+    },
+  });
+
+  // Permission denied
+  if (hasPermission === false) {
+    return (
+      <View style={styles.scanArea}>
+        <View style={styles.scanStatusWrap}>
+          <CameraIcon size={32} color={colors.textMuted} />
+          <Text style={styles.scanStatusText}>
+            Camera permission denied.{"\n"}Use the Manual tab to paste the invite code.
+          </Text>
+          <TouchableOpacity
+            style={styles.openSettingsButton}
+            onPress={() => Linking.openSettings()}
+          >
+            <Text style={styles.openSettingsText}>Open Settings</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // No camera device
+  if (!device) {
+    return (
+      <View style={styles.scanArea}>
+        <View style={styles.scanStatusWrap}>
+          <ActivityIndicator color={colors.secondary} size="small" />
+          <Text style={styles.scanStatusText}>Initializing camera...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.scanArea}>
-      {/* Camera WebView fills the rounded container */}
-      <WebView
-        originWhitelist={["*"]}
-        source={{ html: QR_SCANNER_HTML }}
+      {/* Native camera */}
+      <Camera
         style={StyleSheet.absoluteFill}
-        onMessage={onMessage}
-        javaScriptEnabled
-        domStorageEnabled
-        startInLoadingState
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        mediaCapturePermissionGrantType="grant"
+        device={device}
+        isActive={!isImporting && !hasScannedRef.current}
+        codeScanner={codeScanner}
       />
 
-      {/* Corner brackets (absolutely positioned) */}
+      {/* Corner brackets */}
       <View style={[styles.corner, styles.cornerTL]} pointerEvents="none">
-        <View style={[styles.cornerH, styles.cornerHorizontal]} />
-        <View style={[styles.cornerV, styles.cornerVertical]} />
+        <View style={[styles.cornerH, styles.cornerHorizontal, scanError && { backgroundColor: colors.error }]} />
+        <View style={[styles.cornerV, styles.cornerVertical, scanError && { backgroundColor: colors.error }]} />
       </View>
       <View style={[styles.corner, styles.cornerTR]} pointerEvents="none">
-        <View style={[styles.cornerH, styles.cornerHorizontal, { alignSelf: "flex-end" }]} />
-        <View style={[styles.cornerV, styles.cornerVertical, { alignSelf: "flex-end" }]} />
+        <View style={[styles.cornerH, styles.cornerHorizontal, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
+        <View style={[styles.cornerV, styles.cornerVertical, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
       </View>
       <View style={[styles.corner, styles.cornerBL]} pointerEvents="none">
-        <View style={[styles.cornerV, styles.cornerVertical]} />
-        <View style={[styles.cornerH, styles.cornerHorizontal]} />
+        <View style={[styles.cornerV, styles.cornerVertical, scanError && { backgroundColor: colors.error }]} />
+        <View style={[styles.cornerH, styles.cornerHorizontal, scanError && { backgroundColor: colors.error }]} />
       </View>
       <View style={[styles.corner, styles.cornerBR]} pointerEvents="none">
-        <View style={[styles.cornerV, styles.cornerVertical, { alignSelf: "flex-end" }]} />
-        <View style={[styles.cornerH, styles.cornerHorizontal, { alignSelf: "flex-end" }]} />
+        <View style={[styles.cornerV, styles.cornerVertical, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
+        <View style={[styles.cornerH, styles.cornerHorizontal, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
       </View>
 
-      {/* Center scan icon */}
-      <View style={styles.scanIconCenter} pointerEvents="none">
-        <ScanLine size={32} color={colors.secondary} style={{ opacity: 0.4 }} />
-      </View>
-
-      {/* Scan line */}
-      <View style={styles.scanLine} pointerEvents="none" />
+      {/* Animated scan line */}
+      <Animated.View
+        style={[
+          styles.scanLine,
+          scanError && { backgroundColor: colors.error },
+          { transform: [{ translateY: scanLineTranslateY }] },
+        ]}
+        pointerEvents="none"
+      />
 
       {/* Hint text */}
       <View style={styles.scanHintWrap} pointerEvents="none">
         <Text style={styles.scanHint}>Point camera at ward QR code</Text>
       </View>
+
+      {/* Error toast */}
+      {scanError && (
+        <View style={styles.scanErrorToast}>
+          <AlertCircle size={18} color="#FFFFFF" />
+          <View style={styles.scanErrorToastTextGroup}>
+            <Text style={styles.scanErrorToastTitle}>Invalid Invite Code</Text>
+            <Text style={styles.scanErrorToastDesc}>
+              Ask your guardian to share a new invite
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Loading overlay */}
       {isImporting && (
@@ -554,6 +540,14 @@ function ManualTabContent({
   isImporting: boolean;
   onSubmit: () => void;
 }) {
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
   return (
     <>
       {/* JSON field */}
@@ -572,14 +566,16 @@ function ManualTabContent({
           </TouchableOpacity>
         </View>
 
-        {/* Hint */}
-        <Text style={styles.jsonHint}>
-          {'A JSON string starting with {"type":"cloak_ward_invite",...}'}
-        </Text>
+        {/* Hint — hide when keyboard is up */}
+        {!keyboardVisible && (
+          <Text style={styles.jsonHint}>
+            {'A JSON string starting with {"type":"cloak_ward_invite",...}'}
+          </Text>
+        )}
 
-        {/* Textarea */}
+        {/* Textarea — shorter when keyboard is up */}
         <TextInput
-          style={styles.jsonTextarea}
+          style={[styles.jsonTextarea, keyboardVisible && styles.jsonTextareaCompact]}
           placeholder='{"type":"cloak_ward_invite","wardAddress":"0x...","wardPrivateKey":"0x..."}'
           placeholderTextColor={colors.textMuted}
           value={wardInviteJson}
@@ -594,25 +590,27 @@ function ManualTabContent({
         />
       </View>
 
-      {/* Info box */}
-      <View style={styles.infoBox}>
-        <View style={styles.infoHeader}>
-          <Info size={16} color={colors.primary} />
-          <Text style={styles.infoHeaderText}>How to get this code</Text>
+      {/* Info box — hide when keyboard is up */}
+      {!keyboardVisible && (
+        <View style={styles.infoBox}>
+          <View style={styles.infoHeader}>
+            <Info size={16} color={colors.primary} />
+            <Text style={styles.infoHeaderText}>How to get this code</Text>
+          </View>
+          <View style={styles.infoBullet}>
+            <Text style={styles.bulletDot}>{"\u2022"}</Text>
+            <Text style={styles.bulletText}>
+              Ask your guardian to create a ward and share the invite
+            </Text>
+          </View>
+          <View style={styles.infoBullet}>
+            <Text style={styles.bulletDot}>{"\u2022"}</Text>
+            <Text style={styles.bulletText}>
+              The code contains your ward address and private key
+            </Text>
+          </View>
         </View>
-        <View style={styles.infoBullet}>
-          <Text style={styles.bulletDot}>{"\u2022"}</Text>
-          <Text style={styles.bulletText}>
-            Ask your guardian to create a ward and share the invite
-          </Text>
-        </View>
-        <View style={styles.infoBullet}>
-          <Text style={styles.bulletDot}>{"\u2022"}</Text>
-          <Text style={styles.bulletText}>
-            The code contains your ward address and private key
-          </Text>
-        </View>
-      </View>
+      )}
 
       {/* Import button */}
       <TouchableOpacity
@@ -777,25 +775,50 @@ const styles = StyleSheet.create({
   },
   cornerVertical: {},
 
-  // Scan center icon
-  scanIconCenter: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    marginTop: -16,
-    marginLeft: -16,
-  },
+  // (scan icon removed — animated line replaces it)
 
-  // Scan line
+  // Animated scan line
   scanLine: {
     position: "absolute",
     left: 20,
     right: 20,
-    top: "50%",
+    top: 0,
     height: 2,
     backgroundColor: colors.secondary,
     opacity: 0.7,
     borderRadius: 1,
+  },
+  // Camera status
+  scanStatusWrap: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
+    gap: 12,
+    paddingHorizontal: 32,
+  },
+  scanStatusText: {
+    fontFamily: typography.secondary,
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 13 * 1.5,
+  },
+  openSettingsButton: {
+    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.secondary,
+  },
+  openSettingsText: {
+    fontFamily: typography.secondarySemibold,
+    fontSize: 13,
+    color: "#FFFFFF",
   },
 
   // Scan hint
@@ -810,6 +833,35 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondary,
     fontSize: 12,
     color: colors.textMuted,
+  },
+
+  // Scan error toast
+  scanErrorToast: {
+    position: "absolute",
+    bottom: 16,
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(239, 68, 68, 0.9)",
+    borderRadius: 12,
+    padding: 14,
+  },
+  scanErrorToastTextGroup: {
+    flex: 1,
+    gap: 2,
+  },
+  scanErrorToastTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    fontFamily: typography.primarySemibold,
+  },
+  scanErrorToastDesc: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+    fontFamily: typography.secondary,
   },
 
   // Scan loading overlay
@@ -860,6 +912,9 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.text,
     textAlignVertical: "top",
+  },
+  jsonTextareaCompact: {
+    height: 100,
   },
 
   // Info box

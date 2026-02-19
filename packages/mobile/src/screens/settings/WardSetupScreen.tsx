@@ -55,6 +55,7 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
   const [pseudoName, setPseudoName] = useState('');
   const [fundingAmount, setFundingAmount] = useState('');
   const [dailyLimit, setDailyLimit] = useState('');
+  const [maxPerTx, setMaxPerTx] = useState('');
   const [creating, setCreating] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
@@ -85,8 +86,18 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
       return false;
     }
 
+    const maxTx = Number(maxPerTx);
+    if (!maxPerTx.trim() || isNaN(maxTx) || maxTx <= 0) {
+      Alert.alert('Validation Error', 'Please enter a valid max per transaction amount.');
+      return false;
+    }
+    if (maxTx > limit) {
+      Alert.alert('Validation Error', 'Max per transaction cannot exceed the daily spending limit.');
+      return false;
+    }
+
     return true;
-  }, [pseudoName, fundingAmount, dailyLimit]);
+  }, [pseudoName, fundingAmount, dailyLimit, maxPerTx]);
 
   const handleCreateWard = useCallback(async () => {
     if (!validateInputs()) return;
@@ -110,19 +121,25 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
       const result = await ward.createWard(onProgress, {
         pseudoName: pseudoName.trim(),
         fundingAmountWei: fundingWei,
+        dailyLimit: dailyLimit.trim(),
+        maxPerTx: maxPerTx.trim(),
       });
 
       setCurrentStep(7); // Beyond last step = done
       setModalVisible(false);
 
-      navigation.navigate('WardCreated', {
-        wardAddress: result?.wardAddress,
-        wardPrivateKey: result?.wardPrivateKey,
-        qrPayload: result?.qrPayload,
-        pseudoName: pseudoName.trim(),
-        fundingAmount,
-        dailyLimit,
-      });
+      // Delay navigation so the modal fully dismisses first
+      setTimeout(() => {
+        navigation.navigate('WardCreated', {
+          wardAddress: result?.wardAddress,
+          wardPrivateKey: result?.wardPrivateKey,
+          qrPayload: result?.qrPayload,
+          pseudoName: pseudoName.trim(),
+          fundingAmount,
+          dailyLimit,
+          maxPerTx,
+        });
+      }, 300);
     } catch (err: any) {
       const message = err?.message || 'Ward creation failed. Please try again.';
       setFailed(true);
@@ -131,7 +148,7 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
     } finally {
       setCreating(false);
     }
-  }, [validateInputs, creating, pseudoName, fundingAmount, dailyLimit, ward, navigation]);
+  }, [validateInputs, creating, pseudoName, fundingAmount, dailyLimit, maxPerTx, ward, navigation]);
 
   return (
     <View style={styles.container}>
@@ -170,7 +187,7 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
             <TextInput
               {...testProps(testIDs.ward.creationNameInput)}
               style={styles.input}
-              placeholder="e.g. Daily Spending"
+              placeholder="e.g. subagent007"
               placeholderTextColor={colors.textMuted}
               value={pseudoName}
               onChangeText={setPseudoName}
@@ -236,6 +253,31 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
             </Text>
           </View>
 
+          {/* Max Per Transaction Field */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Max Per Transaction</Text>
+            <View style={styles.inputWithSuffix}>
+              <TextInput
+                style={[styles.input, styles.inputFlex]}
+                placeholder="25.00"
+                placeholderTextColor={colors.textMuted}
+                value={maxPerTx}
+                onChangeText={setMaxPerTx}
+                editable={!creating}
+                keyboardType="decimal-pad"
+                autoCorrect={false}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <View style={styles.suffixContainer}>
+                <Text style={styles.suffixText}>STRK</Text>
+              </View>
+            </View>
+            <Text style={styles.hint}>
+              Max a ward can spend in a single transaction
+            </Text>
+          </View>
+
           {/* Create Ward Button */}
           <TouchableOpacity
             {...testProps(testIDs.ward.creationStart)}
@@ -277,15 +319,19 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
                 const isFailed = currentStep === s.step && failed;
                 return (
                   <View key={s.step} style={modalStyles.stepItem}>
-                    <View style={[
-                      modalStyles.stepDot,
-                      isComplete && modalStyles.stepDotComplete,
-                      isActive && modalStyles.stepDotActive,
-                      isFailed && modalStyles.stepDotFailed,
-                    ]}>
-                      {isComplete && <Check size={12} color="#fff" />}
-                      {isFailed && <X size={12} color={colors.error} />}
-                    </View>
+                    {isComplete ? (
+                      <View style={modalStyles.stepDotComplete}>
+                        <Check size={12} color="#fff" />
+                      </View>
+                    ) : isActive ? (
+                      <ActivityIndicator size="small" color={colors.success} />
+                    ) : isFailed ? (
+                      <View style={modalStyles.stepDotFailed}>
+                        <X size={12} color={colors.error} />
+                      </View>
+                    ) : (
+                      <View style={modalStyles.stepDotPending} />
+                    )}
                     <Text style={[
                       modalStyles.stepText,
                       isComplete && modalStyles.stepTextComplete,
@@ -298,18 +344,6 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
                 );
               })}
             </View>
-
-            {/* Progress bar */}
-            {!failed && (
-              <View style={modalStyles.progressContainer}>
-                <View style={modalStyles.progressTrack}>
-                  <View style={[modalStyles.progressFill, { width: `${Math.min(currentStep / 6, 1) * 100}%` }]} />
-                </View>
-                <Text style={modalStyles.progressLabel}>
-                  Step {Math.min(currentStep, 6)} of 6
-                </Text>
-              </View>
-            )}
 
             {/* Error */}
             {failed && errorMessage && (
@@ -493,28 +527,33 @@ const modalStyles = StyleSheet.create({
   stepItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
+    minHeight: 20,
   },
-  stepDot: {
+  stepDotComplete: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.success,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotFailed: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    borderWidth: 2,
+    borderColor: colors.error,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotPending: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.borderLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepDotComplete: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
-  },
-  stepDotActive: {
-    borderColor: colors.primary,
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
-  },
-  stepDotFailed: {
-    borderColor: colors.error,
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    borderColor: "rgba(100, 116, 139, 0.3)",
   },
   stepText: {
     fontSize: fontSize.sm,
@@ -531,29 +570,6 @@ const modalStyles = StyleSheet.create({
   stepTextFailed: {
     color: colors.error,
     fontFamily: typography.secondarySemibold,
-  },
-  progressContainer: {
-    width: "100%",
-    marginBottom: spacing.lg,
-    gap: 8,
-  },
-  progressTrack: {
-    width: "100%",
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(100, 116, 139, 0.2)",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-  },
-  progressLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    fontFamily: typography.primary,
-    textAlign: "center",
   },
   errorBox: {
     width: "100%",

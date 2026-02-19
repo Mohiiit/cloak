@@ -403,7 +403,6 @@ export default function HomeScreen({ navigation }: any) {
   const [isImporting, setIsImporting] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [balanceHidden, setBalanceHidden] = useState(false);
-  const [showWardInfo, setShowWardInfo] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState<{ txHash: string; amount: string } | null>(null);
   const [wardImportScanVisible, setWardImportScanVisible] = useState(false);
   const [wardImportScannerState, setWardImportScannerState] = useState<WardImportScannerState>({
@@ -876,7 +875,11 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.wardLimitBlock}>
           <View style={styles.wardLimitRow}>
             <Text style={styles.wardLimitLabel}>Daily Limit</Text>
-            <Text style={styles.wardLimitValue}>15 / 100 STRK</Text>
+            <Text style={styles.wardLimitValue}>
+              {ward.wardInfo?.spendingLimitPerTx
+                ? `${ward.wardInfo.spendingLimitPerTx} STRK`
+                : "-- STRK"}
+            </Text>
           </View>
           <View style={styles.wardLimitTrack}>
             <View style={[styles.wardLimitFill, styles.wardLimitFillDaily]} />
@@ -885,18 +888,12 @@ export default function HomeScreen({ navigation }: any) {
 
         <View style={styles.wardLimitBlock}>
           <View style={styles.wardLimitRow}>
-            <Text style={styles.wardLimitLabel}>Monthly Limit</Text>
-            <Text style={styles.wardLimitValue}>150 / 500 STRK</Text>
-          </View>
-          <View style={styles.wardLimitTrack}>
-            <View style={[styles.wardLimitFill, styles.wardLimitFillMonthly]} />
-          </View>
-        </View>
-
-        <View style={styles.wardAllowedTokenRow}>
-          <Text style={styles.wardAllowedTokenLabel}>Allowed Tokens</Text>
-          <View style={styles.wardAllowedTokenBadge}>
-            <Text style={styles.wardAllowedTokenBadgeText}>STRK</Text>
+            <Text style={styles.wardLimitLabel}>Max / Txn</Text>
+            <Text style={styles.wardLimitValue}>
+              {ward.wardInfo?.maxPerTx
+                ? `${ward.wardInfo.maxPerTx} STRK`
+                : "-- STRK"}
+            </Text>
           </View>
         </View>
       </View>
@@ -1018,95 +1015,6 @@ export default function HomeScreen({ navigation }: any) {
           wardFrozenContent
         ) : (
         <>
-          {/* Ward Badge Banner */}
-          {ward.isWard && (
-            (() => {
-              const isFrozen = !!ward.wardInfo?.isFrozen;
-              const bannerBg = isFrozen ? "rgba(239, 68, 68, 0.08)" : "rgba(245, 158, 11, 0.08)";
-              const bannerBorder = isFrozen ? "rgba(239, 68, 68, 0.22)" : "rgba(245, 158, 11, 0.2)";
-              const accent = isFrozen ? colors.error : colors.warning;
-              const sub = isFrozen ? "Frozen by guardian" : "Managed by guardian";
-              return (
-            <TouchableOpacity
-              style={[styles.wardBanner, { backgroundColor: bannerBg, borderColor: bannerBorder }]}
-              onPress={async () => {
-                const next = !showWardInfo;
-                setShowWardInfo(next);
-                // Pull latest status when user opens the panel.
-                if (next) {
-                  await ward.refreshWardInfo();
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.wardBannerLeft}>
-                <ShieldAlert size={18} color={accent} />
-                <View>
-                  <Text style={[styles.wardBannerTitle, { color: accent }]}>Ward Account</Text>
-                  <Text style={styles.wardBannerSub}>{sub}</Text>
-                </View>
-              </View>
-              <Info size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-              );
-            })()
-          )}
-
-          {/* Ward Info Panel */}
-          {ward.isWard && showWardInfo && (
-            ward.wardInfo ? (
-            <View
-              style={[
-                styles.wardInfoPanel,
-                ward.wardInfo.isFrozen && {
-                  borderColor: "rgba(239, 68, 68, 0.22)",
-                  borderLeftColor: colors.error,
-                },
-              ]}
-            >
-              <View style={styles.wardInfoRow}>
-                <Text style={styles.wardInfoLabel}>Guardian</Text>
-                <Text style={styles.wardInfoValue} numberOfLines={1}>
-                  {ward.wardInfo.guardianAddress.slice(0, 10)}...{ward.wardInfo.guardianAddress.slice(-6)}
-                </Text>
-              </View>
-              <View style={styles.wardInfoRow}>
-                <Text style={styles.wardInfoLabel}>Status</Text>
-                <View style={[styles.wardStatusBadge, ward.wardInfo.isFrozen ? styles.wardStatusFrozen : styles.wardStatusActive]}>
-                  <Text style={[styles.wardStatusText, ward.wardInfo.isFrozen ? styles.wardStatusTextFrozen : styles.wardStatusTextActive]}>
-                    {ward.wardInfo.isFrozen ? "Frozen" : "Active"}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.wardInfoRow}>
-                <Text style={styles.wardInfoLabel}>Guardian Approval</Text>
-                <Text style={styles.wardInfoValue}>
-                  {ward.wardInfo.requireGuardianForAll ? "All transactions" : "Above limit only"}
-                </Text>
-              </View>
-              <View style={styles.wardInfoRow}>
-                <Text style={styles.wardInfoLabel}>Guardian 2FA</Text>
-                <Text style={[styles.wardInfoValue, { color: ward.wardInfo.isGuardian2faEnabled ? colors.success : colors.textMuted }]}>
-                  {ward.wardInfo.isGuardian2faEnabled ? "Enabled" : "Disabled"}
-                </Text>
-              </View>
-              <View style={styles.wardInfoRow}>
-                <Text style={styles.wardInfoLabel}>Ward 2FA</Text>
-                <Text style={[styles.wardInfoValue, { color: ward.wardInfo.is2faEnabled ? colors.success : colors.textMuted }]}>
-                  {ward.wardInfo.is2faEnabled ? "Enabled" : "Disabled"}
-                </Text>
-              </View>
-            </View>
-            ) : (
-            <View style={[styles.wardInfoPanel, { alignItems: "center", paddingVertical: spacing.xl }]}>
-              <ActivityIndicator size="small" color={colors.warning} />
-              <Text style={{ color: colors.textSecondary, fontSize: fontSize.xs, marginTop: spacing.sm }}>
-                Loading ward info...
-              </Text>
-            </View>
-            )
-          )}
-
       {/* Balance Card */}
       <View style={styles.balanceCard}>
         <View style={styles.glowTopRight} />
@@ -1193,6 +1101,41 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={styles.actionLabel}>Unshield</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Spending Limits — ward only */}
+      {ward.isWard && (
+        <View style={styles.wardLimitsCard}>
+          <View style={styles.wardLimitsHeader}>
+            <Gauge size={18} color={colors.primaryLight} />
+            <Text style={styles.wardLimitsTitle}>Spending Limits</Text>
+          </View>
+
+          <View style={styles.wardLimitBlock}>
+            <View style={styles.wardLimitRow}>
+              <Text style={styles.wardLimitLabel}>Daily Limit</Text>
+              <Text style={styles.wardLimitValue}>
+                {ward.wardInfo?.spendingLimitPerTx
+                  ? `${ward.wardInfo.spendingLimitPerTx} STRK`
+                  : "-- STRK"}
+              </Text>
+            </View>
+            <View style={styles.wardLimitTrack}>
+              <View style={[styles.wardLimitFill, styles.wardLimitFillDaily]} />
+            </View>
+          </View>
+
+          <View style={styles.wardLimitBlock}>
+            <View style={styles.wardLimitRow}>
+              <Text style={styles.wardLimitLabel}>Max / Txn</Text>
+              <Text style={styles.wardLimitValue}>
+                {ward.wardInfo?.maxPerTx
+                  ? `${ward.wardInfo.maxPerTx} STRK`
+                  : "-- STRK"}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Recent Activity */}
       <View style={styles.recentSection}>

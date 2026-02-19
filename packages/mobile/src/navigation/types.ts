@@ -20,12 +20,16 @@ export type RootStackParamList = {
     qrPayload: string;
     pseudoName?: string;
     initialFundingAmountWei?: string;
+    dailyLimit?: string;
+    maxPerTx?: string;
   };
   WardDetail: {
     wardAddress: string;
     wardName: string;
     isFrozen: boolean;
     spendingLimit: string;
+    qrPayload?: string;
+    maxPerTx?: string;
   };
   TransactionDetail: {
     txHash: string;

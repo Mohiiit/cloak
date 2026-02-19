@@ -1,5 +1,15 @@
 import '@testing-library/jest-native/extend-expect';
 
+jest.mock('react-native-reanimated', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Reanimated = require('react-native-reanimated/mock');
+
+  // The mock for `call` invokes the callback immediately which can break tests.
+  Reanimated.default.call = () => {};
+
+  return Reanimated;
+});
+
 jest.mock('react-native-webview', () => {
   const React = require('react');
   const { View } = require('react-native');

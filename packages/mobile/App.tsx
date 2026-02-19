@@ -42,7 +42,7 @@ if (isE2E()) {
 function App() {
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+      <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
       <ToastProvider>
         <TongoBridgeProvider>
           <WalletProvider>

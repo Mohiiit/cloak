@@ -15,7 +15,7 @@ import {
   Modal,
   Animated,
 } from "react-native";
-import Clipboard from "@react-native-clipboard/clipboard";
+import ClipboardLib from "@react-native-clipboard/clipboard";
 import {
   Car,
   Check,
@@ -25,12 +25,20 @@ import {
   House,
   Music2,
   Search,
+  ScanLine,
   Send as SendIcon,
   UtensilsCrossed,
   WalletCards,
   X,
   RefreshCw,
+  AlertCircle,
 } from "lucide-react-native";
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useCodeScanner,
+} from "react-native-vision-camera";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
@@ -312,6 +320,311 @@ function FailedModal({
   );
 }
 
+/* ─── QR Scanner Modal ────────────────────────────────────────────────── */
+
+function QRScannerModal({
+  visible,
+  onScan,
+  onClose,
+}: {
+  visible: boolean;
+  onScan: (data: string) => void;
+  onClose: () => void;
+}) {
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice("back");
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const hasScannedRef = useRef(false);
+  const [scanError, setScanError] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      hasScannedRef.current = false;
+      setScanError(false);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (visible && !hasPermission) {
+      requestPermission();
+    }
+  }, [visible, hasPermission, requestPermission]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnim, {
+          toValue: 1,
+          duration: 2500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLineAnim, {
+          toValue: 0,
+          duration: 2500,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [visible, scanLineAnim]);
+
+  const scanLineTranslateY = scanLineAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [16, 228],
+  });
+
+  const codeScanner = useCodeScanner({
+    codeTypes: ["qr"],
+    onCodeScanned: (codes) => {
+      if (hasScannedRef.current) return;
+      const value = codes[0]?.value;
+      if (value) {
+        hasScannedRef.current = true;
+        const trimmed = value.trim();
+        const isValidAddress = trimmed.startsWith("0x") || trimmed.includes(".stark");
+        if (!isValidAddress) {
+          setScanError(true);
+          setTimeout(() => {
+            setScanError(false);
+            hasScannedRef.current = false;
+          }, 3000);
+          return;
+        }
+        onScan(trimmed);
+      }
+    },
+  });
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={scannerStyles.overlay}>
+        {/* Close button */}
+        <TouchableOpacity
+          style={scannerStyles.closeBtn}
+          onPress={onClose}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <X size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        {/* Title */}
+        <View style={scannerStyles.titleGroup}>
+          <Text style={scannerStyles.title}>Scan QR Code</Text>
+          <Text style={scannerStyles.subtitle}>
+            {"Scan a Cloak or Starknet address\nQR code to send shielded tokens"}
+          </Text>
+        </View>
+
+        {/* Viewfinder */}
+        <View style={scannerStyles.viewfinder}>
+          {hasPermission && device ? (
+            <Camera
+              style={StyleSheet.absoluteFill}
+              device={device}
+              isActive={visible && !hasScannedRef.current}
+              codeScanner={codeScanner}
+            />
+          ) : (
+            <View style={scannerStyles.cameraPlaceholder}>
+              <ActivityIndicator color={colors.primary} size="small" />
+              <Text style={scannerStyles.cameraPlaceholderText}>
+                {hasPermission === false ? "Camera permission denied" : "Initializing camera..."}
+              </Text>
+            </View>
+          )}
+
+          {/* Corner brackets */}
+          <View style={[scannerStyles.corner, scannerStyles.cornerTL]} pointerEvents="none">
+            <View style={[scannerStyles.cornerH, scanError && { backgroundColor: colors.error }]} />
+            <View style={[scannerStyles.cornerV, scanError && { backgroundColor: colors.error }]} />
+          </View>
+          <View style={[scannerStyles.corner, scannerStyles.cornerTR]} pointerEvents="none">
+            <View style={[scannerStyles.cornerH, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
+            <View style={[scannerStyles.cornerV, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
+          </View>
+          <View style={[scannerStyles.corner, scannerStyles.cornerBL]} pointerEvents="none">
+            <View style={[scannerStyles.cornerV, scanError && { backgroundColor: colors.error }]} />
+            <View style={[scannerStyles.cornerH, scanError && { backgroundColor: colors.error }]} />
+          </View>
+          <View style={[scannerStyles.corner, scannerStyles.cornerBR]} pointerEvents="none">
+            <View style={[scannerStyles.cornerV, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
+            <View style={[scannerStyles.cornerH, { alignSelf: "flex-end" }, scanError && { backgroundColor: colors.error }]} />
+          </View>
+
+          {/* Animated scan line */}
+          <Animated.View
+            style={[
+              scannerStyles.scanLine,
+              scanError && { backgroundColor: colors.error },
+              { transform: [{ translateY: scanLineTranslateY }] },
+            ]}
+            pointerEvents="none"
+          />
+        </View>
+
+        {/* Error toast */}
+        {scanError && (
+          <View style={scannerStyles.errorToast}>
+            <AlertCircle size={18} color="#FFFFFF" />
+            <View style={scannerStyles.errorToastTextGroup}>
+              <Text style={scannerStyles.errorToastTitle}>Invalid Address</Text>
+              <Text style={scannerStyles.errorToastDesc}>
+                QR code does not contain a valid Cloak or Starknet address
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Bottom hint */}
+        <View style={scannerStyles.bottomGroup}>
+          <Text style={scannerStyles.hintText}>
+            {"Position the QR code within the frame.\nIt will be scanned automatically."}
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const SCANNER_CORNER_SIZE = 40;
+const SCANNER_CORNER_THICKNESS = 3;
+
+const scannerStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 15, 28, 0.95)",
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 60,
+    left: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  titleGroup: {
+    alignItems: "center",
+    paddingHorizontal: 40,
+    marginTop: 120,
+    gap: 8,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    fontFamily: typography.primarySemibold,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.5)",
+    fontFamily: typography.secondary,
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  viewfinder: {
+    width: 260,
+    height: 260,
+    alignSelf: "center",
+    marginTop: 40,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+    position: "relative",
+  },
+  cameraPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  cameraPlaceholderText: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.4)",
+    fontFamily: typography.secondary,
+  },
+  corner: {
+    position: "absolute",
+    width: SCANNER_CORNER_SIZE,
+    height: SCANNER_CORNER_SIZE,
+  },
+  cornerTL: { top: 16, left: 16 },
+  cornerTR: { top: 16, right: 16 },
+  cornerBL: { bottom: 16, left: 16 },
+  cornerBR: { bottom: 16, right: 16 },
+  cornerH: {
+    width: SCANNER_CORNER_SIZE,
+    height: SCANNER_CORNER_THICKNESS,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
+  cornerV: {
+    width: SCANNER_CORNER_THICKNESS,
+    height: SCANNER_CORNER_SIZE,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
+  scanLine: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    top: 0,
+    height: 2,
+    backgroundColor: colors.primary,
+    opacity: 0.6,
+    borderRadius: 1,
+  },
+  bottomGroup: {
+    alignItems: "center",
+    paddingHorizontal: 40,
+    marginTop: 60,
+    gap: 20,
+  },
+  hintText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.31)",
+    fontFamily: typography.secondary,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  errorToast: {
+    position: "absolute",
+    bottom: 80,
+    left: 24,
+    right: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(239, 68, 68, 0.9)",
+    borderRadius: 12,
+    padding: 14,
+  },
+  errorToastTextGroup: {
+    flex: 1,
+    gap: 2,
+  },
+  errorToastTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    fontFamily: typography.primarySemibold,
+  },
+  errorToastDesc: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+    fontFamily: typography.secondary,
+  },
+});
+
 /* ─── Main screen ─────────────────────────────────────────────────────── */
 
 export default function SendScreen({ navigation }: any) {
@@ -339,6 +652,7 @@ export default function SendScreen({ navigation }: any) {
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [failedModalVisible, setFailedModalVisible] = useState(false);
   const [failedError, setFailedError] = useState("");
+  const [scannerVisible, setScannerVisible] = useState(false);
 
   useEffect(() => {
     wallet.refreshTxHistory();
@@ -466,6 +780,17 @@ export default function SendScreen({ navigation }: any) {
         }}
       />
 
+      {/* QR Scanner */}
+      <QRScannerModal
+        visible={scannerVisible}
+        onScan={(data) => {
+          setScannerVisible(false);
+          setRecipient(data);
+          setAddressError("");
+        }}
+        onClose={() => setScannerVisible(false)}
+      />
+
       {/* Modal overlays */}
       <SendingModal
         visible={sendingModalVisible}
@@ -496,12 +821,6 @@ export default function SendScreen({ navigation }: any) {
         onCancel={() => setFailedModalVisible(false)}
       />
 
-      <View style={styles.progressRow}>
-        <View style={[styles.progressSegment, styles.progressSegmentActive]} />
-        <View style={[styles.progressSegment, styles.progressSegmentActive]} />
-        <View style={styles.progressSegment} />
-      </View>
-
       <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
         <Text style={styles.sectionLabel}>TO</Text>
         <View style={styles.inputRow}>
@@ -509,7 +828,7 @@ export default function SendScreen({ navigation }: any) {
           <TextInput
             {...testProps(testIDs.send.recipientInput)}
             style={styles.recipientInput}
-            placeholder="Recipient address or name..."
+            placeholder="alice.stark or 0x..."
             placeholderTextColor={colors.textMuted}
             value={recipient}
             onChangeText={(t) => {
@@ -522,15 +841,10 @@ export default function SendScreen({ navigation }: any) {
           />
           <TouchableOpacity
             {...testProps(testIDs.send.recipientPaste)}
-            onPress={async () => {
-              const text = await Clipboard.getString();
-              if (text) {
-                setRecipient(text.trim());
-                setAddressError("");
-              }
-            }}
+            onPress={() => setScannerVisible(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.pasteText}>Paste</Text>
+            <ScanLine size={20} color={colors.primaryLight} />
           </TouchableOpacity>
         </View>
         {!sendKeyboardMode ? (

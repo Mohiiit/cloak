@@ -101,7 +101,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [tongoBalances, setTongoBalances] = useState<Record<TokenKey, { balance: string; pending: string }>>({ ...EMPTY_TONGO });
   const [txHistory, setTxHistory] = useState<any[]>([]);
 
-  // Load existing wallet on mount
+  // Load existing wallet on mount and check deployment before showing UI
   useEffect(() => {
     (async () => {
       const exists = await hasWallet();
@@ -110,6 +110,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         if (loaded) {
           setKeys(loaded);
           setIsWalletCreated(true);
+
+          // Check deployment inline so we don't flash the deploy screen
+          try {
+            const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+            await provider.getNonceForAddress(loaded.starkAddress);
+            setIsDeployed(true);
+          } catch {
+            // Not deployed — deploy gate will show
+          }
         }
       }
       setIsLoading(false);

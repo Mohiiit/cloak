@@ -21,6 +21,7 @@ type WardCreatedParams = {
   qrPayload: string;
   pseudoName?: string;
   initialFundingAmountWei?: string;
+  dailyLimit?: string;
 };
 
 type WardCreatedRouteProp = RouteProp<
@@ -55,6 +56,7 @@ export default function WardCreatedScreen() {
     qrPayload,
     pseudoName,
     initialFundingAmountWei,
+    dailyLimit,
   } = route.params;
 
   const wardName = pseudoName || "ward";
@@ -75,12 +77,8 @@ export default function WardCreatedScreen() {
   }, [wardAddress, wardName, qrPayload]);
 
   const handleGoToDashboard = useCallback(() => {
-    const parent = navigation.getParent();
-    if (parent) {
-      parent.navigate("AppTabs");
-    } else {
-      navigation.popToTop();
-    }
+    // Pop all stack screens back to the AppTabs (Settings tab)
+    navigation.popToTop();
   }, [navigation]);
 
   return (
@@ -88,7 +86,7 @@ export default function WardCreatedScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.popToTop()}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           {...testProps(testIDs.SETTINGS?.BACK_BUTTON ?? "back-button")}
         >
@@ -161,7 +159,7 @@ export default function WardCreatedScreen() {
           <Text style={styles.configTitle}>WARD CONFIGURATION</Text>
           <View style={styles.configRow}>
             <Text style={styles.configLabel}>Daily Limit</Text>
-            <Text style={styles.configValue}>100 STRK</Text>
+            <Text style={styles.configValue}>{dailyLimit ? `${dailyLimit} STRK` : "-- STRK"}</Text>
           </View>
           <View style={styles.configRow}>
             <Text style={styles.configLabel}>Initial Funding</Text>
@@ -170,9 +168,6 @@ export default function WardCreatedScreen() {
             </Text>
           </View>
         </View>
-
-        {/* Spacer */}
-        <View style={{ flex: 1 }} />
 
         {/* Share QR Code Button */}
         <TouchableOpacity
@@ -222,8 +217,8 @@ const styles = StyleSheet.create({
   content: {
     paddingVertical: 20,
     paddingHorizontal: 24,
+    paddingBottom: 40,
     gap: 24,
-    flexGrow: 1,
   },
 
   // Success Section

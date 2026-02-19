@@ -102,6 +102,8 @@ function normalizeWardCreationOptions(options?: WardCreationOptions): WardCreati
   return {
     pseudoName: options.pseudoName?.trim() || undefined,
     fundingAmountWei: normalizeFundingAmount(options.fundingAmountWei),
+    dailyLimit: options.dailyLimit?.trim() || undefined,
+    maxPerTx: options.maxPerTx?.trim() || undefined,
   };
 }
 
@@ -138,6 +140,8 @@ export type WardCreationProgress = (step: number, total: number, message: string
 export type WardCreationOptions = {
   pseudoName?: string;
   fundingAmountWei?: string;
+  dailyLimit?: string;
+  maxPerTx?: string;
 };
 
 export interface PartialWardState {
@@ -477,6 +481,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           guardian_public_key: guardianPublicKey,
           status: "active",
           require_guardian_for_all: true,
+          spending_limit_per_tx: normalizedOptions.dailyLimit || "0",
+          max_per_tx: normalizedOptions.maxPerTx || "0",
         });
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
@@ -514,9 +520,29 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       network: "sepolia",
       pseudoName: normalizedOptions.pseudoName,
       initialFundingAmountWei: fundingAmountWei,
+      dailyLimit: normalizedOptions.dailyLimit || "0",
+      maxPerTx: normalizedOptions.maxPerTx || "0",
     });
 
     await refreshWards();
+
+    // Save ward data locally for later QR regeneration
+    try {
+      const existingData = await AsyncStorage.getItem("cloak_ward_local_data");
+      const wardLocalData = existingData ? JSON.parse(existingData) : {};
+      wardLocalData[normalizeAddress(paddedWardAddress)] = {
+        qrPayload,
+        pseudoName: normalizedOptions.pseudoName,
+        dailyLimit: normalizedOptions.dailyLimit,
+        maxPerTx: normalizedOptions.maxPerTx,
+        fundingAmountWei,
+        createdAt: new Date().toISOString(),
+      };
+      await AsyncStorage.setItem("cloak_ward_local_data", JSON.stringify(wardLocalData));
+    } catch {
+      // Non-critical — local storage of ward data
+    }
+
     return { wardAddress: paddedWardAddress, wardPrivateKey, qrPayload };
   }, [wallet.keys, refreshWards]);
 
@@ -560,6 +586,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         guardian_public_key: guardianPublicKey,
         status: "active",
         require_guardian_for_all: true,
+        spending_limit_per_tx: normalizedOptions.dailyLimit || "0",
+        max_per_tx: normalizedOptions.maxPerTx || "0",
       });
 
       await AsyncStorage.removeItem(STORAGE_KEY_PARTIAL_WARD);
@@ -573,6 +601,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         network: "sepolia",
         pseudoName: normalizedOptions.pseudoName,
         initialFundingAmountWei: fundingAmountWei,
+        dailyLimit: normalizedOptions.dailyLimit || "0",
+        maxPerTx: normalizedOptions.maxPerTx || "0",
       });
 
       await refreshWards();

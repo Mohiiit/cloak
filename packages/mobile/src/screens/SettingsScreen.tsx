@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
 import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Gem, Download, Smartphone, LogOut, LockOpen, TriangleAlert, ChevronRight } from "lucide-react-native";
@@ -21,6 +22,7 @@ import { useTwoFactor, type TwoFAStep } from "../lib/TwoFactorContext";
 import { useWardContext, type WardEntry, type WardCreationProgress, type WardCreationOptions } from "../lib/wardContext";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
+import { useToast } from "../components/Toast";
 import { KeyboardSafeScreen, KeyboardSafeModal } from "../components/KeyboardSafeContainer";
 import { testIDs, testProps } from "../testing/testIDs";
 
@@ -642,6 +644,7 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
 export default function SettingsScreen({ navigation }: any) {
   const wallet = useWallet();
   const modal = useThemedModal();
+  const { showToast } = useToast();
   const twoFactor = useTwoFactor();
   const ward = useWardContext();
   const { contacts, addContact, removeContact } = useContacts();
@@ -672,6 +675,14 @@ export default function SettingsScreen({ navigation }: any) {
   const [wardRetryMode, setWardRetryMode] = useState(false);
   const [wardLastOptions, setWardLastOptions] = useState<WardCreationOptions>({});
   const [wardAction, setWardAction] = useState<string | null>(null);
+
+  // Local ward data (for QR regeneration)
+  const [wardLocalData, setWardLocalData] = useState<Record<string, any>>({});
+  useEffect(() => {
+    AsyncStorage.getItem("cloak_ward_local_data").then((data) => {
+      if (data) setWardLocalData(JSON.parse(data));
+    }).catch(() => {});
+  }, [ward.wards]);
 
   // Freeze Ward confirmation modal state
   const [freezeModalWard, setFreezeModalWard] = useState<string | null>(null);
@@ -934,7 +945,14 @@ export default function SettingsScreen({ navigation }: any) {
                   key={w.id}
                   style={[styles.wardRow, showDivider && styles.wardRowDivider]}
                   activeOpacity={0.7}
-                  onPress={() => navigation.getParent("root")?.navigate("WardDetail", { wardAddress: w.raw?.wardAddress, wardName: w.name, isFrozen, spendingLimit: w.spendingLimit })}
+                  onPress={() => {
+                    // Look up locally-stored QR payload
+                    const addr = w.raw?.wardAddress || "";
+                    const localKey = Object.keys(wardLocalData).find((k) => addr.toLowerCase().endsWith(k.replace(/^0x0*/, "").toLowerCase()));
+                    const localQr = localKey ? wardLocalData[localKey]?.qrPayload : "";
+                    const localMaxPerTx = localKey ? wardLocalData[localKey]?.maxPerTx : undefined;
+                    navigation.getParent("root")?.navigate("WardDetail", { wardAddress: addr, wardName: w.name, isFrozen, spendingLimit: w.spendingLimit, qrPayload: localQr || "", maxPerTx: localMaxPerTx || "" });
+                  }}
                 >
                   <View style={[styles.wardIconCircle, isFrozen ? styles.wardIconCircleFrozen : styles.wardIconCircleActive]}>
                     <Shield size={18} color={isFrozen ? "#EF4444" : "#3B82F6"} />
@@ -953,6 +971,47 @@ export default function SettingsScreen({ navigation }: any) {
                 </TouchableOpacity>
               );
             })}
+        </View>
+      )}
+
+      {ward.isWard && (
+        <View style={[styles.section, styles.guardianCard]}>
+          <View style={styles.sectionHeader}>
+            <Shield size={18} color="#8B5CF6" />
+            <Text style={styles.sectionTitle}>Your Guardian</Text>
+          </View>
+          <Text style={styles.sectionDesc}>
+            This account is managed by a guardian. They can freeze your account and set spending limits.
+          </Text>
+
+          {/* Guardian Address */}
+          <View style={styles.guardianAddressRow}>
+            <View style={styles.guardianAddressInfo}>
+              <Text style={styles.guardianAddressLabel}>GUARDIAN ADDRESS</Text>
+              <Text style={styles.guardianAddressValue} numberOfLines={1}>
+                {ward.wardInfo?.guardianAddress
+                  ? `${ward.wardInfo.guardianAddress.slice(0, 10)}...${ward.wardInfo.guardianAddress.slice(-6)}`
+                  : "Unknown"}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                if (ward.wardInfo?.guardianAddress) {
+                  Clipboard.setString(ward.wardInfo.guardianAddress);
+                  showToast("Guardian address copied");
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.copyLink}>Copy</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Status */}
+          <View style={styles.guardianStatusRow}>
+            <View style={[styles.guardianStatusDot, { backgroundColor: "#10B981" }]} />
+            <Text style={styles.guardianStatusText}>Account Active</Text>
+          </View>
         </View>
       )}
 
@@ -1554,6 +1613,55 @@ const styles = StyleSheet.create({
   // Wards + Contacts (qGVuO parity)
   wardsCard: {
     borderColor: "rgba(245, 158, 11, 0.15)",
+  },
+  guardianCard: {
+    borderColor: "rgba(139, 92, 246, 0.25)",
+  },
+  guardianAddressRow: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    alignItems: "center" as const,
+    backgroundColor: colors.inputBg,
+    borderRadius: borderRadius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 12,
+  },
+  guardianAddressInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  guardianAddressLabel: {
+    fontSize: 9,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+    letterSpacing: 1,
+  },
+  guardianAddressValue: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontFamily: typography.primary,
+  },
+  copyLink: {
+    color: colors.primary,
+    fontSize: 12,
+    fontFamily: typography.primarySemibold,
+  },
+  guardianStatusRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 6,
+    marginTop: 10,
+  },
+  guardianStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  guardianStatusText: {
+    fontSize: 11,
+    color: "#10B981",
+    fontFamily: typography.secondary,
   },
   wardsCreateBtn: {
     height: 38,

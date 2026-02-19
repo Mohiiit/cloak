@@ -32,6 +32,7 @@ export interface WardInfo {
   isFrozen: boolean;
   spendingLimitPerTx: string;
   requireGuardianForAll: boolean;
+  maxPerTx?: string;
 }
 
 export interface WardApprovalRequest {

@@ -19,9 +19,13 @@ import {
   Trash2,
   TriangleAlert,
   Copy,
+  QrCode,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
+import QRCode from "react-native-qrcode-svg";
 import { colors, spacing, fontSize, borderRadius, typography } from "../../lib/theme";
 import { useToast } from "../../components/Toast";
 
@@ -30,6 +34,8 @@ type WardDetailParams = {
   wardName: string;
   isFrozen: boolean;
   spendingLimit: string;
+  qrPayload?: string;
+  maxPerTx?: string;
 };
 
 function shortenAddress(addr: string): string {
@@ -44,18 +50,33 @@ export default function WardDetailScreen() {
   const toast = useToast();
 
   const [frozen, setFrozen] = useState(params.isFrozen);
-  const [dailyLimit, setDailyLimit] = useState("100");
-  const [monthlyLimit, setMonthlyLimit] = useState("500");
+  const [qrExpanded, setQrExpanded] = useState(false);
+
+  // Parse daily limit from spendingLimit param (e.g. "100 STRK/tx" → "100")
+  const parsedDailyLimit = (() => {
+    const match = params.spendingLimit?.match(/^([\d.]+)/);
+    return match ? match[1] : "0";
+  })();
+  const dailyLimit = parsedDailyLimit;
+  const maxPerTx = params.maxPerTx || "0";
 
   const dailyUsed = 15;
-  const monthlyUsed = 150;
   const dailyProgress = Math.min(dailyUsed / parseInt(dailyLimit || "1", 10), 1);
-  const monthlyProgress = Math.min(monthlyUsed / parseInt(monthlyLimit || "1", 10), 1);
+
+  const hasValidationError = parseFloat(maxPerTx) > parseFloat(dailyLimit);
+
+  const hasQrPayload = !!params.qrPayload;
 
   function handleCopyAddress() {
     if (!params.wardAddress) return;
     Clipboard.setString(params.wardAddress);
-    toast.show("Address copied");
+    toast("Address copied");
+  }
+
+  function handleCopyInviteJson() {
+    if (!params.qrPayload) return;
+    Clipboard.setString(params.qrPayload);
+    toast("Invite JSON copied");
   }
 
   function handleToggleFreeze() {
@@ -163,6 +184,54 @@ export default function WardDetailScreen() {
           </View>
         </View>
 
+        {/* Ward Invite Card */}
+        <View style={styles.card}>
+          <View style={styles.inviteHeader}>
+            <QrCode size={20} color={colors.primary} />
+            <Text style={styles.inviteTitle}>Ward Invite</Text>
+          </View>
+          {hasQrPayload ? (
+            <>
+              <TouchableOpacity
+                style={styles.inviteToggleBtn}
+                onPress={() => setQrExpanded((prev) => !prev)}
+                activeOpacity={0.7}
+              >
+                {qrExpanded ? (
+                  <ChevronUp size={16} color={colors.textSecondary} />
+                ) : (
+                  <ChevronDown size={16} color={colors.textSecondary} />
+                )}
+                <Text style={styles.inviteToggleText}>
+                  {qrExpanded ? "Hide QR Code" : "Show QR Code"}
+                </Text>
+              </TouchableOpacity>
+              {qrExpanded && (
+                <View style={styles.qrWrapper}>
+                  <QRCode
+                    value={params.qrPayload!}
+                    size={180}
+                    backgroundColor="#FFFFFF"
+                    color="#000000"
+                  />
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.copyInviteBtn}
+                onPress={handleCopyInviteJson}
+                activeOpacity={0.7}
+              >
+                <Copy size={14} color={colors.primary} />
+                <Text style={styles.copyInviteBtnText}>Copy Invite JSON</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={styles.inviteUnavailableText}>
+              Invite data not available. The ward invite QR was only shown at creation time.
+            </Text>
+          )}
+        </View>
+
         {/* Spending Limits Card */}
         <View style={styles.card}>
           <View style={styles.limitsHeader}>
@@ -192,33 +261,38 @@ export default function WardDetailScreen() {
             <Text style={styles.limitUsed}>{dailyUsed} STRK used today</Text>
           </View>
 
-          {/* Monthly Section */}
+          {/* Max Per Transaction */}
           <View style={[styles.limitSection, styles.limitSectionDivider]}>
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>Monthly Limit</Text>
-              <View style={styles.limitPill}>
-                <Text style={styles.limitPillText}>{monthlyLimit} STRK</Text>
+              <Text style={styles.limitLabel}>Max Per Transaction</Text>
+              <View style={[styles.limitPill, hasValidationError && { borderColor: colors.error, backgroundColor: "rgba(239, 68, 68, 0.08)" }]}>
+                <Text style={[styles.limitPillText, hasValidationError && { color: colors.error }]}>{maxPerTx} STRK</Text>
               </View>
             </View>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.round(monthlyProgress * 100)}%`,
-                    backgroundColor: colors.secondary,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={styles.limitUsed}>{monthlyUsed} STRK used this month</Text>
+            <Text style={styles.limitHelper}>Max a ward can spend in a single transaction</Text>
+            {hasValidationError && (
+              <Text style={styles.limitError}>
+                Max per transaction can't exceed the daily limit ({dailyLimit} STRK)
+              </Text>
+            )}
           </View>
+
+          {/* Validation Error Banner */}
+          {hasValidationError && (
+            <View style={styles.errorBanner}>
+              <TriangleAlert size={16} color={colors.error} />
+              <Text style={styles.errorBannerText}>
+                Max per transaction ({maxPerTx} STRK) exceeds the daily limit ({dailyLimit} STRK). Please adjust the limits.
+              </Text>
+            </View>
+          )}
 
           {/* Save Button */}
           <TouchableOpacity
-            style={styles.saveBtn}
+            style={[styles.saveBtn, hasValidationError && { opacity: 0.4 }]}
             onPress={handleSaveLimits}
             activeOpacity={0.85}
+            disabled={hasValidationError}
           >
             <Save size={18} color="#FFFFFF" />
             <Text style={styles.saveBtnText}>Save Limits</Text>
@@ -259,6 +333,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginTop: 44,
   },
   headerIconBtn: {
     width: 24,
@@ -405,6 +480,68 @@ const styles = StyleSheet.create({
     fontFamily: typography.primarySemibold,
   },
 
+  /* Ward Invite */
+  inviteHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  inviteTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontFamily: typography.primarySemibold,
+  },
+  inviteToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: "flex-start",
+  },
+  inviteToggleText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontFamily: typography.secondary,
+  },
+  qrWrapper: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginTop: 12,
+  },
+  copyInviteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignSelf: "flex-start",
+    marginTop: 12,
+  },
+  copyInviteBtnText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontFamily: typography.primarySemibold,
+  },
+  inviteUnavailableText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontFamily: typography.secondary,
+    lineHeight: 18,
+  },
+
   /* Spending Limits */
   limitsHeader: {
     flexDirection: "row",
@@ -463,6 +600,36 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 10,
     fontFamily: typography.secondary,
+  },
+  limitHelper: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+    marginTop: 2,
+  },
+  limitError: {
+    fontSize: 10,
+    color: colors.error,
+    fontFamily: typography.secondary,
+    marginTop: 4,
+  },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderRadius: borderRadius.sm,
+    padding: 10,
+    marginTop: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.error,
+    fontFamily: typography.secondary,
+    lineHeight: 16,
   },
   saveBtn: {
     height: 44,

@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Home, Send, Settings, Clock, ShieldAlert } from "lucide-react-native";
+import { Home, Send, Settings, Clock } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
 import SendScreen from "../screens/SendScreen";
 import WalletScreen from "../screens/WalletScreen";
@@ -48,7 +48,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return <Text style={[styles.icon, focused && styles.iconActive]}>{"•"}</Text>;
 }
 
-function HeaderTitle({ routeName }: { routeName?: string }) {
+function HeaderTitle() {
   let isWard = false;
   try {
     const wardCtx = useWardContext();
@@ -57,17 +57,15 @@ function HeaderTitle({ routeName }: { routeName?: string }) {
     // WardProvider not available yet
   }
 
-  const isWardHome = isWard && routeName === "Home";
-
   return (
     <View style={styles.headerTitleRow}>
       <CloakIcon size={24} />
-      <Text style={styles.headerBrand}>{isWardHome ? "Ward Account" : "Cloak"}</Text>
-      {isWard && (
-        <View style={styles.wardHeaderBadge}>
-          <ShieldAlert size={12} color="#F59E0B" />
-          <Text style={styles.wardHeaderBadgeText}>Ward</Text>
-        </View>
+      {isWard ? (
+        <Text style={styles.headerBrand}>
+          Cloak <Text style={styles.headerWardSuffix}>Ward</Text>
+        </Text>
+      ) : (
+        <Text style={styles.headerBrand}>Cloak</Text>
       )}
     </View>
   );
@@ -100,11 +98,13 @@ export default function AppNavigator() {
           headerTintColor: colors.text,
           headerTitleStyle: { fontWeight: "600", fontFamily: typography.primarySemibold },
           headerTitleAlign: "center" as const,
-          tabBarStyle: {
-            ...styles.tabBar,
-            paddingBottom: bottomPadding,
-            height: 56 + bottomPadding,
-          },
+          tabBarStyle: wallet.isWalletCreated
+            ? {
+                ...styles.tabBar,
+                paddingBottom: bottomPadding,
+                height: 56 + bottomPadding,
+              }
+            : { display: "none" as const },
           tabBarHideOnKeyboard: true,
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
@@ -123,20 +123,18 @@ export default function AppNavigator() {
         <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={{ headerTitle: () => <HeaderTitle routeName="Home" /> }}
+          options={{ headerTitle: () => <HeaderTitle /> }}
         />
         <Tab.Screen
           name="Send"
           component={SendScreen}
           options={{ headerTitle: "Send Shielded" }}
         />
-        {!ward.isWard && (
-          <Tab.Screen
-            name="Wallet"
-            component={WalletScreen}
-            options={{ headerTitle: "Wallet" }}
-          />
-        )}
+        <Tab.Screen
+          name="Wallet"
+          component={WalletScreen}
+          options={{ headerTitle: "Wallet" }}
+        />
         <Tab.Screen
           name="Activity"
           component={ActivityScreen}
@@ -186,22 +184,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.primarySemibold,
   },
-  wardHeaderBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.3)",
-  },
-  wardHeaderBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#F59E0B",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+  headerWardSuffix: {
+    color: "#8B5CF6",
+    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
   },
 });
