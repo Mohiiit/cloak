@@ -31,6 +31,7 @@ import { WardProvider } from "./src/lib/wardContext";
 import ApprovalModal from "./src/components/ApprovalModal";
 import WardApprovalModal from "./src/components/WardApprovalModal";
 import GuardianApprovalModal from "./src/components/GuardianApprovalModal";
+import WardWaitingGuardianModal from "./src/components/WardWaitingGuardianModal";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { isE2E } from "./src/testing/runtimeConfig";
 import TestStateMarkers from "./src/testing/TestStateMarkers";
@@ -54,6 +55,7 @@ function App() {
                 {isE2E() && <TestStateMarkers />}
                 <ApprovalModal />
                 <WardApprovalModal />
+                <WardWaitingGuardianModal />
                 <GuardianApprovalModal />
               </WardProvider>
             </TwoFactorProvider>

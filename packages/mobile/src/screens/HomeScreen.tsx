@@ -37,7 +37,7 @@ import {
   Plus,
 } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
-import { useWardContext } from "../lib/wardContext";
+import { useWardContext, type WardInfo } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
@@ -380,6 +380,46 @@ function OnboardingLogoBadge() {
       </Svg>
       <View style={styles.onboardingLogoIcon}>
         <CloakIcon size={50} color="#FFFFFF" />
+      </View>
+    </View>
+  );
+}
+
+function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
+  const dailyLimit = wardInfo?.spendingLimitPerTx ? Number(wardInfo.spendingLimitPerTx) : 0;
+  const maxPerTx = wardInfo?.maxPerTx ? Number(wardInfo.maxPerTx) : 0;
+  // TODO: track daily usage on-chain or locally; for now show 0 used
+  const dailyUsed = 0;
+  const fillPercent = dailyLimit > 0 ? Math.min((dailyUsed / dailyLimit) * 100, 100) : 0;
+
+  return (
+    <View style={styles.wardLimitsCard}>
+      <View style={styles.wardLimitsHeader}>
+        <Gauge size={16} color={colors.primaryLight} />
+        <Text style={styles.wardLimitsTitle}>Spending Limits</Text>
+      </View>
+
+      <View style={styles.wardLimitBlock}>
+        <View style={styles.wardLimitRow}>
+          <Text style={styles.wardLimitLabel}>Daily Limit</Text>
+          <Text style={styles.wardLimitValue}>
+            {dailyLimit > 0
+              ? `${dailyUsed} / ${dailyLimit} STRK`
+              : "-- STRK"}
+          </Text>
+        </View>
+        <View style={styles.wardLimitTrack}>
+          <View style={[styles.wardLimitFill, styles.wardLimitFillDaily, { width: `${fillPercent}%` }]} />
+        </View>
+      </View>
+
+      <View style={styles.wardLimitBlock}>
+        <View style={styles.wardLimitRow}>
+          <Text style={styles.wardLimitLabel}>Max / Txn</Text>
+          <Text style={styles.wardLimitValue}>
+            {maxPerTx > 0 ? `${maxPerTx} STRK` : "-- STRK"}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -866,37 +906,7 @@ export default function HomeScreen({ navigation }: any) {
         <Text style={styles.wardFrozenBalanceHint}>Transfers disabled while frozen</Text>
       </View>
 
-      <View style={styles.wardLimitsCard}>
-        <View style={styles.wardLimitsHeader}>
-          <Gauge size={16} color={colors.primaryLight} />
-          <Text style={styles.wardLimitsTitle}>Spending Limits</Text>
-        </View>
-
-        <View style={styles.wardLimitBlock}>
-          <View style={styles.wardLimitRow}>
-            <Text style={styles.wardLimitLabel}>Daily Limit</Text>
-            <Text style={styles.wardLimitValue}>
-              {ward.wardInfo?.spendingLimitPerTx
-                ? `${ward.wardInfo.spendingLimitPerTx} STRK`
-                : "-- STRK"}
-            </Text>
-          </View>
-          <View style={styles.wardLimitTrack}>
-            <View style={[styles.wardLimitFill, styles.wardLimitFillDaily]} />
-          </View>
-        </View>
-
-        <View style={styles.wardLimitBlock}>
-          <View style={styles.wardLimitRow}>
-            <Text style={styles.wardLimitLabel}>Max / Txn</Text>
-            <Text style={styles.wardLimitValue}>
-              {ward.wardInfo?.maxPerTx
-                ? `${ward.wardInfo.maxPerTx} STRK`
-                : "-- STRK"}
-            </Text>
-          </View>
-        </View>
-      </View>
+      <SpendingLimitsCard wardInfo={ward.wardInfo} />
 
       <View style={styles.wardDisabledActionsRow}>
         <View style={styles.wardDisabledActionCard}>
@@ -1103,39 +1113,7 @@ export default function HomeScreen({ navigation }: any) {
       </View>
 
       {/* Spending Limits — ward only */}
-      {ward.isWard && (
-        <View style={styles.wardLimitsCard}>
-          <View style={styles.wardLimitsHeader}>
-            <Gauge size={18} color={colors.primaryLight} />
-            <Text style={styles.wardLimitsTitle}>Spending Limits</Text>
-          </View>
-
-          <View style={styles.wardLimitBlock}>
-            <View style={styles.wardLimitRow}>
-              <Text style={styles.wardLimitLabel}>Daily Limit</Text>
-              <Text style={styles.wardLimitValue}>
-                {ward.wardInfo?.spendingLimitPerTx
-                  ? `${ward.wardInfo.spendingLimitPerTx} STRK`
-                  : "-- STRK"}
-              </Text>
-            </View>
-            <View style={styles.wardLimitTrack}>
-              <View style={[styles.wardLimitFill, styles.wardLimitFillDaily]} />
-            </View>
-          </View>
-
-          <View style={styles.wardLimitBlock}>
-            <View style={styles.wardLimitRow}>
-              <Text style={styles.wardLimitLabel}>Max / Txn</Text>
-              <Text style={styles.wardLimitValue}>
-                {ward.wardInfo?.maxPerTx
-                  ? `${ward.wardInfo.maxPerTx} STRK`
-                  : "-- STRK"}
-              </Text>
-            </View>
-          </View>
-        </View>
-      )}
+      {ward.isWard && <SpendingLimitsCard wardInfo={ward.wardInfo} />}
 
       {/* Recent Activity */}
       <View style={styles.recentSection}>
@@ -1957,7 +1935,6 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   wardLimitFillDaily: {
-    width: "15%",
     backgroundColor: colors.primary,
   },
   wardLimitFillMonthly: {

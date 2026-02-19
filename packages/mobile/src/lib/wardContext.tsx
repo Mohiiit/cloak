@@ -169,6 +169,10 @@ type WardContextState = {
   pendingWard2faRequests: WardApprovalRequest[];
   pendingGuardianRequests: WardApprovalRequest[];
 
+  // Ward waiting for guardian (shown on ward's device)
+  wardWaitingRequest: WardApprovalRequest | null;
+  cancelWardWaiting: () => void;
+
   // Actions
   checkIfWard: () => Promise<boolean>;
   refreshWardInfo: () => Promise<void>;
@@ -234,6 +238,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingWards, setIsLoadingWards] = useState(false);
   const [pendingWard2faRequests, setPendingWard2faRequests] = useState<WardApprovalRequest[]>([]);
   const [pendingGuardianRequests, setPendingGuardianRequests] = useState<WardApprovalRequest[]>([]);
+  const [wardWaitingRequest, setWardWaitingRequest] = useState<WardApprovalRequest | null>(null);
+  const wardWaitingAbortRef = useRef<AbortController | null>(null);
   const [partialWard, setPartialWard] = useState<PartialWardState | null>(null);
 
   const wardPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1388,42 +1394,60 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       params.action,
     );
 
-    return sdkRequestWardApproval(
-      sdkSb,
-      {
-        wardAddress: wallet.keys.starkAddress,
-        guardianAddress: needs.guardianAddress,
-        action: params.action,
-        token: params.token,
-        amount: formattedAmount,
-        recipient: params.recipient || null,
-        callsJson,
-        wardSigJson: "[]",
-        nonce: "",
-        resourceBoundsJson: "{}",
-        txHash: "",
-        needsWard2fa: needs.wardHas2fa,
-        needsGuardian: needs.needsGuardian,
-        needsGuardian2fa: needs.guardianHas2fa,
-      },
-      undefined,
-      undefined,
-      {
-        // Ward txs initiated from THIS mobile app should not bounce back into the
-        // ward signing modal when ward 2FA is disabled. We sign immediately and
-        // move the request forward to guardian (or submit directly if guardian not needed).
-        onRequestCreated: async (request) => {
-          if (request.needs_ward_2fa) return;
-          suppressWardPromptIdsRef.current.add(request.id);
-          try {
-            await approveAsWard(request);
-          } finally {
-            suppressWardPromptIdsRef.current.delete(request.id);
-            await fetchWardSignRequests();
+    // Set up abort controller for cancel support
+    const abortController = new AbortController();
+    wardWaitingAbortRef.current = abortController;
+
+    try {
+      const result = await sdkRequestWardApproval(
+        sdkSb,
+        {
+          wardAddress: wallet.keys.starkAddress,
+          guardianAddress: needs.guardianAddress,
+          action: params.action,
+          token: params.token,
+          amount: formattedAmount,
+          recipient: params.recipient || null,
+          callsJson,
+          wardSigJson: "[]",
+          nonce: "",
+          resourceBoundsJson: "{}",
+          txHash: "",
+          needsWard2fa: needs.wardHas2fa,
+          needsGuardian: needs.needsGuardian,
+          needsGuardian2fa: needs.guardianHas2fa,
+        },
+        (status) => {
+          // When status changes to waiting for guardian, show the waiting modal
+          if (status === "Waiting for guardian approval...") {
+            // Fetch the latest request to populate the modal
+            fetchWardSignRequests();
           }
         },
-      },
-    );
+        abortController.signal,
+        {
+          // Ward txs initiated from THIS mobile app should not bounce back into the
+          // ward signing modal when ward 2FA is disabled. We sign immediately and
+          // move the request forward to guardian (or submit directly if guardian not needed).
+          onRequestCreated: async (request) => {
+            // Store the request so the waiting modal can show tx details
+            setWardWaitingRequest(request);
+            if (request.needs_ward_2fa) return;
+            suppressWardPromptIdsRef.current.add(request.id);
+            try {
+              await approveAsWard(request);
+            } finally {
+              suppressWardPromptIdsRef.current.delete(request.id);
+              await fetchWardSignRequests();
+            }
+          },
+        },
+      );
+      return result;
+    } finally {
+      setWardWaitingRequest(null);
+      wardWaitingAbortRef.current = null;
+    }
   }, [
     wallet.keys?.starkAddress,
     refreshWardInfo,
@@ -1431,6 +1455,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     fetchGuardianRequests,
     approveAsWard,
   ]);
+
+  const cancelWardWaiting = useCallback(() => {
+    wardWaitingAbortRef.current?.abort();
+    wardWaitingAbortRef.current = null;
+    setWardWaitingRequest(null);
+  }, []);
 
   const rejectWardRequest = useCallback(async (requestId: string) => {
     const sb = await getSupabaseLite();
@@ -1497,6 +1527,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         isLoadingWards,
         pendingWard2faRequests,
         pendingGuardianRequests,
+        wardWaitingRequest,
+        cancelWardWaiting,
         checkIfWard,
         refreshWardInfo,
         refreshWards,

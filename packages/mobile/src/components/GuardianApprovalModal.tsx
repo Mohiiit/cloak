@@ -1,9 +1,9 @@
 /**
  * GuardianApprovalModal — Amber-themed modal for guardian transaction approval.
- * Shows when there are pending guardian approval requests from wards.
- * Design: TumTT "Ward Waiting Guardian" (.pen frame).
+ * Shows on the guardian's device when a ward requests approval.
+ * Design: cbPbW "Cloak - Guardian Approve Ward Request" (.pen frame).
  */
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,47 +11,36 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
-  Animated,
 } from "react-native";
-import { ShieldCheck } from "lucide-react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ShieldAlert } from "lucide-react-native";
+import { normalizeAddress } from "@cloak-wallet/sdk";
 import { useWardContext, type WardApprovalRequest } from "../lib/wardContext";
 import { useThemedModal } from "./ThemedModal";
 import { promptBiometric } from "../lib/twoFactor";
 import {
   colors,
   spacing,
-  fontSize,
-  borderRadius,
   typography,
 } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
 
-// ── Amber palette (from TumTT design) ────────────────────────────────────────
+// ── Amber palette ────────────────────────────────────────────────────────────
 
 const amber = {
   solid: "#F59E0B",
   dim: "rgba(245, 158, 11, 0.15)",
-  border: "rgba(245, 158, 11, 0.19)", // #F59E0B30
+  border: "rgba(245, 158, 11, 0.19)",
+  pillBg: "rgba(245, 158, 11, 0.07)",
+  pillBorder: "rgba(245, 158, 11, 0.25)",
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function truncate(str: string, front = 8, back = 6): string {
   if (!str) return "";
   if (str.length <= front + back + 3) return str;
   return `${str.slice(0, front)}...${str.slice(-back)}`;
-}
-
-function formatAction(action: string): string {
-  const map: Record<string, string> = {
-    fund: "Shield (Fund)",
-    shield: "Shield (Fund)",
-    transfer: "Transfer",
-    withdraw: "Withdraw (Unshield)",
-    unshield: "Withdraw (Unshield)",
-    rollover: "Claim (Rollover)",
-  };
-  return map[action] || action;
 }
 
 function useCountdown(expiresAt: string): string {
@@ -78,58 +67,7 @@ function useCountdown(expiresAt: string): string {
   return timeLeft;
 }
 
-// ── Polling Dots ──────────────────────────────────────────────────────────────
-
-function PollingDots() {
-  const anim1 = useRef(new Animated.Value(1)).current;
-  const anim2 = useRef(new Animated.Value(0.5)).current;
-  const anim3 = useRef(new Animated.Value(0.25)).current;
-
-  useEffect(() => {
-    const pulse = (val: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(val, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.timing(val, {
-            toValue: 0.25,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-    const a1 = pulse(anim1, 0);
-    const a2 = pulse(anim2, 150);
-    const a3 = pulse(anim3, 300);
-    a1.start();
-    a2.start();
-    a3.start();
-
-    return () => {
-      a1.stop();
-      a2.stop();
-      a3.stop();
-    };
-  }, [anim1, anim2, anim3]);
-
-  return (
-    <View style={styles.pollingRow}>
-      <View style={styles.dotsContainer}>
-        <Animated.View style={[styles.dot, { opacity: anim1 }]} />
-        <Animated.View style={[styles.dot, { opacity: anim2 }]} />
-        <Animated.View style={[styles.dot, { opacity: anim3 }]} />
-      </View>
-      <Text style={styles.pollingText}>Awaiting ward request...</Text>
-    </View>
-  );
-}
-
-// ── Detail Row ────────────────────────────────────────────────────────────────
+// ── Detail Row ───────────────────────────────────────────────────────────────
 
 function DetailRow({
   label,
@@ -152,7 +90,32 @@ function DetailRow({
   );
 }
 
-// ── Guardian Card Content ─────────────────────────────────────────────────────
+// ── Ward Name Resolution ────────────────────────────────────────────────────
+
+function useWardName(wardAddress: string): string {
+  const [name, setName] = useState<string>("");
+
+  useEffect(() => {
+    if (!wardAddress) return;
+    AsyncStorage.getItem("cloak_ward_local_data").then((raw) => {
+      if (!raw) return;
+      try {
+        const allData = JSON.parse(raw);
+        const normalizedAddr = normalizeAddress(wardAddress);
+        const key = Object.keys(allData).find(
+          (k) => normalizedAddr.toLowerCase().endsWith(k.replace(/^0x0*/, "").toLowerCase())
+        );
+        if (key && allData[key]?.pseudoName) {
+          setName(allData[key].pseudoName);
+        }
+      } catch { /* non-critical */ }
+    });
+  }, [wardAddress]);
+
+  return name;
+}
+
+// ── Guardian Card Content ───────────────────────────────────────────────────
 
 function GuardianCardContent({
   request,
@@ -164,6 +127,7 @@ function GuardianCardContent({
   onRejected: () => void;
 }) {
   const { approveAsGuardian, rejectWardRequest } = useWardContext();
+  const wardName = useWardName(request.ward_address);
   const modal = useThemedModal();
   const countdown = useCountdown(request.expires_at);
   const [isApproving, setIsApproving] = useState(false);
@@ -224,30 +188,33 @@ function GuardianCardContent({
     }
   };
 
+  // Ward display: "Name • 0x8c2e...a81f" or just truncated address
+  const wardDisplay = wardName
+    ? `${wardName} \u2022 ${truncate(request.ward_address, 6, 4)}`
+    : truncate(request.ward_address);
+
   return (
     <>
       {modal.ModalComponent}
 
       {/* Icon circle */}
       <View style={styles.iconCircle}>
-        <ShieldCheck size={36} color={amber.solid} strokeWidth={1.5} />
+        <ShieldAlert size={36} color={amber.solid} strokeWidth={1.5} />
       </View>
 
       {/* Title */}
-      <Text style={styles.title}>
-        {"Guardian Approval\nRequired"}
-      </Text>
+      <Text style={styles.title}>Approve Ward Request</Text>
 
       {/* Description */}
       <Text style={styles.description}>
-        {"Your ward is requesting approval\nfor a transaction."}
+        A ward transaction exceeded policy limits and{"\n"}needs your decision.
       </Text>
 
       {/* Detail card */}
       <View style={styles.detailCard}>
-        <DetailRow label="Type" value={formatAction(request.action)} />
+        <DetailRow label="Ward" value={wardDisplay} />
         {request.recipient && (
-          <DetailRow label="To" value={truncate(request.recipient)} />
+          <DetailRow label="Recipient" value={truncate(request.recipient)} />
         )}
         <DetailRow
           label="Amount"
@@ -257,50 +224,62 @@ function GuardianCardContent({
               : "Claim pending balance"
           }
         />
-        <DetailRow label="Time left" value={countdown} highlight={isExpired} />
+        <DetailRow
+          label="Policy"
+          value="Exceeded limit"
+          highlight
+        />
       </View>
 
-      {/* Polling dots */}
-      <PollingDots />
-
-      {/* Buttons */}
-      <View style={styles.buttonRow}>
-        <TouchableOpacity
-          {...testProps(testIDs.guardianApprovalModal.reject)}
-          style={[styles.cancelBtn, isRejecting && styles.btnDisabled]}
-          onPress={handleReject}
-          disabled={isApproving || isRejecting}
-        >
-          {isRejecting ? (
-            <ActivityIndicator size="small" color={colors.textSecondary} />
-          ) : (
-            <Text style={styles.cancelBtnText}>Reject</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          {...testProps(testIDs.guardianApprovalModal.approve)}
-          style={[
-            styles.approveBtn,
-            (isApproving || isExpired) && styles.btnDisabled,
-          ]}
-          onPress={handleApprove}
-          disabled={isApproving || isRejecting || isExpired}
-        >
-          {isApproving ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.approveBtnText}>
-              {isExpired ? "Expired" : "Approve"}
-            </Text>
-          )}
-        </TouchableOpacity>
+      {/* Expiry pill + hint */}
+      <View style={styles.expirySection}>
+        <View style={styles.expiryPill}>
+          <Text style={styles.expiryPillText}>
+            {isExpired ? "Expired" : `Expires in ${countdown}`}
+          </Text>
+        </View>
+        <Text style={styles.expiryHint}>
+          No action will auto-reject this request.
+        </Text>
       </View>
+
+      {/* Approve button */}
+      <TouchableOpacity
+        {...testProps(testIDs.guardianApprovalModal.approve)}
+        style={[
+          styles.approveBtn,
+          (isApproving || isExpired) && styles.btnDisabled,
+        ]}
+        onPress={handleApprove}
+        disabled={isApproving || isRejecting || isExpired}
+      >
+        {isApproving ? (
+          <ActivityIndicator size="small" color={colors.text} />
+        ) : (
+          <Text style={styles.approveBtnText}>
+            {isExpired ? "Expired" : "Approve Request"}
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      {/* Reject button */}
+      <TouchableOpacity
+        {...testProps(testIDs.guardianApprovalModal.reject)}
+        style={[styles.rejectBtn, isRejecting && styles.btnDisabled]}
+        onPress={handleReject}
+        disabled={isApproving || isRejecting}
+      >
+        {isRejecting ? (
+          <ActivityIndicator size="small" color={colors.textSecondary} />
+        ) : (
+          <Text style={styles.rejectBtnText}>Reject</Text>
+        )}
+      </TouchableOpacity>
     </>
   );
 }
 
-// ── Main Modal ────────────────────────────────────────────────────────────────
+// ── Main Modal ──────────────────────────────────────────────────────────────
 
 export default function GuardianApprovalModal() {
   const { pendingGuardianRequests } = useWardContext();
@@ -334,10 +313,9 @@ export default function GuardianApprovalModal() {
   );
 }
 
-// ── Styles (TumTT design tokens) ─────────────────────────────────────────────
+// ── Styles (cbPbW design) ───────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Overlay
   overlay: {
     flex: 1,
     backgroundColor: "rgba(10, 15, 28, 0.9)",
@@ -345,8 +323,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.lg,
   },
-
-  // Modal card
   modalCard: {
     width: 330,
     backgroundColor: colors.surface,
@@ -359,8 +335,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 20,
   },
-
-  // Icon circle
   iconCircle: {
     width: 80,
     height: 80,
@@ -371,8 +345,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  // Title
   title: {
     fontFamily: typography.primary,
     fontSize: 20,
@@ -381,8 +353,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 28,
   },
-
-  // Description
   description: {
     fontFamily: typography.secondary,
     fontSize: 13,
@@ -390,8 +360,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-
-  // Detail card
   detailCard: {
     width: "100%",
     backgroundColor: colors.inputBg,
@@ -399,8 +367,6 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 8,
   },
-
-  // Detail rows
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -418,38 +384,54 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 
-  // Polling dots
-  pollingRow: {
-    flexDirection: "row",
+  // Expiry section
+  expirySection: {
+    width: "100%",
+    gap: 10,
+    alignItems: "center",
+  },
+  expiryPill: {
+    width: "100%",
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: amber.pillBg,
+    borderWidth: 1,
+    borderColor: amber.pillBorder,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  dotsContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+  expiryPillText: {
+    fontFamily: typography.primarySemibold,
+    fontSize: 12,
+    color: amber.solid,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: amber.solid,
-  },
-  pollingText: {
-    fontFamily: typography.primary,
+  expiryHint: {
+    fontFamily: typography.secondary,
     fontSize: 11,
     color: colors.textMuted,
+    textAlign: "center",
+    lineHeight: 15,
   },
 
-  // Buttons
-  buttonRow: {
+  // Approve button (green per cbPbW design)
+  approveBtn: {
     width: "100%",
-    flexDirection: "row",
-    gap: 12,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: colors.success,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  cancelBtn: {
-    flex: 1,
+  approveBtnText: {
+    fontFamily: typography.primary,
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.text,
+  },
+
+  // Reject button
+  rejectBtn: {
+    width: "100%",
     height: 44,
     borderRadius: 12,
     borderWidth: 1,
@@ -457,24 +439,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cancelBtnText: {
+  rejectBtnText: {
     fontFamily: typography.primarySemibold,
     fontSize: 14,
     color: colors.textSecondary,
   },
-  approveBtn: {
-    flex: 1.5,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: amber.solid,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  approveBtnText: {
-    fontFamily: typography.primarySemibold,
-    fontSize: 14,
-    color: "#fff",
-  },
+
   btnDisabled: {
     opacity: 0.5,
   },

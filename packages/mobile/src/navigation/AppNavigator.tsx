@@ -58,14 +58,15 @@ function HeaderTitle() {
   }
 
   return (
-    <View style={styles.headerTitleRow}>
-      <CloakIcon size={24} />
-      {isWard ? (
-        <Text style={styles.headerBrand}>
-          Cloak <Text style={styles.headerWardSuffix}>Ward</Text>
-        </Text>
-      ) : (
+    <View style={[styles.headerTitleRow, isWard && styles.headerTitleRowWard]}>
+      <View style={styles.headerLeftGroup}>
+        <CloakIcon size={24} />
         <Text style={styles.headerBrand}>Cloak</Text>
+      </View>
+      {isWard && (
+        <View style={styles.headerWardBadge}>
+          <Text style={styles.headerWardBadgeText}>Ward</Text>
+        </View>
       )}
     </View>
   );
@@ -177,6 +178,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
+  headerTitleRowWard: {
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  headerLeftGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   headerShield: {},
   headerBrand: {
     fontSize: 16,
@@ -184,8 +194,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: typography.primarySemibold,
   },
-  headerWardSuffix: {
-    color: "#8B5CF6",
+  headerWardBadge: {
+    backgroundColor: "rgba(16, 185, 129, 0.14)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  headerWardBadgeText: {
+    color: colors.success,
+    fontSize: 12,
     fontWeight: "600",
     fontFamily: typography.primarySemibold,
   },

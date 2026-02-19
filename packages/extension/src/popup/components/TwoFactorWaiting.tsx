@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Smartphone } from "lucide-react";
+import { Smartphone, ShieldCheck } from "lucide-react";
 import { FeeRetryModal } from "./FeeRetryModal";
 
 interface Props {
@@ -8,9 +8,10 @@ interface Props {
   onCancel: () => void;
   title?: string;
   subtitle?: string;
+  isWard?: boolean;
 }
 
-export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: Props) {
+export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle, isWard }: Props) {
   const [showGasRetry, setShowGasRetry] = useState(false);
   const [gasErrorMessage, setGasErrorMessage] = useState("");
   const gasRetryCount = useRef(0);
@@ -38,6 +39,20 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
 
   if (!isOpen) return null;
 
+  // Color scheme: amber for ward, purple for 2FA
+  const accent = isWard ? "#F59E0B" : "#8B5CF6";
+  const accentDim = isWard ? "rgba(245, 158, 11, 0.08)" : "rgba(139, 92, 246, 0.08)";
+  const borderAccent = isWard ? "rgba(245, 158, 11, 0.19)" : "rgba(59, 130, 246, 0.2)";
+  const dotClass = isWard ? "ward" : "tfa";
+
+  const displayTitle = title || (isWard
+    ? "Guardian Approval\nRequired"
+    : "Waiting for Mobile\nApproval");
+  const displaySubtitle = subtitle || (isWard
+    ? "Your guardian must approve this\ntransaction before it can proceed."
+    : "Approve this transaction on your\nmobile device to continue.");
+  const pollingLabel = isWard ? "Awaiting guardian..." : "Polling...";
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -45,27 +60,32 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className="flex flex-col items-center border border-[rgba(59,130,246,0.2)]"
+        className="flex flex-col items-center border"
         style={{
           width: 310,
           borderRadius: 20,
           backgroundColor: "#1E293B",
+          borderColor: borderAccent,
           padding: "32px 20px 20px 20px",
           gap: 16,
         }}
       >
-        {/* Phone icon with purple ring */}
+        {/* Icon */}
         <div
           className="flex items-center justify-center"
           style={{
             width: 60,
             height: 60,
             borderRadius: 30,
-            backgroundColor: "rgba(139, 92, 246, 0.08)",
-            border: "2px solid #8B5CF6",
+            backgroundColor: accentDim,
+            border: `2px solid ${accent}`,
           }}
         >
-          <Smartphone className="text-[#8B5CF6]" style={{ width: 28, height: 28 }} />
+          {isWard ? (
+            <ShieldCheck style={{ width: 28, height: 28, color: accent }} />
+          ) : (
+            <Smartphone style={{ width: 28, height: 28, color: accent }} />
+          )}
         </div>
 
         {/* Title */}
@@ -78,9 +98,10 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
             color: "#F8FAFC",
             lineHeight: 1.3,
             margin: 0,
+            whiteSpace: "pre-line",
           }}
         >
-          {title || "Waiting for Mobile\nApproval"}
+          {displayTitle}
         </h3>
 
         {/* Description */}
@@ -96,7 +117,7 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
             whiteSpace: "pre-line",
           }}
         >
-          {subtitle || "Approve this transaction on your\nmobile device to continue."}
+          {displaySubtitle}
         </p>
 
         {/* Detail card */}
@@ -131,30 +152,30 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
         {/* Polling dots */}
         <div className="flex items-center justify-center" style={{ gap: 6 }}>
           <span
-            className="animate-polling-dot-1"
+            className={`animate-${dotClass}-dot-1`}
             style={{
               width: 6,
               height: 6,
               borderRadius: 3,
-              backgroundColor: "#8B5CF6",
+              backgroundColor: accent,
             }}
           />
           <span
-            className="animate-polling-dot-2"
+            className={`animate-${dotClass}-dot-2`}
             style={{
               width: 6,
               height: 6,
               borderRadius: 3,
-              backgroundColor: "#8B5CF6",
+              backgroundColor: accent,
             }}
           />
           <span
-            className="animate-polling-dot-3"
+            className={`animate-${dotClass}-dot-3`}
             style={{
               width: 6,
               height: 6,
               borderRadius: 3,
-              backgroundColor: "#8B5CF6",
+              backgroundColor: accent,
             }}
           />
           <span
@@ -165,18 +186,19 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
               marginLeft: 2,
             }}
           >
-            Polling...
+            {pollingLabel}
           </span>
         </div>
 
         {/* Cancel button */}
         <button
           onClick={onCancel}
-          className="w-full flex items-center justify-center border border-[rgba(59,130,246,0.2)] hover:bg-[#0F172A] transition-colors"
+          className="w-full flex items-center justify-center border hover:bg-[#0F172A] transition-colors"
           style={{
             height: 36,
             borderRadius: 10,
             backgroundColor: "transparent",
+            borderColor: borderAccent,
             fontSize: 12,
             fontWeight: 600,
             fontFamily: "'JetBrains Mono', monospace",
@@ -194,13 +216,13 @@ export function TwoFactorWaiting({ isOpen, status, onCancel, title, subtitle }: 
           0%, 100% { opacity: 0.2; }
           50% { opacity: 1; }
         }
-        .animate-polling-dot-1 {
+        .animate-tfa-dot-1, .animate-ward-dot-1 {
           animation: pollingDot 1.4s ease-in-out infinite;
         }
-        .animate-polling-dot-2 {
+        .animate-tfa-dot-2, .animate-ward-dot-2 {
           animation: pollingDot 1.4s ease-in-out 0.2s infinite;
         }
-        .animate-polling-dot-3 {
+        .animate-tfa-dot-3, .animate-ward-dot-3 {
           animation: pollingDot 1.4s ease-in-out 0.4s infinite;
         }
       `}</style>

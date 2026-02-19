@@ -53,7 +53,7 @@ export function tongoToDisplay(tongoUnits: string | bigint, token: TokenKey): st
   const divisor = 10n ** BigInt(decimals);
   const whole = erc20Amount / divisor;
   const fraction = erc20Amount % divisor;
-  const fractionStr = fraction.toString().padStart(decimals, "0").slice(0, 4);
+  const fractionStr = fraction.toString().padStart(decimals, "0").slice(0, 2);
   if (whole === 0n && fraction === 0n) return "0";
   if (fraction === 0n) return whole.toString();
   return `${whole}.${fractionStr}`.replace(/0+$/, "").replace(/\.$/, "");
@@ -67,7 +67,7 @@ export function erc20ToDisplay(rawBalance: string | bigint, token: TokenKey): st
   const whole = balance / divisor;
   const fraction = balance % divisor;
   if (whole === 0n && fraction === 0n) return "0";
-  const fractionStr = fraction.toString().padStart(decimals, "0").slice(0, 4);
+  const fractionStr = fraction.toString().padStart(decimals, "0").slice(0, 2);
   if (fraction === 0n) return whole.toString();
   return `${whole}.${fractionStr}`.replace(/0+$/, "").replace(/\.$/, "");
 }

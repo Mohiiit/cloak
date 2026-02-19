@@ -210,8 +210,7 @@ export function SendForm({ wallet: w, onBack }: Props) {
           setShow2FAWaiting(false);
           setLoading(false);
         }}
-        title={isWard ? "Guardian Approval Required" : undefined}
-        subtitle={isWard ? "Waiting for guardian to approve this transaction" : undefined}
+        isWard={isWard}
       />
 
       <FeeRetryModal
