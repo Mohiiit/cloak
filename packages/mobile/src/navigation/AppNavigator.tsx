@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Home, Send, Settings, Clock } from "lucide-react-native";
+import { Home, Send, Settings, Clock, Shield } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
 import SendScreen from "../screens/SendScreen";
 import WalletScreen from "../screens/WalletScreen";
@@ -69,9 +69,16 @@ function HeaderLeftLogo() {
 }
 
 function HeaderWardBadge() {
+  const ward = useWardContext();
+  const isFrozen = !!ward.wardInfo?.isFrozen;
+  const badgeColor = isFrozen ? "#F59E0B" : "#8B5CF6";
   return (
-    <View style={styles.headerWardBadge}>
-      <Text style={styles.headerWardBadgeText}>Ward</Text>
+    <View style={[
+      styles.headerWardBadge,
+      { backgroundColor: `${badgeColor}18`, borderColor: `${badgeColor}40` },
+    ]}>
+      <Shield size={14} color={badgeColor} />
+      <Text style={[styles.headerWardBadgeText, { color: badgeColor }]}>Ward</Text>
     </View>
   );
 }
@@ -195,21 +202,23 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   headerBrand: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "600",
     color: colors.text,
     fontFamily: typography.primarySemibold,
   },
   headerWardBadge: {
-    backgroundColor: "rgba(16, 185, 129, 0.14)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     borderRadius: 8,
+    borderWidth: 1,
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     marginRight: spacing.sm,
   },
   headerWardBadgeText: {
-    color: colors.success,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     fontFamily: typography.primarySemibold,
   },
