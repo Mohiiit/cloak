@@ -23,6 +23,10 @@ export { padAddress, truncateAddress, truncateTongoAddress, validateTongoAddress
 // Token utilities
 export { TOKENS, DEFAULT_TOKEN, getTokenBySymbol, formatTokenAmount, parseTokenAmount } from "./tokens";
 
+// Token conversion mid-layer
+export { convertAmount, toDisplayString, toTongoUnits, toErc20Wei } from "./token-convert";
+export type { AmountUnit, TokenAmount } from "./token-convert";
+
 // Storage adapters
 export { MemoryStorage } from "./storage/memory";
 export { LocalStorageAdapter } from "./storage/localStorage";

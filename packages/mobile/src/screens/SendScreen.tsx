@@ -39,10 +39,10 @@ import {
   useCameraPermission,
   useCodeScanner,
 } from "react-native-vision-camera";
-import { parseInsufficientGasError } from "@cloak-wallet/sdk";
+import { parseInsufficientGasError, TOKENS, parseTokenAmount } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoUnitToErc20Display, type TokenKey } from "../lib/tokens";
+import { tongoUnitToErc20Display, erc20ToDisplay, type TokenKey } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
 import { triggerMedium } from "../lib/haptics";
@@ -128,12 +128,14 @@ function SendingModal({
   amount,
   note,
   token,
+  sendMode = "private",
 }: {
   visible: boolean;
   recipient: string;
   amount: string;
   note: string;
   token: TokenKey;
+  sendMode?: "private" | "public";
 }) {
   const progressAnim = useRef(new Animated.Value(0.15)).current;
 
@@ -142,15 +144,18 @@ function SendingModal({
       progressAnim.setValue(0.15);
       Animated.timing(progressAnim, {
         toValue: 0.85,
-        duration: 25000,
+        duration: sendMode === "public" ? 15000 : 25000,
         useNativeDriver: false,
       }).start();
     }
-  }, [visible, progressAnim]);
+  }, [visible, progressAnim, sendMode]);
 
-  const displayAmount = amount
-    ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
-    : "0 units";
+  const isPublic = sendMode === "public";
+  const displayAmount = isPublic
+    ? `${amount || "0"} ${token}`
+    : amount
+      ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
+      : "0 units";
   const displayRecipient =
     recipient.length > 20
       ? `${recipient.slice(0, 10)}...${recipient.slice(-8)}`
@@ -169,7 +174,9 @@ function SendingModal({
           <SendingSpinner />
           <Text style={modalStyles.sendingTitle}>Sending...</Text>
           <Text style={modalStyles.description}>
-            {"Your shielded transfer is being\nprocessed on Starknet"}
+            {isPublic
+              ? "Your public transfer is being\nprocessed on Starknet"
+              : "Your shielded transfer is being\nprocessed on Starknet"}
           </Text>
           <DetailCard rows={detailRows} />
           {/* Progress bar */}
@@ -186,7 +193,9 @@ function SendingModal({
               ]}
             />
           </View>
-          <Text style={modalStyles.stepText}>Generating ZK proof...</Text>
+          <Text style={modalStyles.stepText}>
+            {isPublic ? "Submitting transaction..." : "Generating ZK proof..."}
+          </Text>
         </View>
       </View>
     </Modal>
@@ -203,6 +212,7 @@ function SuccessModal({
   txHash,
   fee,
   onDone,
+  sendMode = "private",
 }: {
   visible: boolean;
   recipient: string;
@@ -211,10 +221,14 @@ function SuccessModal({
   txHash: string;
   fee?: string;
   onDone: () => void;
+  sendMode?: "private" | "public";
 }) {
-  const displayAmount = amount
-    ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
-    : "0 units";
+  const isPublic = sendMode === "public";
+  const displayAmount = isPublic
+    ? `${amount || "0"} ${token}`
+    : amount
+      ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
+      : "0 units";
   const displayRecipient =
     recipient.length > 20
       ? `${recipient.slice(0, 10)}...${recipient.slice(-8)}`
@@ -241,7 +255,9 @@ function SuccessModal({
           </View>
           <Text style={modalStyles.successTitle}>Transfer Complete!</Text>
           <Text style={modalStyles.description}>
-            {"Your shielded transfer has been\nsuccessfully processed"}
+            {isPublic
+              ? "Your public transfer has been\nsuccessfully processed"
+              : "Your shielded transfer has been\nsuccessfully processed"}
           </Text>
           <DetailCard rows={detailRows} />
           {/* Done button */}
@@ -634,6 +650,7 @@ export default function SendScreen({ navigation }: any) {
   const keyboardVisible = useKeyboardVisible();
   const scrollRef = React.useRef<ScrollView>(null);
 
+  const [sendMode, setSendMode] = useState<"private" | "public">("private");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -658,11 +675,12 @@ export default function SendScreen({ navigation }: any) {
     wallet.refreshTxHistory();
   }, [wallet]);
 
+  const isPublic = sendMode === "public";
   const sendKeyboardMode = isNoteFocused && keyboardVisible;
   const conversionHint = `1 unit = ${tongoUnitToErc20Display("1", wallet.selectedToken)}`;
 
   const visibleContacts =
-    contacts.length > 0
+    !isPublic && contacts.length > 0
       ? contacts.slice(0, 2).map((c) => ({
           id: c.id,
           label: c.nickname || `${c.tongoAddress.slice(0, 6)}...`,
@@ -671,6 +689,28 @@ export default function SendScreen({ navigation }: any) {
       : [];
 
   const validateAmount = (): boolean => {
+    if (isPublic) {
+      const num = parseFloat(amount);
+      if (!amount || Number.isNaN(num) || num <= 0) {
+        setAmountError("Enter a valid amount greater than 0");
+        return false;
+      }
+      try {
+        const cfg = TOKENS[wallet.selectedToken];
+        const amountWei = parseTokenAmount(amount, cfg.decimals);
+        const balanceWei = BigInt(wallet.erc20Balance || "0");
+        if (amountWei > balanceWei) {
+          const displayBal = erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken);
+          setAmountError(`Insufficient balance (max: ${displayBal} ${wallet.selectedToken})`);
+          return false;
+        }
+      } catch {
+        setAmountError("Invalid amount format");
+        return false;
+      }
+      setAmountError("");
+      return true;
+    }
     const parsed = parseInt(amount, 10);
     if (!amount || Number.isNaN(parsed) || parsed <= 0) {
       setAmountError("Enter a valid amount greater than 0");
@@ -691,6 +731,16 @@ export default function SendScreen({ navigation }: any) {
       setAddressError("Recipient is required.");
       return;
     }
+
+    if (isPublic) {
+      // Validate hex address
+      const addr = recipient.trim();
+      if (!addr.startsWith("0x") || !/^0x[0-9a-fA-F]{1,64}$/.test(addr)) {
+        setAddressError("Enter a valid Starknet address (0x...)");
+        return;
+      }
+    }
+
     if (!validateAmount()) return;
 
     triggerMedium();
@@ -698,17 +748,22 @@ export default function SendScreen({ navigation }: any) {
     setSendingModalVisible(true);
 
     try {
-      const valid = await wallet.validateAddress(recipient.trim());
-      if (!valid) {
-        setAddressError("Invalid Cloak address. Please check and try again.");
-        setSendingModalVisible(false);
-        return;
+      if (!isPublic) {
+        const valid = await wallet.validateAddress(recipient.trim());
+        if (!valid) {
+          setAddressError("Invalid Cloak address. Please check and try again.");
+          setSendingModalVisible(false);
+          setIsPending(false);
+          return;
+        }
       }
 
       // Find matching contact for recipientName (if user selected from contacts)
-      const matchedContact = contacts.find((c) => c.tongoAddress === recipient.trim());
+      const matchedContact = !isPublic
+        ? contacts.find((c) => c.tongoAddress === recipient.trim())
+        : undefined;
       const result = await execute({
-        action: "transfer",
+        action: isPublic ? "erc20_transfer" : "transfer",
         token: wallet.selectedToken,
         amount,
         recipient: recipient.trim(),
@@ -721,9 +776,9 @@ export default function SendScreen({ navigation }: any) {
         txHash: result.txHash,
         recipient: recipient.trim(),
         note: note || undefined,
-        privacyLevel: "private",
+        privacyLevel: isPublic ? "public" : "private",
         timestamp: Date.now(),
-        type: "send",
+        type: isPublic ? "erc20_transfer" as any : "send",
         token: wallet.selectedToken,
         amount,
       });
@@ -798,6 +853,7 @@ export default function SendScreen({ navigation }: any) {
         amount={amount}
         note={note}
         token={wallet.selectedToken}
+        sendMode={sendMode}
       />
       <SuccessModal
         visible={successModalVisible}
@@ -805,6 +861,7 @@ export default function SendScreen({ navigation }: any) {
         amount={amount}
         token={wallet.selectedToken}
         txHash={txHash}
+        sendMode={sendMode}
         onDone={() => {
           setSuccessModalVisible(false);
           reset();
@@ -821,6 +878,38 @@ export default function SendScreen({ navigation }: any) {
         onCancel={() => setFailedModalVisible(false)}
       />
 
+      {/* Private / Public toggle */}
+      <View style={styles.toggleRow}>
+        <TouchableOpacity
+          style={[styles.toggleTab, sendMode === "private" && styles.toggleTabActive]}
+          onPress={() => {
+            setSendMode("private");
+            setRecipient("");
+            setAmount("");
+            setAddressError("");
+            setAmountError("");
+          }}
+        >
+          <Text style={[styles.toggleTabText, sendMode === "private" && styles.toggleTabTextActive]}>
+            Private
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleTab, sendMode === "public" && styles.toggleTabActive]}
+          onPress={() => {
+            setSendMode("public");
+            setRecipient("");
+            setAmount("");
+            setAddressError("");
+            setAmountError("");
+          }}
+        >
+          <Text style={[styles.toggleTabText, sendMode === "public" && styles.toggleTabTextActive]}>
+            Public
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
         <Text style={styles.sectionLabel}>TO</Text>
         <View style={styles.inputRow}>
@@ -828,7 +917,7 @@ export default function SendScreen({ navigation }: any) {
           <TextInput
             {...testProps(testIDs.send.recipientInput)}
             style={styles.recipientInput}
-            placeholder="alice.stark or 0x..."
+            placeholder={isPublic ? "0x... Starknet address" : "alice.stark or 0x..."}
             placeholderTextColor={colors.textMuted}
             value={recipient}
             onChangeText={(t) => {
@@ -847,7 +936,7 @@ export default function SendScreen({ navigation }: any) {
             <ScanLine size={20} color={colors.primaryLight} />
           </TouchableOpacity>
         </View>
-        {!sendKeyboardMode ? (
+        {!sendKeyboardMode && visibleContacts.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -886,24 +975,44 @@ export default function SendScreen({ navigation }: any) {
             style={[styles.amountInput, sendKeyboardMode && styles.amountInputKeyboard]}
             placeholder="0"
             placeholderTextColor={colors.textMuted}
-            keyboardType="numeric"
+            keyboardType={isPublic ? "decimal-pad" : "numeric"}
             value={amount}
             onChangeText={(t) => {
-              if (/^\d*$/.test(t)) {
-                setAmount(t);
-                setAmountError("");
+              if (isPublic) {
+                // Allow decimal input for public mode
+                if (/^\d*\.?\d*$/.test(t)) {
+                  setAmount(t);
+                  setAmountError("");
+                }
+              } else {
+                if (/^\d*$/.test(t)) {
+                  setAmount(t);
+                  setAmountError("");
+                }
               }
             }}
           />
-          <Text style={[styles.amountSub, sendKeyboardMode && styles.amountSubKeyboard]}>
-            units ({amount ? tongoUnitToErc20Display(amount, wallet.selectedToken) : "0.00 STRK"})
-          </Text>
+          {isPublic ? (
+            <Text style={[styles.amountSub, sendKeyboardMode && styles.amountSubKeyboard]}>
+              {wallet.selectedToken}
+            </Text>
+          ) : (
+            <Text style={[styles.amountSub, sendKeyboardMode && styles.amountSubKeyboard]}>
+              units ({amount ? tongoUnitToErc20Display(amount, wallet.selectedToken) : "0.00 STRK"})
+            </Text>
+          )}
           {!sendKeyboardMode ? (
-            <Text style={styles.availableText}>Available: {wallet.balance} units MAX</Text>
+            <Text style={styles.availableText}>
+              {isPublic
+                ? `Available: ${erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken)} ${wallet.selectedToken}`
+                : `Available: ${wallet.balance} units MAX`}
+            </Text>
           ) : null}
         </View>
         {amountError ? <Text style={styles.errorText}>{amountError}</Text> : null}
-        {!sendKeyboardMode ? <Text style={styles.conversionHint}>{conversionHint}</Text> : null}
+        {!sendKeyboardMode && !isPublic ? (
+          <Text style={styles.conversionHint}>{conversionHint}</Text>
+        ) : null}
       </View>
 
       <View style={[styles.section, sendKeyboardMode && styles.sectionCompact]}>
@@ -954,7 +1063,9 @@ export default function SendScreen({ navigation }: any) {
           <>
             <SendIcon size={18} color="#fff" />
             <Text style={styles.sendButtonText}>
-              {`Send ${amount && parseInt(amount, 10) > 0 ? amount : "0"} Units`}
+              {isPublic
+                ? `Send ${amount && parseFloat(amount) > 0 ? amount : "0"} ${wallet.selectedToken}`
+                : `Send ${amount && parseInt(amount, 10) > 0 ? amount : "0"} Units`}
             </Text>
           </>
         )}
@@ -1195,6 +1306,33 @@ const styles = StyleSheet.create({
   },
   contentKeyboard: {
     paddingBottom: 140,
+  },
+  toggleRow: {
+    flexDirection: "row",
+    backgroundColor: "rgba(30, 41, 59, 0.55)",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(45, 59, 77, 0.75)",
+    padding: 3,
+    marginBottom: 16,
+  },
+  toggleTab: {
+    flex: 1,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toggleTabActive: {
+    backgroundColor: "rgba(59, 130, 246, 0.22)",
+  },
+  toggleTabText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontFamily: typography.primarySemibold,
+  },
+  toggleTabTextActive: {
+    color: colors.primaryLight,
   },
   progressRow: {
     flexDirection: "row",

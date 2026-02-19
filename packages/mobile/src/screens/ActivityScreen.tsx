@@ -17,8 +17,9 @@ import {
   Wallet,
   Settings,
 } from "lucide-react-native";
-import { getTransactions, type TransactionRecord } from "@cloak-wallet/sdk";
+import { getTransactions, toDisplayString, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
+import { useWardContext } from "../lib/wardContext";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
 import { TOKENS, type TokenKey } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
@@ -32,6 +33,8 @@ interface TxMetadataExtended extends TxMetadata {
   errorMessage?: string;
   accountType?: string;
   fee?: string;
+  amount_unit?: AmountUnit | null;
+  wardAddress?: string;
 }
 
 function formatIntWithCommas(intStr: string): string {
@@ -66,23 +69,46 @@ function formatRelativeTime(timestamp: number): string {
 
 function matchesFilter(type: TxMetadata["type"], filter: FilterKey): boolean {
   if (filter === "all") return true;
-  if (filter === "sent") return ["send", "withdraw"].includes(type);
+  if (filter === "sent") return ["send", "withdraw", "erc20_transfer", "fund_ward"].includes(type);
   if (filter === "received") return ["receive", "rollover"].includes(type);
   if (filter === "shield") return type === "fund";
   return true;
 }
 
-function getTxTitle(tx: TxMetadataExtended): string {
+/** Resolve ward display name: saved recipientName > wardContext lookup > "Ward" */
+function resolveWardLabel(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => string | undefined): string {
+  if (tx.recipientName) return tx.recipientName;
+  if (tx.wardAddress && wardNameLookup) {
+    const name = wardNameLookup(tx.wardAddress);
+    if (name) return name;
+  }
+  return "Ward";
+}
+
+function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => string | undefined): string {
+  // Guardian-submitted ward operations: use ward's name if available
+  const isGuardianSubmittedWardOp =
+    tx.accountType === "guardian" &&
+    ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
+  const wardLabel = isGuardianSubmittedWardOp ? resolveWardLabel(tx, wardNameLookup) : "";
+  const tokenAmount = formatTokenFromUnits(tx.amount || "0", (tx.token || "STRK") as TokenKey);
+
   switch (tx.type) {
     case "send":
+      if (isGuardianSubmittedWardOp) return `${wardLabel}: Sent payment`;
       return tx.recipientName ? `Sent to ${tx.recipientName}` : "Sent payment";
+    case "erc20_transfer":
+      return tx.recipientName ? `Sent to ${tx.recipientName} (Public)` : "Public send";
     case "receive":
       return "Received shielded";
     case "fund":
-      return `Shielded ${formatTokenFromUnits(tx.amount || "0", tx.token as TokenKey)}`;
+      if (isGuardianSubmittedWardOp) return `${wardLabel}: Shielded ${tokenAmount}`;
+      return `Shielded ${tokenAmount}`;
     case "withdraw":
-      return `Unshielded ${formatTokenFromUnits(tx.amount || "0", tx.token as TokenKey)}`;
+      if (isGuardianSubmittedWardOp) return `${wardLabel}: Unshielded ${tokenAmount}`;
+      return `Unshielded ${tokenAmount}`;
     case "rollover":
+      if (isGuardianSubmittedWardOp) return `${wardLabel}: Claimed pending`;
       return "Claimed pending funds";
     case "deploy_ward":
       return "Deployed ward contract";
@@ -99,9 +125,15 @@ function getTxStatus(tx: TxMetadataExtended): string {
   // Show Supabase status if available
   if (tx.status === "failed") return "Failed";
   if (tx.status === "pending") return "Pending";
+  // Guardian-submitted ward operations get a "Ward" badge
+  if (tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type)) {
+    return "Ward";
+  }
   switch (tx.type) {
     case "send":
       return "Shielded";
+    case "erc20_transfer":
+      return "Public Send";
     case "receive":
     case "rollover":
       return "Claimed";
@@ -126,15 +158,21 @@ function getStatusColor(tx: TxMetadataExtended): string | undefined {
   return undefined;
 }
 
-function getTxPolarity(tx: TxMetadataExtended): "credit" | "debit" {
+function getTxPolarity(tx: TxMetadataExtended): "credit" | "debit" | "neutral" {
+  // Guardian-submitted ward ops: guardian didn't send or receive — just approved
+  if (tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type)) {
+    return "neutral";
+  }
   if (["receive", "fund", "rollover"].includes(tx.type)) return "credit";
-  return "debit";
+  return "debit"; // send, withdraw, erc20_transfer, deploy_ward, fund_ward, configure_ward
 }
 
 function getTxColor(tx: TxMetadataExtended): string {
   switch (tx.type) {
     case "send":
       return colors.primary;
+    case "erc20_transfer":
+      return "#F97316";
     case "receive":
     case "fund":
       return colors.success;
@@ -159,6 +197,8 @@ function getTxIcon(tx: TxMetadataExtended): React.ReactNode {
       return <ShieldOff size={18} color={colors.secondary} />;
     case "send":
       return <ArrowUpFromLine size={18} color={colors.primary} />;
+    case "erc20_transfer":
+      return <ArrowUpFromLine size={18} color="#F97316" />;
     case "receive":
       return <ArrowDownToLine size={18} color={colors.success} />;
     case "rollover":
@@ -186,6 +226,8 @@ function getTxIconBg(tx: TxMetadataExtended): string {
       return "rgba(139, 92, 246, 0.14)";
     case "send":
       return "rgba(59, 130, 246, 0.14)";
+    case "erc20_transfer":
+      return "rgba(249, 115, 22, 0.14)";
     case "rollover":
       return "rgba(245, 158, 11, 0.14)";
     default:
@@ -222,18 +264,31 @@ function recordToMetadata(r: TransactionRecord): TxMetadataExtended {
     type: r.type === "transfer" ? "send" : (r.type as any),
     token: r.token || "STRK",
     amount: r.amount || undefined,
+    amount_unit: (r as any).amount_unit || undefined,
     status: r.status,
     errorMessage: r.error_message || undefined,
     accountType: r.account_type || undefined,
     fee: r.fee || undefined,
+    wardAddress: r.ward_address || undefined,
   };
 }
 
 export default function ActivityScreen({ navigation }: any) {
   const wallet = useWallet();
+  const { wards } = useWardContext();
   const [history, setHistory] = useState<TxMetadataExtended[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
+
+  // Look up ward pseudoName by address (normalized comparison)
+  const wardNameLookup = useCallback((addr: string): string | undefined => {
+    const normalized = addr.toLowerCase().replace(/^0x0+/, "0x");
+    for (const w of wards) {
+      const wNorm = w.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
+      if (wNorm === normalized) return w.pseudoName;
+    }
+    return undefined;
+  }, [wards]);
 
   const loadNotes = useCallback(async () => {
     // Try Supabase first, fall back to local storage
@@ -337,13 +392,23 @@ export default function ActivityScreen({ navigation }: any) {
               <View style={styles.sectionCard}>
                 {items.map((tx, i) => {
                   const amountUnitsRaw = tx.amount || "0";
-                  const amountUnits = formatIntWithCommas(amountUnitsRaw);
                   const polarity = getTxPolarity(tx);
-                  const amountPrefix = polarity === "credit" ? "+" : "-";
+                  const amountPrefix = polarity === "credit" ? "+" : polarity === "debit" ? "-" : "";
                   const amountColor = getTxColor(tx);
                   const token = (tx.token || "STRK") as TokenKey;
-                  const tokenLabel = formatTokenFromUnits(amountUnitsRaw, token);
-                  const title = getTxTitle(tx);
+                  // Guardian-submitted ward ops: amounts are tongo units from the ward's perspective
+                  const isGuardianWardOp = tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
+                  // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
+                  const isWardAdmin = tx.type === "deploy_ward" || tx.type === "fund_ward" || tx.type === "configure_ward";
+                  const isErc20Display = !isGuardianWardOp && (tx.amount_unit === "erc20_display" || tx.type === "erc20_transfer" || isWardAdmin);
+                  const hasAmount = !!tx.amount && tx.amount !== "0";
+                  const amountUnits = isErc20Display ? amountUnitsRaw : formatIntWithCommas(amountUnitsRaw);
+                  const tokenLabel = isGuardianWardOp
+                    ? formatTokenFromUnits(amountUnitsRaw, token)
+                    : isErc20Display
+                      ? toDisplayString({ value: amountUnitsRaw, unit: "erc20_display", token })
+                      : formatTokenFromUnits(amountUnitsRaw, token);
+                  const title = getTxTitle(tx, wardNameLookup);
                   const statusText = getTxStatus(tx);
                   const statusColor = getStatusColor(tx);
                   const subtitle = `${formatRelativeTime(tx.timestamp)} \u00b7 ${statusText}`;
@@ -366,6 +431,7 @@ export default function ActivityScreen({ navigation }: any) {
                           note: tx.note,
                           recipientName: tx.recipientName,
                           timestamp: tx.timestamp,
+                          amount_unit: tx.amount_unit || undefined,
                         });
                       }}
                     >
@@ -389,13 +455,26 @@ export default function ActivityScreen({ navigation }: any) {
                       </View>
 
                       <View style={styles.rightText}>
-                        <Text style={[styles.amountText, { color: amountColor }]} numberOfLines={1}>
-                          {amountPrefix}
-                          {amountUnits} units
-                        </Text>
-                        <Text style={styles.tokenText} numberOfLines={1}>
-                          {tokenLabel}
-                        </Text>
+                        {isWardAdmin && !hasAmount ? (
+                          <Text style={[styles.amountText, { color: amountColor }]} numberOfLines={1}>
+                            {statusText}
+                          </Text>
+                        ) : isGuardianWardOp ? (
+                          <Text style={[styles.amountText, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {tokenLabel}
+                          </Text>
+                        ) : (
+                          <>
+                            <Text style={[styles.amountText, { color: amountColor }]} numberOfLines={1}>
+                              {isErc20Display
+                                ? `${amountPrefix}${amountUnits} ${token}`
+                                : `${amountPrefix}${amountUnits} units`}
+                            </Text>
+                            <Text style={styles.tokenText} numberOfLines={1}>
+                              {tokenLabel}
+                            </Text>
+                          </>
+                        )}
                       </View>
                     </TouchableOpacity>
                   );

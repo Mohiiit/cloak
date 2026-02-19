@@ -218,11 +218,7 @@ function GuardianCardContent({
         )}
         <DetailRow
           label="Amount"
-          value={
-            request.amount
-              ? `${request.amount} ${request.token}`
-              : "Claim pending balance"
-          }
+          value={request.amount || "Claim pending balance"}
         />
         <DetailRow
           label="Policy"

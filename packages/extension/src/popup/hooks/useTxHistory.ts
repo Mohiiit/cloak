@@ -6,6 +6,7 @@ export interface TxEvent {
   txHash: string;
   type: string;
   amount?: string;
+  amount_unit?: string;
   to?: string;
   from?: string;
   note?: string;
@@ -23,6 +24,7 @@ function recordToEvent(r: TransactionRecord): TxEvent {
     txHash: r.tx_hash,
     type: r.type === "transfer" ? "send" : r.type,
     amount: r.amount || undefined,
+    amount_unit: r.amount_unit || undefined,
     to: r.recipient || undefined,
     note: r.note || undefined,
     recipientName: r.recipient_name || undefined,

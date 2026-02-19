@@ -18,6 +18,7 @@ export type MessageRequest =
   | { type: "TRANSFER"; token: TokenKey; to: string; amount: string }
   | { type: "WITHDRAW"; token: TokenKey; amount: string }
   | { type: "ROLLOVER"; token: TokenKey }
+  | { type: "ERC20_TRANSFER"; token: TokenKey; to: string; amount: string }
   | { type: "PREPARE_AND_SIGN"; token: TokenKey; action: string; amount?: string; recipient?: string }
   | { type: "BUILD_CALLS"; token: TokenKey; action: string; amount?: string; recipient?: string }
   | { type: "GET_TX_HISTORY"; fromNonce: number }

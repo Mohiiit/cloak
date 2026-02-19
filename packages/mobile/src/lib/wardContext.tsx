@@ -133,6 +133,7 @@ export interface WardEntry {
   status: string;
   spendingLimitPerTx: string | null;
   requireGuardianForAll: boolean;
+  pseudoName?: string;
 }
 
 export type WardCreationProgress = (step: number, total: number, message: string) => void;
@@ -349,6 +350,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         status: r.status,
         spendingLimitPerTx: r.spending_limit_per_tx,
         requireGuardianForAll: r.require_guardian_for_all ?? true,
+        pseudoName: r.pseudo_name || undefined,
       }));
 
       // Overlay on-chain frozen state as source-of-truth.
@@ -425,6 +427,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           type: "fund_ward",
           token: "STRK",
           amount: fundingAmountDisplay,
+          amount_unit: "erc20_display",
           recipient: paddedWardAddress,
           status: "confirmed",
           account_type: "guardian",
@@ -475,6 +478,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           tx_hash: addTokenTx.transaction_hash,
           type: "configure_ward",
           token: "STRK",
+          amount_unit: "erc20_display",
           status: "confirmed",
           account_type: "guardian",
           ward_address: paddedWardAddress,
@@ -519,6 +523,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           require_guardian_for_all: true,
           spending_limit_per_tx: normalizedOptions.dailyLimit || "0",
           max_per_tx: normalizedOptions.maxPerTx || "0",
+          pseudo_name: normalizedOptions.pseudoName || null,
         });
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
@@ -624,6 +629,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         require_guardian_for_all: true,
         spending_limit_per_tx: normalizedOptions.dailyLimit || "0",
         max_per_tx: normalizedOptions.maxPerTx || "0",
+        pseudo_name: normalizedOptions.pseudoName || null,
       });
 
       await AsyncStorage.removeItem(STORAGE_KEY_PARTIAL_WARD);
@@ -1224,6 +1230,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         });
 
         // Save failed transaction to persistent history for guardian
+        const nWardAddr = normalizeAddress(request.ward_address);
+        const wEntry = wards.find(w => normalizeAddress(w.wardAddress) === nWardAddr);
         saveTransaction({
           wallet_address: wallet.keys.starkAddress,
           tx_hash: txResponse.transaction_hash,
@@ -1231,6 +1239,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           token: request.token || "STRK",
           amount: request.amount || null,
           recipient: request.recipient || null,
+          recipient_name: wEntry?.pseudoName || null,
           status: "failed",
           error_message: revertReason,
           account_type: "guardian",
@@ -1254,6 +1263,11 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       }
       await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
 
+      // Look up ward name from guardian's ward list
+      const normalizedWardAddr = normalizeAddress(request.ward_address);
+      const wardEntry = wards.find(w => normalizeAddress(w.wardAddress) === normalizedWardAddr);
+      const wardName = wardEntry?.pseudoName || null;
+
       // Save confirmed transaction to persistent history for guardian
       saveTransaction({
         wallet_address: wallet.keys.starkAddress,
@@ -1262,6 +1276,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         token: request.token || "STRK",
         amount: request.amount || null,
         recipient: request.recipient || null,
+        recipient_name: wardName,
         status: "confirmed",
         account_type: "guardian",
         ward_address: request.ward_address,
@@ -1305,7 +1320,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       await fetchGuardianRequests();
       throw err;
     }
-  }, [wallet.keys, fetchGuardianRequests, showToast]);
+  }, [wallet.keys, wards, fetchGuardianRequests, showToast]);
 
   // ── Initiate a ward transaction (for ward users on mobile) ──
   // Inserts a request into Supabase, then polls for completion.

@@ -24,7 +24,7 @@ import {
   saveTransaction,
   confirmTransaction,
 } from "@cloak-wallet/sdk";
-import type { TokenKey, WardApprovalResult } from "@cloak-wallet/sdk";
+import type { TokenKey, WardApprovalResult, AmountUnit } from "@cloak-wallet/sdk";
 import { Account, hash, num, transaction } from "starknet";
 import { check2FAEnabled, request2FAApproval } from "@/shared/two-factor";
 import {
@@ -33,7 +33,7 @@ import {
   requestWardApproval,
 } from "@/shared/ward-approval";
 
-type Action = "fund" | "transfer" | "withdraw" | "rollover";
+type Action = "fund" | "transfer" | "withdraw" | "rollover" | "erc20_transfer";
 
 interface TransactionOpts {
   amount?: string;
@@ -153,6 +153,7 @@ export async function routeTransaction(
           type: action,
           token,
           amount: opts?.amount || null,
+          amount_unit: "tongo_units",
           recipient: opts?.recipient || null,
           status: "pending",
           account_type: "ward",
@@ -198,6 +199,7 @@ export async function routeTransaction(
         type: action,
         token,
         amount: opts?.amount || null,
+        amount_unit: "tongo_units",
         recipient: opts?.recipient || null,
         status: "pending",
         account_type: "ward",
@@ -235,6 +237,7 @@ export async function routeTransaction(
         type: action,
         token,
         amount: opts?.amount || null,
+        amount_unit: "tongo_units",
         recipient: opts?.recipient || null,
         status: "pending",
         account_type: "normal",
@@ -263,6 +266,7 @@ export async function routeTransaction(
       type: action,
       token,
       amount: opts?.amount || null,
+      amount_unit: "tongo_units",
       recipient: opts?.recipient || null,
       status: "pending",
       account_type: "normal",
@@ -312,6 +316,7 @@ export async function routeRawCalls(
           type: "transfer",
           token: "STRK",
           amount: null,
+          amount_unit: null,
           recipient: null,
           status: "pending",
           account_type: "ward",
@@ -355,6 +360,7 @@ export async function routeRawCalls(
         type: "transfer",
         token: "STRK",
         amount: null,
+        amount_unit: null,
         recipient: null,
         status: "pending",
         account_type: "ward",
@@ -392,6 +398,7 @@ export async function routeRawCalls(
         type: "transfer",
         token: "STRK",
         amount: null,
+        amount_unit: null,
         recipient: null,
         status: "pending",
         account_type: "normal",
@@ -421,6 +428,7 @@ export async function routeRawCalls(
       type: "transfer",
       token: "STRK",
       amount: null,
+      amount_unit: null,
       recipient: null,
       status: "pending",
       account_type: "normal",

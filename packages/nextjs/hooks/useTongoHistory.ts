@@ -24,6 +24,7 @@ export interface TongoEvent {
   errorMessage?: string;
   accountType?: string;
   fee?: string;
+  amount_unit?: string;
 }
 
 interface UseTongoHistoryReturn {
@@ -35,6 +36,7 @@ interface UseTongoHistoryReturn {
 
 function recordToEvent(r: TransactionRecord): TongoEvent {
   let type: string = r.type;
+  // Map shielded "transfer" to "transferOut"; keep erc20_transfer as-is
   if (type === "transfer") type = "transferOut";
   return {
     txHash: r.tx_hash,
@@ -49,6 +51,7 @@ function recordToEvent(r: TransactionRecord): TongoEvent {
     errorMessage: r.error_message || undefined,
     accountType: r.account_type || undefined,
     fee: r.fee || undefined,
+    amount_unit: r.amount_unit || undefined,
   };
 }
 

@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Clock,
   RefreshCw,
+  Send,
 } from "lucide-react";
 import { useAccount } from "@starknet-react/core";
 import { useTongoHistory, type TongoEvent } from "~~/hooks/useTongoHistory";
@@ -28,7 +29,12 @@ function getRelativeTime(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString();
 }
 
-function ActivityItem({ event }: { event: TongoEvent }) {
+function isGuardianWardOp(event: TongoEvent): boolean {
+  return event.accountType === "guardian" && ["fund", "transferOut", "withdraw", "rollover"].includes(event.type);
+}
+
+function getLabel(event: TongoEvent): string {
+  const guardianPrefix = isGuardianWardOp(event) ? "Ward: " : "";
   const typeLabels: Record<string, string> = {
     fund: "Shielded funds",
     transferIn: "Received payment",
@@ -36,8 +42,15 @@ function ActivityItem({ event }: { event: TongoEvent }) {
     withdraw: "Unshielded funds",
     rollover: "Claimed pending",
     ragequit: "Emergency withdrawal",
+    erc20_transfer: "Public transfer",
+    deploy_ward: "Deploy Ward",
+    fund_ward: "Fund Ward",
+    configure_ward: "Configure Ward",
   };
+  return guardianPrefix + (typeLabels[event.type] || event.type);
+}
 
+function ActivityItem({ event }: { event: TongoEvent }) {
   const typeIcons: Record<string, React.ReactNode> = {
     fund: <ShieldPlus className="w-5 h-5 text-emerald-400" />,
     transferIn: <Download className="w-5 h-5 text-blue-400" />,
@@ -45,6 +58,7 @@ function ActivityItem({ event }: { event: TongoEvent }) {
     withdraw: <ShieldOff className="w-5 h-5 text-amber-400" />,
     rollover: <RotateCw className="w-5 h-5 text-blue-300" />,
     ragequit: <AlertTriangle className="w-5 h-5 text-red-400" />,
+    erc20_transfer: <Send className="w-5 h-5 text-sky-400" />,
   };
 
   return (
@@ -53,13 +67,16 @@ function ActivityItem({ event }: { event: TongoEvent }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-0.5">
           <span className="text-sm font-medium text-slate-200">
-            {typeLabels[event.type] || event.type}
+            {getLabel(event)}
           </span>
           <span className="text-xs text-slate-500 flex items-center gap-1">
             <Clock className="w-3 h-3" />
             {event.timestamp ? getRelativeTime(event.timestamp) : "—"}
           </span>
         </div>
+        {isGuardianWardOp(event) && (
+          <span className="text-[10px] text-yellow-400">Ward operation</span>
+        )}
         {event.note && (
           <p className="text-sm text-slate-400 mt-0.5">{event.note}</p>
         )}
@@ -75,7 +92,9 @@ function ActivityItem({ event }: { event: TongoEvent }) {
           </p>
         )}
       </div>
-      <Shield className="w-4 h-4 text-violet-400 mt-1 shrink-0" />
+      {event.type !== "erc20_transfer" && (
+        <Shield className="w-4 h-4 text-violet-400 mt-1 shrink-0" />
+      )}
     </div>
   );
 }

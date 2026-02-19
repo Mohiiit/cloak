@@ -38,5 +38,6 @@ export type RootStackParamList = {
     note?: string;
     recipientName?: string;
     timestamp?: string | number;
+    amount_unit?: string;
   };
 };

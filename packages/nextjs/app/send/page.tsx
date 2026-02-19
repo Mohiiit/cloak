@@ -15,9 +15,11 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccount } from "@starknet-react/core";
+import { CallData, uint256 } from "starknet";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { useTongoBalance } from "~~/hooks/useTongoBalance";
 import { useTongoTransfer } from "~~/hooks/useTongoTransfer";
+import { useTransactionRouter } from "~~/hooks/useTransactionRouter";
 import { useContacts } from "~~/hooks/useContacts";
 import { use2FA } from "~~/hooks/use2FA";
 import { check2FAEnabled, fetchWalletNonce } from "~~/lib/two-factor";
@@ -29,6 +31,8 @@ import { saveTxNote } from "~~/lib/storage";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import toast from "react-hot-toast";
 
+type SendMode = "private" | "public";
+
 type Step = "recipient" | "amount" | "note" | "success";
 
 export default function SendPage() {
@@ -37,11 +41,14 @@ export default function SendPage() {
   const { selectedToken, tongoAccount, tongoAddress } = useTongo();
   const { shieldedDisplay, balance } = useTongoBalance();
   const { transfer, isPending } = useTongoTransfer();
+  const { executeOrRoute } = useTransactionRouter();
   const { contacts } = useContacts();
   const { gate, isWaiting: is2FAWaiting, status: twoFAStatus, cancel: cancel2FA } = use2FA();
   const tokenConfig = TOKENS[selectedToken];
 
+  const [sendMode, setSendMode] = useState<SendMode>("private");
   const [step, setStep] = useState<Step>("recipient");
+  const [isPublicSending, setIsPublicSending] = useState(false);
   const [recipientAddress, setRecipientAddress] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [amount, setAmount] = useState("");
@@ -168,7 +175,75 @@ export default function SendPage() {
   const handleFeeRetry = () => {
     setFeeRetryCount(prev => prev + 1);
     setShowFeeRetry(false);
-    handleSend();
+    if (sendMode === "public") {
+      handlePublicSend();
+    } else {
+      handleSend();
+    }
+  };
+
+  const handlePublicSend = async () => {
+    if (!recipientAddress || !amount || !address) return;
+    setIsPublicSending(true);
+    setFeeRetryCount(0);
+
+    try {
+      const amountWei = parseTokenAmount(amount, tokenConfig.decimals);
+      const calls = [
+        {
+          contractAddress: tokenConfig.erc20Address,
+          entrypoint: "transfer",
+          calldata: CallData.compile({
+            recipient: recipientAddress,
+            amount: uint256.bnToUint256(amountWei),
+          }),
+        },
+      ];
+
+      const hash = await executeOrRoute(calls, {
+        action: "erc20_transfer",
+        token: selectedToken,
+        amount,
+        recipient: recipientAddress,
+      });
+
+      if (hash) {
+        setTxHash(hash);
+        saveTxNote(hash, {
+          txHash: hash,
+          recipient: recipientAddress,
+          recipientName: recipientName || undefined,
+          note: note || undefined,
+          privacyLevel,
+          timestamp: Math.floor(Date.now() / 1000),
+          type: "send",
+          token: selectedToken,
+          amount,
+        });
+        toast.success("Public transfer sent!");
+        setStep("success");
+      }
+    } catch (err: any) {
+      const msg = err?.message || "Transfer failed";
+      const gasInfo = parseInsufficientGasError(msg);
+      if (gasInfo && feeRetryCount < 3) {
+        setGasErrorMsg(msg);
+        setShowFeeRetry(true);
+      } else {
+        const lower = msg.toLowerCase();
+        if (lower.includes("nonce too old") || lower.includes("invalid transaction nonce")) {
+          toast.error("Transaction conflict. Please try again.");
+        } else if (lower.includes("execution reverted")) {
+          toast.error("Transaction was rejected by the network.");
+        } else if (lower.includes("timeout")) {
+          toast.error("Request timed out. Check your connection.");
+        } else {
+          toast.error(msg);
+        }
+      }
+    } finally {
+      setIsPublicSending(false);
+    }
   };
 
   const quickEmojis = ["🍕", "🍔", "🍺", "🎵", "🏠", "🚗", "🎮", "🎬", "💰", "🎉", "🎂", "✈️"];
@@ -192,6 +267,34 @@ export default function SendPage() {
           {step === "success" ? "Payment Sent!" : "Send Payment"}
         </h1>
       </div>
+
+      {/* Mode toggle */}
+      {step === "recipient" && (
+        <div className="flex rounded-xl bg-slate-800/50 border border-slate-700/30 p-1">
+          <button
+            onClick={() => { setSendMode("private"); setRecipientAddress(""); setAmount(""); }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+              sendMode === "private"
+                ? "bg-violet-600/20 text-violet-300"
+                : "text-slate-400 hover:text-slate-300"
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" />
+            Private
+          </button>
+          <button
+            onClick={() => { setSendMode("public"); setRecipientAddress(""); setAmount(""); }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+              sendMode === "public"
+                ? "bg-blue-600/20 text-blue-300"
+                : "text-slate-400 hover:text-slate-300"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            Public
+          </button>
+        </div>
+      )}
 
       {/* Step indicator */}
       {step !== "success" && (
@@ -235,17 +338,24 @@ export default function SendPage() {
         <div className="flex flex-col gap-4">
           <div>
             <label className="text-sm text-slate-400 mb-2 block">
-              Recipient Cloak Address
+              {sendMode === "public" ? "Recipient Starknet Address" : "Recipient Cloak Address"}
             </label>
             <input
               type="text"
-              placeholder="Enter recipient's Cloak address"
+              placeholder={sendMode === "public" ? "0x..." : "Enter recipient's Cloak address"}
               value={recipientAddress}
               onChange={(e) => { setRecipientAddress(e.target.value); setAddressError(""); }}
-              className={`w-full bg-slate-800 rounded-xl border px-4 py-3 text-slate-50 outline-none focus:border-blue-500/50 transition-colors ${addressError ? "border-red-500/50" : "border-slate-700/50"}`}
+              spellCheck={false}
+              autoComplete="off"
+              className={`w-full bg-slate-800 rounded-xl border px-4 py-3 text-slate-50 outline-none focus:border-blue-500/50 transition-colors font-mono text-sm ${addressError ? "border-red-500/50" : "border-slate-700/50"}`}
             />
             {addressError && (
               <p className="text-red-400 text-xs mt-1">{addressError}</p>
+            )}
+            {sendMode === "public" && (
+              <p className="text-xs text-slate-500 mt-1">
+                Standard ERC-20 transfer (not shielded)
+              </p>
             )}
           </div>
 
@@ -262,8 +372,8 @@ export default function SendPage() {
             />
           </div>
 
-          {/* Contacts */}
-          {contacts.length > 0 && (
+          {/* Contacts (only in private mode — contacts store Tongo addresses) */}
+          {sendMode === "private" && contacts.length > 0 && (
             <div>
               <label className="text-sm text-slate-400 mb-2 block">
                 From Contacts
@@ -307,8 +417,18 @@ export default function SendPage() {
                 toast.error("Enter a recipient address");
                 return;
               }
+              if (sendMode === "public") {
+                // Validate Starknet hex address
+                const trimmed = recipientAddress.trim();
+                if (!/^0x[0-9a-fA-F]{1,64}$/.test(trimmed)) {
+                  setAddressError("Invalid Starknet address. Must be a hex address starting with 0x.");
+                  return;
+                }
+                setAddressError("");
+                setStep("amount");
+                return;
+              }
               try {
-                // @ts-ignore — @cloak-wallet/sdk not in workspace deps, validation is best-effort
                 const { validateTongoAddress } = await import("@cloak-wallet/sdk");
                 if (!validateTongoAddress(recipientAddress.trim())) {
                   setAddressError("Invalid Cloak address. Please check and try again.");
@@ -347,27 +467,36 @@ export default function SendPage() {
             <p className="text-slate-400 mt-1">{selectedToken}</p>
           </div>
 
-          <p className="text-xs text-slate-500 text-center">
-            Available: {shieldedDisplay} {selectedToken}
-          </p>
+          {sendMode === "private" && (
+            <>
+              <p className="text-xs text-slate-500 text-center">
+                Available: {shieldedDisplay} {selectedToken}
+              </p>
 
-          <div className="flex gap-2">
-            {["25%", "50%", "MAX"].map((pct) => (
-              <button
-                key={pct}
-                onClick={() => {
-                  const mult =
-                    pct === "MAX" ? 1 : pct === "50%" ? 0.5 : 0.25;
-                  const val =
-                    parseFloat(shieldedDisplay || "0") * mult;
-                  setAmount(val > 0 ? val.toString() : "");
-                }}
-                className="flex-1 py-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors"
-              >
-                {pct}
-              </button>
-            ))}
-          </div>
+              <div className="flex gap-2">
+                {["25%", "50%", "MAX"].map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => {
+                      const mult =
+                        pct === "MAX" ? 1 : pct === "50%" ? 0.5 : 0.25;
+                      const val =
+                        parseFloat(shieldedDisplay || "0") * mult;
+                      setAmount(val > 0 ? val.toString() : "");
+                    }}
+                    className="flex-1 py-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors"
+                  >
+                    {pct}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {sendMode === "public" && (
+            <p className="text-xs text-slate-500 text-center">
+              Enter amount in {selectedToken} (public ERC-20 transfer)
+            </p>
+          )}
 
           <button
             onClick={() => {
@@ -448,6 +577,12 @@ export default function SendPage() {
           {/* Summary */}
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
             <div className="flex justify-between text-sm mb-2">
+              <span className="text-slate-400">Mode</span>
+              <span className={`text-sm font-medium ${sendMode === "private" ? "text-violet-300" : "text-blue-300"}`}>
+                {sendMode === "private" ? "Private (Shielded)" : "Public (ERC-20)"}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm mb-2">
               <span className="text-slate-400">To</span>
               <span className="text-slate-200 truncate ml-4 max-w-[200px]">
                 {recipientName || recipientAddress}
@@ -470,19 +605,23 @@ export default function SendPage() {
           </div>
 
           <button
-            onClick={handleSend}
-            disabled={isPending}
+            onClick={sendMode === "public" ? handlePublicSend : handleSend}
+            disabled={isPending || isPublicSending}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 font-medium transition-colors disabled:opacity-50"
           >
-            {isPending ? (
+            {isPending || isPublicSending ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                 Sending...
               </>
             ) : (
               <>
-                <Shield className="w-4 h-4" />
-                Send Payment
+                {sendMode === "private" ? (
+                  <Shield className="w-4 h-4" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {sendMode === "private" ? "Send Payment" : "Send Public Transfer"}
               </>
             )}
           </button>
@@ -498,11 +637,12 @@ export default function SendPage() {
           </div>
           <div>
             <p className="text-lg font-semibold text-slate-50 mb-1">
-              Payment Sent!
+              {sendMode === "public" ? "Transfer Sent!" : "Payment Sent!"}
             </p>
             <p className="text-sm text-slate-400">
               {amount} {selectedToken} sent to{" "}
               {recipientName || "recipient"}
+              {sendMode === "public" && " (public)"}
             </p>
           </div>
           {note && (
@@ -514,6 +654,7 @@ export default function SendPage() {
             <button
               onClick={() => {
                 setStep("recipient");
+                setSendMode("private");
                 setRecipientAddress("");
                 setRecipientName("");
                 setAmount("");

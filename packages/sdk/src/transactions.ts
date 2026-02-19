@@ -9,12 +9,13 @@
 import { SupabaseLite } from "./supabase";
 import { normalizeAddress } from "./ward";
 import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY } from "./config";
+import type { AmountUnit } from "./token-convert";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type TransactionStatus = "pending" | "confirmed" | "failed";
 export type AccountType = "normal" | "ward" | "guardian";
-export type TransactionType = "fund" | "transfer" | "withdraw" | "rollover" | "deploy_ward" | "fund_ward" | "configure_ward";
+export type TransactionType = "fund" | "transfer" | "withdraw" | "rollover" | "erc20_transfer" | "deploy_ward" | "fund_ward" | "configure_ward";
 
 export interface TransactionRecord {
   id?: string;
@@ -23,6 +24,7 @@ export interface TransactionRecord {
   type: TransactionType;
   token: string;
   amount?: string | null;
+  amount_unit?: AmountUnit | null;
   recipient?: string | null;
   recipient_name?: string | null;
   note?: string | null;

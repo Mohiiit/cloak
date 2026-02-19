@@ -11,18 +11,21 @@
  * via `saveTransaction()` and confirmed in the background via `confirmTransaction()`.
  */
 import { useCallback } from "react";
-import { RpcProvider } from "starknet";
+import { Account, RpcProvider, CallData, uint256 } from "starknet";
 import {
   saveTransaction,
   confirmTransaction,
   DEFAULT_RPC,
+  TOKENS,
+  parseTokenAmount,
+  type AmountUnit,
 } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useDualSigExecutor } from "./useDualSigExecutor";
 import { setTransactionRouterPath } from "../testing/transactionRouteTrace";
 
-type Action = "fund" | "transfer" | "withdraw" | "rollover";
+type Action = "fund" | "transfer" | "withdraw" | "rollover" | "erc20_transfer";
 
 interface ExecuteParams {
   action: Action;
@@ -49,6 +52,19 @@ export function useTransactionRouter() {
           return wallet.prepareWithdraw(amount!);
         case "rollover":
           return wallet.prepareRollover();
+        case "erc20_transfer": {
+          const cfg = TOKENS[wallet.selectedToken];
+          const amountWei = parseTokenAmount(amount!, cfg.decimals);
+          const call = {
+            contractAddress: cfg.erc20Address,
+            entrypoint: "transfer",
+            calldata: CallData.compile({
+              recipient: recipient!,
+              amount: uint256.bnToUint256(amountWei),
+            }),
+          };
+          return { calls: [call] };
+        }
       }
     },
     [wallet],
@@ -65,12 +81,14 @@ export function useTransactionRouter() {
       if (!walletAddress) return;
 
       // Save the initial record as "pending"
+      const amountUnit: AmountUnit = params.action === "erc20_transfer" ? "erc20_display" : "tongo_units";
       saveTransaction({
         wallet_address: walletAddress,
         tx_hash: txHash,
         type: params.action as any,
         token: params.token,
         amount: params.amount || null,
+        amount_unit: amountUnit,
         recipient: params.recipient || null,
         recipient_name: params.recipientName || null,
         note: params.note || null,
@@ -134,6 +152,23 @@ export function useTransactionRouter() {
         case "rollover":
           result = await wallet.rollover();
           break;
+        case "erc20_transfer": {
+          const { calls } = await prepareCalls(action, amount, recipient);
+          const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+          const account = new Account({
+            provider,
+            address: wallet.keys!.starkAddress,
+            signer: wallet.keys!.starkPrivateKey,
+          } as any);
+          const nonce = await account.getNonce();
+          const feeEstimate = await account.estimateInvokeFee(calls, { nonce });
+          const tx = await account.execute(calls, {
+            nonce,
+            resourceBounds: feeEstimate.resourceBounds,
+          });
+          result = { txHash: tx.transaction_hash };
+          break;
+        }
       }
       persistTransaction(result.txHash, params, "normal");
       return result;

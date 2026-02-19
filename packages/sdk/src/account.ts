@@ -1,10 +1,12 @@
 import { Account as TongoAccount, pubKeyBase58ToAffine } from "@fatsolutions/tongo-sdk";
 import {
   Account,
+  CallData,
   ec,
   hash,
   num,
   transaction,
+  uint256,
   type Call,
   type RpcProvider,
   type SignerInterface,
@@ -189,6 +191,25 @@ export class CloakAccount {
     });
 
     return { calls: [rolloverOp.toCalldata() as Call] };
+  }
+
+  /**
+   * Prepare a standard ERC-20 transfer (non-shielded, public).
+   * No Tongo SDK / ZK proofs needed — just a regular token transfer.
+   *
+   * @param recipientAddress - Starknet hex address (0x...)
+   * @param amount - Amount in ERC-20 wei (smallest unit)
+   */
+  prepareErc20Transfer(recipientAddress: string, amount: bigint): { calls: Call[] } {
+    const call: Call = {
+      contractAddress: this.token.erc20Address,
+      entrypoint: "transfer",
+      calldata: CallData.compile({
+        recipient: recipientAddress,
+        amount: uint256.bnToUint256(amount),
+      }),
+    };
+    return { calls: [call] };
   }
 
   // ─── Conversions ──────────────────────────────────────────────────

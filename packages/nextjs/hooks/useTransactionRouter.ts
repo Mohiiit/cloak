@@ -25,12 +25,20 @@ import {
   confirmTransaction,
   getProvider,
 } from "@cloak-wallet/sdk";
+import type { AmountUnit } from "@cloak-wallet/sdk";
 
 interface TransactionMeta {
   action: string;
   token?: string;
   amount?: string;
   recipient?: string;
+}
+
+/** Determine the correct amount_unit based on the action type. */
+function getAmountUnit(action: string): AmountUnit {
+  if (action === "erc20_transfer") return "erc20_display";
+  // All shielded operations store amounts in tongo units
+  return "tongo_units";
 }
 
 export function useTransactionRouter() {
@@ -72,6 +80,7 @@ export function useTransactionRouter() {
             type: (meta.action || "transfer") as any,
             token: meta.token || "STRK",
             amount: meta.amount || null,
+            amount_unit: getAmountUnit(meta.action),
             recipient: meta.recipient || null,
             status: "pending",
             account_type: "ward",
@@ -107,6 +116,7 @@ export function useTransactionRouter() {
               type: (meta.action || "transfer") as any,
               token: meta.token || "STRK",
               amount: meta.amount || null,
+              amount_unit: getAmountUnit(meta.action),
               recipient: meta.recipient || null,
               status: "pending",
               account_type: "normal",
@@ -130,6 +140,7 @@ export function useTransactionRouter() {
         type: (meta.action || "transfer") as any,
         token: meta.token || "STRK",
         amount: meta.amount || null,
+        amount_unit: getAmountUnit(meta.action),
         recipient: meta.recipient || null,
         status: "pending",
         account_type: "normal",

@@ -15,7 +15,9 @@ import {
   SupabaseLite,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_KEY,
+  toDisplayString,
   type TransactionRecord,
+  type AmountUnit,
 } from "@cloak-wallet/sdk";
 import { colors, borderRadius, typography } from "../../lib/theme";
 import type { RootStackParamList } from "../../navigation/types";
@@ -31,6 +33,8 @@ interface TxMetadataExtended extends TxMetadata {
   errorMessage?: string;
   accountType?: string;
   fee?: string;
+  amount_unit?: AmountUnit | null;
+  wardAddress?: string;
 }
 
 function truncateMiddle(value: string, start = 6, end = 4): string {
@@ -81,6 +85,8 @@ function typeLabel(type?: TxMetadata["type"] | string): string {
   switch (type) {
     case "send":
       return "Shielded Transfer";
+    case "erc20_transfer":
+      return "Public Transfer";
     case "receive":
       return "Shielded Receive";
     case "fund":
@@ -101,8 +107,13 @@ function typeLabel(type?: TxMetadata["type"] | string): string {
 }
 
 function isDebit(type?: TxMetadata["type"] | string): boolean {
-  return ["send", "withdraw", "deploy_ward", "fund_ward", "configure_ward"].includes(type || "");
+  return ["send", "withdraw", "erc20_transfer", "deploy_ward", "fund_ward", "configure_ward"].includes(type || "");
 }
+
+/** Yellow ward color palette */
+const wardYellow = "#F59E0B";
+const wardYellowBg = "rgba(245, 158, 11, 0.14)";
+const wardYellowBorder = "rgba(245, 158, 11, 0.22)";
 
 /** Status pill colors */
 function getStatusPill(status?: string): { label: string; dotColor: string; bgColor: string; borderColor: string } {
@@ -160,10 +171,12 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
             type: r.type === "transfer" ? "send" : (r.type as any),
             token: r.token || "STRK",
             amount: r.amount || undefined,
+            amount_unit: (r as any).amount_unit || undefined,
             status: r.status,
             errorMessage: r.error_message || undefined,
             accountType: r.account_type || undefined,
             fee: r.fee || undefined,
+            wardAddress: r.ward_address || undefined,
           });
           return;
         }
@@ -190,8 +203,19 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
 
   const token = ((meta?.token as TokenKey) || "STRK") satisfies TokenKey;
   const amountUnits = meta?.amount || "0";
-  const amountToken = formatTokenAmountFixed2(amountUnits, token);
-  const signedAmount = `${isDebit(meta?.type) ? "-" : "+"}${amountToken} ${token}`;
+  // Guardian-submitted ward operations: guardian didn't send/receive, just approved
+  const isGuardianWardOp = meta?.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(meta?.type || "");
+  // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
+  const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(meta?.type || "");
+  const isErc20Display = !isGuardianWardOp && (meta?.amount_unit === "erc20_display" || meta?.type === "erc20_transfer" || meta?.type === "fund_ward" || meta?.type === "configure_ward");
+  const amountToken = isGuardianWardOp
+    ? formatTokenAmountFixed2(amountUnits, token)
+    : isErc20Display
+      ? amountUnits
+      : formatTokenAmountFixed2(amountUnits, token);
+  const signedAmount = isGuardianWardOp
+    ? `${amountToken} ${token}`
+    : `${isDebit(meta?.type) ? "-" : "+"}${amountToken} ${token}`;
 
   const toValue = meta?.recipient
     ? truncateMiddle(meta.recipient, 6, 4)
@@ -210,9 +234,11 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   };
 
   const headerIcon = useMemo(() => {
-    // Pen uses an outgoing arrow icon even for debit; keep consistent.
+    if (isGuardianWardOp || isWardAdmin) {
+      return <ArrowUpRight size={20} color={wardYellow} />;
+    }
     return <ArrowUpRight size={20} color={colors.success} />;
-  }, []);
+  }, [isGuardianWardOp, isWardAdmin]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -226,7 +252,10 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.heroIconCircle}>{headerIcon}</View>
+          <View style={[
+            styles.heroIconCircle,
+            (isGuardianWardOp || isWardAdmin) && { backgroundColor: wardYellowBg, borderColor: wardYellowBorder },
+          ]}>{headerIcon}</View>
           <Text style={styles.heroAmount}>{signedAmount}</Text>
           <View
             style={[
@@ -266,14 +295,44 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
             <View style={styles.typeRow}>
               <Text style={[styles.detailValue, styles.detailValueType]}>{typeValue}</Text>
               {meta?.accountType && meta.accountType !== "normal" ? (
-                <View style={styles.accountTypeBadge}>
-                  <Text style={styles.accountTypeBadgeText}>
-                    {meta.accountType === "ward" ? "Ward" : meta.accountType === "guardian" ? "Guardian" : meta.accountType}
+                <View style={[
+                  styles.accountTypeBadge,
+                  (isGuardianWardOp || meta.accountType === "ward") && { backgroundColor: wardYellowBg },
+                ]}>
+                  <Text style={[
+                    styles.accountTypeBadgeText,
+                    (isGuardianWardOp || meta.accountType === "ward") && { color: wardYellow },
+                  ]}>
+                    {isGuardianWardOp ? "Ward" : meta.accountType === "ward" ? "Ward" : meta.accountType}
                   </Text>
                 </View>
               ) : null}
             </View>
           </View>
+          {/* Ward info for guardian-submitted ward operations */}
+          {isGuardianWardOp ? (
+            <>
+              <View style={styles.detailDivider} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Ward</Text>
+                <View style={{ alignItems: "flex-end", gap: 2 }}>
+                  {meta?.recipientName ? (
+                    <Text style={[styles.detailValue, { color: wardYellow, fontFamily: typography.primarySemibold }]}>
+                      {meta.recipientName}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.detailValue, { color: meta?.recipientName ? colors.textSecondary : wardYellow, fontSize: 11 }]}>
+                    {meta?.wardAddress ? truncateMiddle(meta.wardAddress, 8, 6) : "Unknown"}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.detailDivider} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Role</Text>
+                <Text style={[styles.detailValue, { color: wardYellow }]}>Approved as Guardian</Text>
+              </View>
+            </>
+          ) : null}
           <View style={styles.detailDivider} />
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Fee</Text>
