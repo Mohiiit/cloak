@@ -29,7 +29,6 @@ import {
   ShieldAlert,
   Info,
   Snowflake,
-  MessageCircle,
   Gauge,
   Camera,
   ClipboardPaste,
@@ -46,7 +45,7 @@ import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
 import { triggerSuccess } from "../lib/haptics";
 import { Confetti } from "../components/Confetti";
-import { getTransactions, toDisplayString, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
+import { getTransactions, convertAmount, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
 import WebView from "react-native-webview";
 
 type WardInvitePayload = {
@@ -57,6 +56,8 @@ type WardInvitePayload = {
   network?: string;
   pseudoName?: string;
   initialFundingAmountWei?: string;
+  dailyLimit?: string;
+  maxPerTx?: string;
 };
 
 type WardImportScannerState = {
@@ -150,7 +151,9 @@ function buildWardInfoCacheFromInvite(invite: WardInvitePayload) {
     isFrozen: false,
     pseudoName: invite.pseudoName?.trim() || "",
     initialFundingAmountWei: invite.initialFundingAmountWei || "",
-    spendingLimitPerTx: "0",
+    spendingLimitPerTx: invite.maxPerTx || "0",
+    dailyLimit: invite.dailyLimit || "0",
+    dailySpent: "0",
     requireGuardianForAll: true,
     wardType: "imported",
   };
@@ -914,11 +917,6 @@ export default function HomeScreen({ navigation }: any) {
   const displayPending = tongoToDisplay(wallet.pending, wallet.selectedToken);
   const displayErc20 = erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken);
   const isWardFrozen = ward.isWard && !!ward.wardInfo?.isFrozen;
-  const guardianAddress = ward.wardInfo?.guardianAddress || "";
-  const guardianShort = guardianAddress
-    ? `${guardianAddress.slice(0, 8)}...${guardianAddress.slice(-4)}`
-    : "—";
-  const wardDisplayedBalance = displayErc20;
   const hasPending = wallet.pending !== "0";
   const deployStatusValue = wallet.isCheckingDeployment
     ? "checking_deployment"
@@ -946,13 +944,24 @@ export default function HomeScreen({ navigation }: any) {
             : txType === "rollover" ? "Claimed"
             : txType === "erc20_transfer" ? "Sent (Public)"
             : "Transaction";
-          const amountLabel = tx.amount
-            ? toDisplayString({
-                value: tx.amount,
-                unit: ((tx as any).amount_unit as AmountUnit) || "tongo_units",
-                token: (tx.token || "STRK") as any,
-              })
-            : "";
+          let amountLabel = "";
+          const token = (tx.token || "STRK") as any;
+          if (tx.amount) {
+            const raw = tx.amount.trim();
+            // If amount already contains the token name (e.g. "1 STRK" from ward approval),
+            // use it directly instead of trying to convert
+            if (raw.includes(token) || /[a-zA-Z]/.test(raw)) {
+              amountLabel = raw;
+            } else {
+              try {
+                const unit = ((tx as any).amount_unit as AmountUnit) || "tongo_units";
+                const displayVal = convertAmount({ value: raw, unit, token }, "erc20_display");
+                amountLabel = `${displayVal} ${token}`;
+              } catch {
+                amountLabel = `${raw} ${token}`;
+              }
+            }
+          }
           const isPositive = kind === "received" || kind === "shielded";
           const ts = tx.created_at ? new Date(tx.created_at).getTime() : 0;
           const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
@@ -972,7 +981,7 @@ export default function HomeScreen({ navigation }: any) {
     setIsClaiming(true);
     try {
       const pendingAmount = wallet.pending;
-      const result = await execute({ action: "rollover", token: wallet.selectedToken });
+      const result = await execute({ action: "rollover", token: wallet.selectedToken, amount: pendingAmount || undefined });
       setClaimSuccess({ txHash: result.txHash, amount: pendingAmount });
       // Refresh balance — await so pending updates before user dismisses success card
       await wallet.refreshBalance();
@@ -992,80 +1001,19 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  const wardFrozenContent = (
-    <>
-      <View style={styles.wardFrozenBanner}>
-        <View style={styles.wardFrozenIconWrap}>
-          <Snowflake size={20} color={colors.error} />
-        </View>
-        <View style={styles.wardFrozenInfo}>
-          <Text style={styles.wardFrozenTitle}>Account Frozen</Text>
-          <Text style={styles.wardFrozenDesc}>
-            Your guardian has frozen this account. Contact them to restore access.
-          </Text>
-        </View>
+  const frozenBanner = isWardFrozen ? (
+    <View style={styles.wardFrozenBanner}>
+      <View style={styles.wardFrozenIconWrap}>
+        <Snowflake size={20} color={colors.error} />
       </View>
-
-      <View style={styles.wardGuardianCard}>
-        <View style={styles.wardGuardianAvatar}>
-          <Text style={styles.wardGuardianAvatarText}>G</Text>
-        </View>
-        <View style={styles.wardGuardianInfo}>
-          <Text style={styles.wardGuardianLabel}>GUARDIAN</Text>
-          <Text style={styles.wardGuardianAddress}>{guardianShort}</Text>
-        </View>
-        <View style={styles.wardGuardianAction}>
-          <MessageCircle size={16} color={colors.textMuted} />
-        </View>
+      <View style={styles.wardFrozenInfo}>
+        <Text style={styles.wardFrozenTitle}>Account Frozen</Text>
+        <Text style={styles.wardFrozenDesc}>
+          Your guardian has frozen this account. Contact them to restore access.
+        </Text>
       </View>
-
-      <View style={styles.wardFrozenBalanceCard}>
-        <Text style={styles.wardFrozenBalanceLabel}>AVAILABLE BALANCE</Text>
-        <View style={styles.wardFrozenBalanceRow}>
-          <Text style={styles.wardFrozenBalanceValue}>{wardDisplayedBalance}</Text>
-          <Text style={styles.wardFrozenBalanceToken}>{wallet.selectedToken}</Text>
-        </View>
-        <Text style={styles.wardFrozenBalanceHint}>Transfers disabled while frozen</Text>
-      </View>
-
-      <SpendingLimitsCard wardInfo={ward.wardInfo} />
-
-      <View style={styles.wardDisabledActionsRow}>
-        <View style={styles.wardDisabledActionCard}>
-          <Send size={20} color={colors.textMuted} />
-          <Text style={styles.wardDisabledActionLabel}>Send</Text>
-        </View>
-        <View style={styles.wardDisabledActionCard}>
-          <ShieldPlus size={20} color={colors.textMuted} />
-          <Text style={styles.wardDisabledActionLabel}>Shield</Text>
-        </View>
-      </View>
-
-      <View style={styles.wardFrozenRecentSection}>
-        <Text style={styles.wardFrozenRecentTitle}>RECENT ACTIVITY</Text>
-        <View style={styles.wardFrozenRecentRow}>
-          <View style={styles.wardFrozenRecentLeft}>
-            <ArrowUpFromLine size={16} color={colors.primaryLight} />
-            <View>
-              <Text style={styles.wardFrozenRecentType}>Transfer blocked</Text>
-              <Text style={styles.wardFrozenRecentSub}>2 min ago</Text>
-            </View>
-          </View>
-          <Text style={styles.wardFrozenRecentNegative}>-10 STRK</Text>
-        </View>
-        <View style={styles.wardFrozenRecentRow}>
-          <View style={styles.wardFrozenRecentLeft}>
-            <ArrowDownToLine size={16} color={colors.success} />
-            <View>
-              <Text style={styles.wardFrozenRecentType}>Guardian top-up</Text>
-              <Text style={styles.wardFrozenRecentSub}>15 min ago</Text>
-            </View>
-          </View>
-          <Text style={styles.wardFrozenRecentPositive}>+50 STRK</Text>
-        </View>
-      </View>
-    </>
-  );
+    </View>
+  ) : null;
 
   return (
     <KeyboardSafeScreen
@@ -1105,10 +1053,10 @@ export default function HomeScreen({ navigation }: any) {
       )}
 
       {!claimSuccess && (
-        isWardFrozen ? (
-          wardFrozenContent
-        ) : (
         <>
+      {/* Frozen Banner */}
+      {frozenBanner}
+
       {/* Balance Card */}
       <View style={styles.balanceCard}>
         <View style={styles.glowTopRight} />
@@ -1149,7 +1097,7 @@ export default function HomeScreen({ navigation }: any) {
       </View>
 
           {/* Claim Banner — only when there are real pending funds */}
-          {hasPending && (
+          {hasPending && !isWardFrozen && (
           <TouchableOpacity
             {...testProps(testIDs.home.claimPending)}
             style={styles.claimBanner}
@@ -1174,6 +1122,8 @@ export default function HomeScreen({ navigation }: any) {
           {...testProps(testIDs.home.quickSend)}
           style={[styles.actionButton, styles.actionSend]}
           onPress={() => navigation.navigate("Send")}
+          disabled={isWardFrozen}
+          activeOpacity={isWardFrozen ? 0.35 : 0.72}
         >
           <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Send</Text>
@@ -1182,6 +1132,8 @@ export default function HomeScreen({ navigation }: any) {
           {...testProps(testIDs.home.quickShield)}
           style={[styles.actionButton, styles.actionShield]}
           onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
+          disabled={isWardFrozen}
+          activeOpacity={isWardFrozen ? 0.35 : 0.72}
         >
           <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Shield</Text>
@@ -1190,6 +1142,8 @@ export default function HomeScreen({ navigation }: any) {
           {...testProps(testIDs.home.quickUnshield)}
           style={[styles.actionButton, styles.actionUnshield]}
           onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
+          disabled={isWardFrozen}
+          activeOpacity={isWardFrozen ? 0.35 : 0.72}
         >
           <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
           <Text style={styles.actionLabel}>Unshield</Text>
@@ -1204,15 +1158,12 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.recentHeader}>
           <Text style={styles.recentTitle}>Recent Activity</Text>
           {recentActivityItems.length > 0 && (
-            <TouchableOpacity
-              {...testProps(testIDs.home.recentSeeAll)}
-              onPress={() => navigation.navigate("Activity")}
-            >
+            <TouchableOpacity onPress={() => navigation.navigate("Activity")}>
               <Text style={styles.recentSeeAll}>View All</Text>
             </TouchableOpacity>
           )}
         </View>
-        <View style={styles.recentListCard}>
+        <View style={styles.recentList}>
           {recentActivityItems.length === 0 ? (
             <View style={styles.recentEmptyState}>
               <Ghost size={48} color={colors.textSecondary} style={{ opacity: 0.5 }} />
@@ -1220,36 +1171,44 @@ export default function HomeScreen({ navigation }: any) {
               <Text style={styles.recentEmptyHint}>Your transactions will appear here</Text>
             </View>
           ) : (
-            recentActivityItems.map((item, index) => {
+            recentActivityItems.map((item) => {
+              const iconBg =
+                item.kind === "received"
+                  ? "rgba(16, 185, 129, 0.08)"
+                  : "rgba(59, 130, 246, 0.08)";
+              const iconColor =
+                item.kind === "received" ? colors.success : colors.primaryLight;
               const rowIcon =
                 item.kind === "received" ? (
-                  <ArrowDownToLine size={18} color={colors.success} />
+                  <ArrowDownToLine size={16} color={iconColor} />
                 ) : item.kind === "shielded" ? (
-                  <ShieldPlus size={18} color={colors.primaryLight} />
+                  <ShieldPlus size={16} color={iconColor} />
                 ) : (
-                  <ArrowUpFromLine size={18} color={colors.primaryLight} />
+                  <ArrowUpFromLine size={16} color={iconColor} />
                 );
               return (
-                <View key={item.id}>
-                  <TouchableOpacity
-                    style={styles.recentRow}
-                    disabled={!item.txHash}
-                    activeOpacity={item.txHash ? 0.72 : 1}
-                    onPress={() =>
-                      item.txHash
-                        ? Linking.openURL(`https://sepolia.voyager.online/tx/${item.txHash}`)
-                        : undefined
-                    }
-                  >
-                    {rowIcon}
-                    <View style={styles.recentInfo}>
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.recentItemCard}
+                  disabled={!item.txHash}
+                  activeOpacity={item.txHash ? 0.72 : 1}
+                  onPress={() =>
+                    item.txHash
+                      ? Linking.openURL(`https://sepolia.voyager.online/tx/${item.txHash}`)
+                      : undefined
+                  }
+                >
+                  <View style={styles.recentItemLeft}>
+                    <View style={[styles.recentItemIconWrap, { backgroundColor: iconBg }]}>
+                      {rowIcon}
+                    </View>
+                    <View>
                       <Text style={styles.recentType}>{item.title}</Text>
                       <Text style={styles.recentSub}>{item.subtitle}</Text>
                     </View>
-                    <Text style={[styles.recentAmount, { color: item.amountColor }]}>{item.amountLabel}</Text>
-                  </TouchableOpacity>
-                  {index < recentActivityItems.length - 1 ? <View style={styles.recentDivider} /> : null}
-                </View>
+                  </View>
+                  <Text style={[styles.recentAmount, { color: item.amountColor }]}>{item.amountLabel}</Text>
+                </TouchableOpacity>
               );
             })
           )}
@@ -1257,7 +1216,6 @@ export default function HomeScreen({ navigation }: any) {
       </View>
 
         </>
-        )
       )}
     </KeyboardSafeScreen>
   );
@@ -1556,8 +1514,8 @@ const styles = StyleSheet.create({
   },
   eyeIcon: {},
   balanceAmount: {
-    fontSize: 49,
-    lineHeight: 54,
+    fontSize: 36,
+    lineHeight: 42,
     fontWeight: "700",
     color: colors.text,
     fontFamily: typography.primarySemibold,
@@ -1575,15 +1533,16 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondary,
   },
   erc20Label: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
     textTransform: "uppercase",
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     marginTop: 14,
     fontFamily: typography.primary,
+    fontWeight: "500",
   },
-  erc20Amount: { fontSize: 34, color: colors.textSecondary, marginTop: 2, fontFamily: typography.primarySemibold },
-  erc20Symbol: { fontSize: 20, color: colors.textMuted, fontFamily: typography.primary },
+  erc20Amount: { fontSize: 16, color: colors.textSecondary, marginTop: 2, fontFamily: typography.primarySemibold, fontWeight: "600" },
+  erc20Symbol: { fontSize: 16, color: colors.textMuted, fontFamily: typography.primary },
 
   // Claim Banner
   claimBanner: {
@@ -1654,15 +1613,15 @@ const styles = StyleSheet.create({
   recentSection: {
     flex: 1,
     marginBottom: 14,
+    gap: 10,
   },
   recentHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
   },
   recentTitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     color: colors.textMuted,
     textTransform: "uppercase",
@@ -1675,44 +1634,49 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontFamily: typography.secondarySemibold,
   },
-  recentListCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: colors.surface,
+  recentList: {
+    gap: 8,
   },
-  recentRow: {
+  recentItemCard: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
+    justifyContent: "space-between",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
-  recentDivider: {
-    height: 1,
-    backgroundColor: colors.border,
+  recentItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
   },
-  recentInfo: { flex: 1 },
+  recentItemIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   recentType: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.text,
-    fontWeight: "500",
     fontFamily: typography.primarySemibold,
   },
   recentSub: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
     fontFamily: typography.secondary,
   },
   recentAmount: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: typography.primarySemibold,
   },
   recentEmptyState: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 48,
@@ -1904,99 +1868,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: typography.secondary,
   },
-  wardGuardianCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 10,
-  },
-  wardGuardianAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(139, 92, 246, 0.20)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  wardGuardianAvatarText: {
-    fontSize: 16,
-    color: colors.secondary,
-    fontFamily: typography.primarySemibold,
-    fontWeight: "600",
-  },
-  wardGuardianInfo: {
-    flex: 1,
-  },
-  wardGuardianLabel: {
-    fontSize: 9,
-    letterSpacing: 1.5,
-    color: colors.textMuted,
-    fontFamily: typography.primarySemibold,
-  },
-  wardGuardianAddress: {
-    fontSize: 13,
-    color: colors.text,
-    fontFamily: typography.primarySemibold,
-    marginTop: 2,
-  },
-  wardGuardianAction: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.inputBg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  wardFrozenBalanceCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    marginBottom: 10,
-  },
-  wardFrozenBalanceLabel: {
-    fontSize: 10,
-    letterSpacing: 1.5,
-    color: colors.textMuted,
-    fontFamily: typography.primarySemibold,
-  },
-  wardFrozenBalanceRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    marginTop: 8,
-  },
-  wardFrozenBalanceValue: {
-    fontSize: 36,
-    lineHeight: 40,
-    color: colors.text,
-    opacity: 0.45,
-    fontFamily: typography.primarySemibold,
-    fontWeight: "700",
-  },
-  wardFrozenBalanceToken: {
-    fontSize: 16,
-    color: colors.textMuted,
-    marginBottom: 6,
-    fontFamily: typography.primary,
-  },
-  wardFrozenBalanceHint: {
-    fontSize: 11,
-    color: colors.error,
-    opacity: 0.72,
-    marginTop: 6,
-    fontFamily: typography.primary,
-  },
   wardLimitsCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -2074,77 +1945,6 @@ const styles = StyleSheet.create({
   wardAllowedTokenBadgeText: {
     fontSize: 11,
     color: colors.text,
-    fontFamily: typography.primarySemibold,
-  },
-  wardDisabledActionsRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 10,
-  },
-  wardDisabledActionCard: {
-    flex: 1,
-    height: 70,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    opacity: 0.35,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-  wardDisabledActionLabel: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontFamily: typography.primarySemibold,
-    fontWeight: "600",
-  },
-  wardFrozenRecentSection: {
-    marginBottom: 16,
-  },
-  wardFrozenRecentTitle: {
-    fontSize: 10,
-    color: colors.textMuted,
-    letterSpacing: 1.5,
-    marginBottom: 10,
-    fontFamily: typography.primarySemibold,
-  },
-  wardFrozenRecentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-  },
-  wardFrozenRecentLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  wardFrozenRecentType: {
-    fontSize: 12,
-    color: colors.text,
-    fontFamily: typography.primarySemibold,
-  },
-  wardFrozenRecentSub: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 1,
-    fontFamily: typography.secondary,
-  },
-  wardFrozenRecentNegative: {
-    fontSize: 13,
-    color: colors.error,
-    fontFamily: typography.primarySemibold,
-  },
-  wardFrozenRecentPositive: {
-    fontSize: 13,
-    color: colors.success,
     fontFamily: typography.primarySemibold,
   },
 });

@@ -17,7 +17,7 @@ import {
   Wallet,
   Settings,
 } from "lucide-react-native";
-import { getTransactions, toDisplayString, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
+import { getTransactions, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
@@ -272,8 +272,26 @@ function getTxIconBg(tx: TxMetadataExtended): string {
   }
 }
 
+/** Strip token suffix from amount if present (e.g. "10 STRK" → "10") */
+function stripTokenSuffix(raw: string): string {
+  return raw.replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
+}
+
+/** Check if amount string is already a display value (contains a decimal point) */
+function isDisplayAmount(raw: string): boolean {
+  const stripped = stripTokenSuffix(raw);
+  return stripped.includes(".");
+}
+
 function formatTokenFromUnits(unitsStr: string, token: TokenKey): string {
-  const units = BigInt((unitsStr || "0").replace(/\D/g, "") || "0");
+  const stripped = stripTokenSuffix(unitsStr || "0");
+
+  // If the amount is already a decimal display value, return as-is
+  if (isDisplayAmount(unitsStr)) {
+    return `${stripped} ${token}`;
+  }
+
+  const units = BigInt(stripped.replace(/\D/g, "") || "0");
   const cfg = TOKENS[token];
   const wei = units * cfg.rate;
   const divisor = 10n ** BigInt(cfg.decimals);
@@ -429,29 +447,29 @@ export default function ActivityScreen({ navigation }: any) {
               <Text style={styles.sectionTitle}>{section.toUpperCase()}</Text>
               <View style={styles.sectionCard}>
                 {items.map((tx, i) => {
-                  const amountUnitsRaw = tx.amount || "0";
+                  const amountRaw = tx.amount || "0";
                   const polarity = getTxPolarity(tx, wallet.keys?.starkAddress);
                   const amountPrefix = polarity === "credit" ? "+" : polarity === "debit" ? "-" : "";
                   const amountColor = getTxColor(tx);
                   const token = (tx.token || "STRK") as TokenKey;
+                  const strippedAmount = stripTokenSuffix(amountRaw);
                   // Guardian-submitted ward ops: amounts are tongo units from the ward's perspective
                   const isGuardianWardOp = tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
                   // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
                   const isWardAdmin = tx.type === "deploy_ward" || tx.type === "fund_ward" || tx.type === "configure_ward";
-                  const isErc20Display = !isGuardianWardOp && (tx.amount_unit === "erc20_display" || tx.type === "erc20_transfer" || isWardAdmin);
-                  const hasAmount = !!tx.amount && tx.amount !== "0";
-                  const amountUnits = isErc20Display ? amountUnitsRaw : formatIntWithCommas(amountUnitsRaw);
+                  const isErc20Display = !isGuardianWardOp && (tx.amount_unit === "erc20_display" || tx.type === "erc20_transfer" || isWardAdmin || isDisplayAmount(amountRaw));
+                  const hasAmount = !!tx.amount && tx.amount !== "0" && strippedAmount !== "0";
+                  const isRollover = tx.type === "rollover";
+                  const amountUnits = isErc20Display ? strippedAmount : formatIntWithCommas(strippedAmount);
                   const tokenLabel = isGuardianWardOp
-                    ? formatTokenFromUnits(amountUnitsRaw, token)
+                    ? formatTokenFromUnits(amountRaw, token)
                     : isErc20Display
-                      ? toDisplayString({ value: amountUnitsRaw, unit: "erc20_display", token })
-                      : formatTokenFromUnits(amountUnitsRaw, token);
+                      ? `${strippedAmount} ${token}`
+                      : formatTokenFromUnits(amountRaw, token);
                   const title = getTxTitle(tx, wardNameLookup, wallet.keys?.starkAddress);
                   const statusText = getTxStatus(tx);
                   const statusColor = getStatusColor(tx);
-                  const subtitle = isGuardianWardOp
-                    ? `${getWardActionLabel(tx)} \u00b7 ${formatRelativeTime(tx.timestamp)}`
-                    : `${formatRelativeTime(tx.timestamp)} \u00b7 ${statusText}`;
+                  const subtitle = `${formatRelativeTime(tx.timestamp)} \u00b7 ${isGuardianWardOp ? getWardActionLabel(tx) : statusText}`;
 
                   const rowTestID = tx.txHash
                     ? `${testIDs.activity.rowPrefix}.${tx.txHash}`
@@ -495,9 +513,9 @@ export default function ActivityScreen({ navigation }: any) {
                       </View>
 
                       <View style={styles.rightText}>
-                        {isWardAdmin && !hasAmount ? (
+                        {(isWardAdmin && !hasAmount) || (isRollover && !hasAmount) ? (
                           <Text style={[styles.amountText, { color: amountColor }]} numberOfLines={1}>
-                            {statusText}
+                            {isRollover ? "Claimed" : statusText}
                           </Text>
                         ) : isGuardianWardOp ? (
                           <Text style={[styles.amountText, { color: colors.textSecondary }]} numberOfLines={1}>
