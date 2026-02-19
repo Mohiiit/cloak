@@ -42,7 +42,7 @@ import {
 import { parseInsufficientGasError, TOKENS, parseTokenAmount } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoUnitToErc20Display, erc20ToDisplay, type TokenKey } from "../lib/tokens";
+import { tongoUnitToErc20Display, erc20ToDisplay, unitLabel, type TokenKey } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
 import { triggerMedium, triggerSuccess } from "../lib/haptics";
@@ -155,7 +155,7 @@ function SendingModal({
   const displayAmount = isPublic
     ? `${amount || "0"} ${token}`
     : amount
-      ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
+      ? `${unitLabel(amount)} (${tongoUnitToErc20Display(amount, token)})`
       : "0 units";
   const displayRecipient =
     recipient.length > 20
@@ -239,7 +239,7 @@ function SuccessModal({
   const displayAmount = isPublic
     ? `${amount || "0"} ${token}`
     : amount
-      ? `${amount} units (${tongoUnitToErc20Display(amount, token)})`
+      ? `${unitLabel(amount)} (${tongoUnitToErc20Display(amount, token)})`
       : "0 units";
   const displayRecipient =
     recipient.length > 20

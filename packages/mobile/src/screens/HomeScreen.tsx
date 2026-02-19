@@ -38,14 +38,14 @@ import {
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext, type WardInfo } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoToDisplay, erc20ToDisplay } from "../lib/tokens";
+import { tongoToDisplay, erc20ToDisplay, TOKENS, type TokenKey, unitLabel } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
 import { triggerSuccess } from "../lib/haptics";
 import { Confetti } from "../components/Confetti";
-import { getTransactions, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
+import { getTransactions, type TransactionRecord } from "@cloak-wallet/sdk";
 import WebView from "react-native-webview";
 
 type WardInvitePayload = {
@@ -945,21 +945,31 @@ export default function HomeScreen({ navigation }: any) {
             : txType === "erc20_transfer" ? "Sent (Public)"
             : "Transaction";
           let amountLabel = "";
-          const token = (tx.token || "STRK") as any;
-          const amountUnit = ((tx as any).amount_unit as AmountUnit) || "tongo_units";
-          const isPublic = txType === "erc20_transfer" || amountUnit === "erc20_display";
+          const token = (tx.token || "STRK") as TokenKey;
+          const isPublic = txType === "erc20_transfer";
+          // Guardian ward ops: amount stored as STRK display (from formatWardAmount)
+          const isGuardianWardOp = tx.account_type === "guardian" && !isPublic;
           if (tx.amount) {
-            const raw = tx.amount.trim();
-            // If amount already contains the token name (e.g. "1 STRK" from ward approval),
-            // use it directly instead of trying to convert
-            if (/[a-zA-Z]/.test(raw)) {
-              amountLabel = raw;
-            } else if (isPublic) {
-              // Public / ERC-20: show in token (e.g. "10 STRK")
+            const raw = tx.amount.trim().replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
+            if (isPublic) {
               amountLabel = `${raw} ${token}`;
+            } else if (isGuardianWardOp && raw.includes(".")) {
+              // Reverse-convert STRK display → tongo units (e.g. "0.05" → "1")
+              const cfg = TOKENS[token];
+              try {
+                const parts = raw.split(".");
+                const whole = BigInt(parts[0] || "0");
+                const fracStr = (parts[1] || "").padEnd(cfg.decimals, "0").slice(0, cfg.decimals);
+                const frac = BigInt(fracStr);
+                const wei = whole * (10n ** BigInt(cfg.decimals)) + frac;
+                const units = wei / cfg.rate;
+                amountLabel = unitLabel(units.toString());
+              } catch {
+                amountLabel = unitLabel(raw);
+              }
             } else {
-              // Shielded ops: show tongo units (e.g. "1 units")
-              amountLabel = `${raw} units`;
+              // Shielded: raw is already tongo units
+              amountLabel = unitLabel(raw);
             }
           }
           const isPositive = kind === "received" || kind === "shielded";
@@ -1078,7 +1088,7 @@ export default function HomeScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
           <Text style={styles.balanceAmount}>
-            {balanceHidden ? "****" : `${wallet.balance} units`}
+            {balanceHidden ? "****" : unitLabel(wallet.balance)}
           </Text>
           <Text style={styles.balanceSecondary}>
             {balanceHidden ? "****" : `(${displayBalance} ${wallet.selectedToken})`}
@@ -1194,7 +1204,10 @@ export default function HomeScreen({ navigation }: any) {
                   activeOpacity={item.txHash ? 0.72 : 1}
                   onPress={() =>
                     item.txHash
-                      ? Linking.openURL(`https://sepolia.voyager.online/tx/${item.txHash}`)
+                      ? navigation.getParent()?.navigate("TransactionDetail", {
+                          txHash: item.txHash,
+                          type: item.kind,
+                        })
                       : undefined
                   }
                 >

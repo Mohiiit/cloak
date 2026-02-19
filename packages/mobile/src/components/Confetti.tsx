@@ -1,36 +1,51 @@
 /**
- * Confetti — Simple falling confetti animation using React Native's Animated API.
- * Renders 25 small colored rectangles that fall from the top with random positions and rotation.
- * Auto-plays on mount with ~2 second duration, then fades out.
+ * Confetti — Burst-style confetti animation.
+ * Pieces explode outward from center, then fall with gravity and gentle drift.
+ * Auto-plays on mount with ~2.5s duration, fades out at the end.
  */
 import React, { useEffect, useRef } from "react";
-import { View, Animated, StyleSheet, Dimensions } from "react-native";
+import { View, Animated, StyleSheet, Dimensions, Easing } from "react-native";
 
-const CONFETTI_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B"];
-const PIECE_COUNT = 25;
-const DURATION = 2000;
+const CONFETTI_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#EC4899", "#F97316"];
+const PIECE_COUNT = 30;
+const BURST_DURATION = 600;
+const FALL_DURATION = 1800;
+const TOTAL_DURATION = BURST_DURATION + FALL_DURATION;
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 type ConfettiPiece = {
-  x: number;
+  startX: number;
+  burstX: number;
+  burstY: number;
+  finalY: number;
+  driftX: number;
   width: number;
   height: number;
   color: string;
   delay: number;
   rotateEnd: string;
+  shape: "rect" | "circle";
 };
 
 function generatePieces(): ConfettiPiece[] {
+  const cx = SCREEN_WIDTH / 2;
   const pieces: ConfettiPiece[] = [];
   for (let i = 0; i < PIECE_COUNT; i++) {
+    const angle = (Math.PI * 2 * i) / PIECE_COUNT + (Math.random() - 0.5) * 0.5;
+    const burstRadius = 80 + Math.random() * 100;
     pieces.push({
-      x: Math.random() * (SCREEN_WIDTH - 20),
-      width: 6 + Math.random() * 6,
-      height: 10 + Math.random() * 8,
+      startX: cx - 4,
+      burstX: Math.cos(angle) * burstRadius,
+      burstY: -Math.abs(Math.sin(angle) * burstRadius) - 20 - Math.random() * 60,
+      finalY: 300 + Math.random() * 200,
+      driftX: (Math.random() - 0.5) * 40,
+      width: 5 + Math.random() * 5,
+      height: 8 + Math.random() * 8,
       color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      delay: Math.random() * 400,
-      rotateEnd: `${180 + Math.random() * 360}deg`,
+      delay: Math.random() * 150,
+      rotateEnd: `${360 + Math.random() * 720}deg`,
+      shape: Math.random() > 0.5 ? "rect" : "circle",
     });
   }
   return pieces;
@@ -38,41 +53,66 @@ function generatePieces(): ConfettiPiece[] {
 
 export function Confetti() {
   const pieces = useRef(generatePieces()).current;
+  const burstAnim = useRef(new Animated.Value(0)).current;
   const fallAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fallAnim, {
+    Animated.sequence([
+      // Phase 1: Burst outward
+      Animated.timing(burstAnim, {
         toValue: 1,
-        duration: DURATION,
+        duration: BURST_DURATION,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-      Animated.sequence([
-        Animated.delay(DURATION * 0.6),
-        Animated.timing(opacityAnim, {
-          toValue: 0,
-          duration: DURATION * 0.4,
+      // Phase 2: Fall with gravity
+      Animated.parallel([
+        Animated.timing(fallAnim, {
+          toValue: 1,
+          duration: FALL_DURATION,
+          easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }),
+        Animated.sequence([
+          Animated.delay(FALL_DURATION * 0.4),
+          Animated.timing(opacityAnim, {
+            toValue: 0,
+            duration: FALL_DURATION * 0.6,
+            useNativeDriver: true,
+          }),
+        ]),
       ]),
     ]).start();
-  }, [fallAnim, opacityAnim]);
+  }, [burstAnim, fallAnim, opacityAnim]);
 
   return (
     <Animated.View style={[styles.container, { opacity: opacityAnim }]} pointerEvents="none">
       {pieces.map((piece, index) => {
-        const translateY = fallAnim.interpolate({
+        // Burst phase: explode outward from center
+        const burstTranslateX = burstAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [-20, 500],
+          outputRange: [0, piece.burstX],
         });
-        const rotate = fallAnim.interpolate({
+        const burstTranslateY = burstAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: ["0deg", piece.rotateEnd],
+          outputRange: [0, piece.burstY],
         });
-        const horizontalDrift = fallAnim.interpolate({
+
+        // Fall phase: gravity + drift
+        const fallTranslateY = fallAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, piece.finalY],
+        });
+        const fallDriftX = fallAnim.interpolate({
           inputRange: [0, 0.5, 1],
-          outputRange: [0, (index % 2 === 0 ? 1 : -1) * (10 + Math.random() * 20), (index % 2 === 0 ? -1 : 1) * 15],
+          outputRange: [0, piece.driftX, piece.driftX * 0.6],
+        });
+
+        // Rotation across both phases
+        const rotate = Animated.add(burstAnim, fallAnim).interpolate({
+          inputRange: [0, 2],
+          outputRange: ["0deg", piece.rotateEnd],
         });
 
         return (
@@ -81,14 +121,15 @@ export function Confetti() {
             style={[
               styles.piece,
               {
-                left: piece.x,
+                left: piece.startX,
+                top: "40%",
                 width: piece.width,
-                height: piece.height,
+                height: piece.shape === "circle" ? piece.width : piece.height,
                 backgroundColor: piece.color,
-                borderRadius: 2,
+                borderRadius: piece.shape === "circle" ? piece.width / 2 : 2,
                 transform: [
-                  { translateY },
-                  { translateX: horizontalDrift },
+                  { translateX: Animated.add(burstTranslateX, fallDriftX) },
+                  { translateY: Animated.add(burstTranslateY, fallTranslateY) },
                   { rotate },
                 ],
               },
@@ -108,6 +149,5 @@ const styles = StyleSheet.create({
   },
   piece: {
     position: "absolute",
-    top: 0,
   },
 });

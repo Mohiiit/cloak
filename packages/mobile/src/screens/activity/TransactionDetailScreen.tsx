@@ -22,7 +22,7 @@ import { colors, borderRadius, typography } from "../../lib/theme";
 import { useWallet } from "../../lib/WalletContext";
 import type { RootStackParamList } from "../../navigation/types";
 import { getTxNotes, type TxMetadata } from "../../lib/storage";
-import { TOKENS, type TokenKey } from "../../lib/tokens";
+import { TOKENS, type TokenKey, unitLabel } from "../../lib/tokens";
 import { testIDs, testProps } from "../../testing/testIDs";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TransactionDetail">;
@@ -71,6 +71,34 @@ function formatTokenAmountFixed2(unitsStr: string, token: TokenKey): string {
   const whole = scaled / 100n;
   const frac = scaled % 100n;
   return `${whole.toString()}.${frac.toString().padStart(2, "0")}`;
+}
+
+/** Check if amount string is a STRK display value (has decimal point) */
+function isDisplayAmount(raw: string): boolean {
+  return stripTokenSuffix(raw).includes(".");
+}
+
+/** Reverse-convert STRK display → tongo units (e.g. "0.05" STRK → "1") */
+function strkDisplayToUnits(strkAmount: string, token: TokenKey): string {
+  try {
+    const cfg = TOKENS[token];
+    const parts = strkAmount.split(".");
+    const whole = BigInt(parts[0] || "0");
+    const fracStr = (parts[1] || "").padEnd(cfg.decimals, "0").slice(0, cfg.decimals);
+    const frac = BigInt(fracStr);
+    const wei = whole * (10n ** BigInt(cfg.decimals)) + frac;
+    const units = wei / cfg.rate;
+    return units.toString();
+  } catch {
+    return "0";
+  }
+}
+
+/** Get tongo units from raw amount (auto-detects format) */
+function toTongoUnits(rawAmount: string, token: TokenKey): string {
+  const stripped = stripTokenSuffix(rawAmount);
+  if (isDisplayAmount(rawAmount)) return strkDisplayToUnits(stripped, token);
+  return stripped.replace(/\D/g, "") || "0";
 }
 
 function formatFeeDisplay(feeWei?: string): string {
@@ -221,21 +249,31 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   const viewingAsWard = !!myNorm && !!wardNorm && myNorm === wardNorm && myNorm !== walletNorm;
 
   // Guardian-submitted ward operations — only show guardian perspective if viewer IS the guardian
-  const isGuardianWardOp = !viewingAsWard && meta?.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(meta?.type || "");
-  // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
+  const SHIELDED_TYPES = ["fund", "transfer", "send", "withdraw", "rollover"];
+  const isGuardianWardOp = !viewingAsWard && meta?.accountType === "guardian" && SHIELDED_TYPES.includes(meta?.type || "");
   const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(meta?.type || "");
-  // Ward viewing guardian-submitted tx: amount is already STRK display (from formatWardAmount)
-  const isPublicTransfer = meta?.amount_unit === "erc20_display" || meta?.type === "erc20_transfer" || meta?.type === "fund_ward" || meta?.type === "configure_ward" || (viewingAsWard && meta?.accountType === "guardian");
-  // Shielded ops show units, public ops show token amount
-  const isShieldedOp = !isPublicTransfer && !isGuardianWardOp && !isWardAdmin;
+  // Type determines shielded vs public — NOT amount_unit (old records may have wrong amount_unit)
+  const isShieldedOp = SHIELDED_TYPES.includes(meta?.type || "") && !isGuardianWardOp;
+  const isPublicOp = meta?.type === "erc20_transfer" || isWardAdmin || (viewingAsWard && meta?.accountType === "guardian");
   const prefix = isDebit(meta?.type) ? "-" : "+";
   const cleanAmount = stripTokenSuffix(amountRaw);
-  // Guardian ward ops: amount is already STRK display from formatWardAmount
-  const signedAmount = isGuardianWardOp
-    ? `${cleanAmount} ${token}`
-    : isShieldedOp
-      ? `${prefix}${cleanAmount} units`
-      : `${prefix}${isPublicTransfer ? cleanAmount : formatTokenAmountFixed2(cleanAmount, token)} ${token}`;
+
+  // Compute hero amount display
+  let signedAmount: string;
+  let heroSecondary = "";
+
+  if (isShieldedOp || isGuardianWardOp) {
+    // Both shielded user ops AND guardian ward shielded ops show units + STRK secondary
+    const units = toTongoUnits(amountRaw, token);
+    signedAmount = isGuardianWardOp ? unitLabel(units) : `${prefix}${unitLabel(units)}`;
+    if (units !== "0") {
+      heroSecondary = `(${formatTokenAmountFixed2(units, token)} ${token})`;
+    }
+  } else if (isPublicOp) {
+    signedAmount = `${prefix}${cleanAmount} ${token}`;
+  } else {
+    signedAmount = `${prefix}${cleanAmount} ${token}`;
+  }
 
   const toValue = meta?.recipient
     ? truncateMiddle(meta.recipient, 6, 4)
@@ -277,8 +315,8 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
             (isGuardianWardOp || isWardAdmin) && { backgroundColor: wardYellowBg, borderColor: wardYellowBorder },
           ]}>{headerIcon}</View>
           <Text style={styles.heroAmount}>{signedAmount}</Text>
-          {isShieldedOp && cleanAmount !== "0" ? (
-            <Text style={styles.heroSubAmount}>({formatTokenAmountFixed2(cleanAmount, token)} {token})</Text>
+          {heroSecondary ? (
+            <Text style={styles.heroSubAmount}>{heroSecondary}</Text>
           ) : null}
           <View
             style={[

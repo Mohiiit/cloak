@@ -19,7 +19,7 @@ import { Check, Shield, ShieldOff, ShieldPlus } from "lucide-react-native";
 import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { TOKENS, type TokenKey, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
+import { TOKENS, type TokenKey, erc20ToDisplay, tongoUnitToErc20Display, unitLabel } from "../lib/tokens";
 import { triggerMedium, triggerSuccess } from "../lib/haptics";
 import { Confetti } from "../components/Confetti";
 import { colors, spacing, borderRadius, typography } from "../lib/theme";
@@ -151,7 +151,7 @@ export default function WalletScreen() {
   }, [wallet.erc20Balance, token]);
 
   const shieldedBalanceUnitsLabel = useMemo(() => {
-    return `${formatIntWithCommas(wallet.balance)} units`;
+    return unitLabel(formatIntWithCommas(wallet.balance));
   }, [wallet.balance]);
 
   const [shieldAmountToken, setShieldAmountToken] = useState("");

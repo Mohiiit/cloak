@@ -77,6 +77,12 @@ export function formatBalance(tongoUnits: string | bigint, token: TokenKey): str
   return `${tongoToDisplay(tongoUnits, token)} ${token}`;
 }
 
+/** Pluralize "unit" / "units" based on count */
+export function unitLabel(n: string | number): string {
+  const s = String(n).replace(/\D/g, "");
+  return s === "1" ? "1 unit" : `${n} units`;
+}
+
 /** Convert Tongo units to ERC20 display string with symbol, e.g. "1" STRK → "0.05 STRK" */
 export function tongoUnitToErc20Display(units: string, token: TokenKey): string {
   return `${tongoToDisplay(units, token)} ${token}`;

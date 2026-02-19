@@ -21,7 +21,7 @@ import { getTransactions, type TransactionRecord, type AmountUnit } from "@cloak
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
-import { TOKENS, type TokenKey } from "../lib/tokens";
+import { TOKENS, type TokenKey, unitLabel } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
 
@@ -36,12 +36,6 @@ interface TxMetadataExtended extends TxMetadata {
   amount_unit?: AmountUnit | null;
   wardAddress?: string;
   walletAddress?: string;
-}
-
-function formatIntWithCommas(intStr: string): string {
-  const sanitized = (intStr || "0").replace(/\D/g, "");
-  if (!sanitized) return "0";
-  return sanitized.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function sectionForDate(timestamp: number): "Today" | "Yesterday" | "Earlier" {
@@ -108,7 +102,7 @@ function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => s
     return resolveWardLabel(tx, wardNameLookup);
   }
 
-  const tokenAmount = formatTokenFromUnits(tx.amount || "0", (tx.token || "STRK") as TokenKey);
+  const tokenAmount = unitsToStrkDisplay(stripTokenSuffix(tx.amount || "0"), (tx.token || "STRK") as TokenKey);
 
   switch (tx.type) {
     case "send":
@@ -277,34 +271,54 @@ function stripTokenSuffix(raw: string): string {
   return raw.replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
 }
 
-/** Check if amount string is already a display value (contains a decimal point) */
+/** Check if amount string is already a STRK display value (contains a decimal point) */
 function isDisplayAmount(raw: string): boolean {
   const stripped = stripTokenSuffix(raw);
   return stripped.includes(".");
 }
 
-function formatTokenFromUnits(unitsStr: string, token: TokenKey): string {
-  const stripped = stripTokenSuffix(unitsStr || "0");
+/** Shielded operation types — amounts are in tongo units */
+const SHIELDED_TYPES = ["fund", "send", "transfer", "withdraw", "rollover"];
 
-  // If the amount is already a decimal display value, return as-is
-  if (isDisplayAmount(unitsStr)) {
-    return `${stripped} ${token}`;
-  }
-
-  const units = BigInt(stripped.replace(/\D/g, "") || "0");
+/** Convert tongo units → STRK display string (e.g. "1" → "0.05 STRK") */
+function unitsToStrkDisplay(unitsStr: string, token: TokenKey): string {
+  const units = BigInt(unitsStr.replace(/\D/g, "") || "0");
   const cfg = TOKENS[token];
   const wei = units * cfg.rate;
   const divisor = 10n ** BigInt(cfg.decimals);
   const whole = wei / divisor;
-
-  // Design: compact large amounts by dropping decimals at 50+.
   if (whole >= 50n) return `${whole.toString()} ${token}`;
-
-  // Always show 2 decimals for small values (even if whole), to match pen.
-  const scaled = (wei * 100n) / divisor; // token * 100 (truncated)
+  const scaled = (wei * 100n) / divisor;
   const w = scaled / 100n;
   const f = scaled % 100n;
   return `${w.toString()}.${f.toString().padStart(2, "0")} ${token}`;
+}
+
+/** Reverse-convert STRK display → tongo units (e.g. "0.05" STRK → "1") */
+function strkDisplayToUnits(strkAmount: string, token: TokenKey): string {
+  try {
+    const cfg = TOKENS[token];
+    const parts = strkAmount.split(".");
+    const whole = BigInt(parts[0] || "0");
+    const fracStr = (parts[1] || "").padEnd(cfg.decimals, "0").slice(0, cfg.decimals);
+    const frac = BigInt(fracStr);
+    const wei = whole * (10n ** BigInt(cfg.decimals)) + frac;
+    const units = wei / cfg.rate;
+    return units.toString();
+  } catch {
+    return "0";
+  }
+}
+
+/** Get tongo unit count from raw amount (auto-detects format) */
+function toTongoUnits(rawAmount: string, token: TokenKey): string {
+  const stripped = stripTokenSuffix(rawAmount);
+  if (isDisplayAmount(rawAmount)) {
+    // Amount is STRK display (e.g. "0.05") — reverse-convert
+    return strkDisplayToUnits(stripped, token);
+  }
+  // Amount is already tongo units (e.g. "1")
+  return stripped.replace(/\D/g, "") || "0";
 }
 
 /** Convert a Supabase TransactionRecord to our local TxMetadataExtended */
@@ -447,29 +461,48 @@ export default function ActivityScreen({ navigation }: any) {
               <Text style={styles.sectionTitle}>{section.toUpperCase()}</Text>
               <View style={styles.sectionCard}>
                 {items.map((tx, i) => {
-                  const amountRaw = tx.amount || "0";
+                  const amountRaw = tx.amount || "";
                   const polarity = getTxPolarity(tx, wallet.keys?.starkAddress);
                   const amountPrefix = polarity === "credit" ? "+" : polarity === "debit" ? "-" : "";
                   const amountColor = getTxColor(tx);
                   const token = (tx.token || "STRK") as TokenKey;
-                  const strippedAmount = stripTokenSuffix(amountRaw);
-                  // Guardian-submitted ward ops: amounts are tongo units from the ward's perspective
-                  const isGuardianWardOp = tx.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(tx.type);
-                  // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
-                  const isWardAdmin = tx.type === "deploy_ward" || tx.type === "fund_ward" || tx.type === "configure_ward";
-                  const isErc20Display = !isGuardianWardOp && (tx.amount_unit === "erc20_display" || tx.type === "erc20_transfer" || isWardAdmin || isDisplayAmount(amountRaw));
-                  const hasAmount = !!tx.amount && tx.amount !== "0" && strippedAmount !== "0";
-                  const isRollover = tx.type === "rollover";
-                  const amountUnits = isErc20Display ? strippedAmount : formatIntWithCommas(strippedAmount);
-                  const tokenLabel = isGuardianWardOp
-                    ? formatTokenFromUnits(amountRaw, token)
-                    : isErc20Display
-                      ? `${strippedAmount} ${token}`
-                      : formatTokenFromUnits(amountRaw, token);
+                  const stripped = stripTokenSuffix(amountRaw);
+                  const hasAmount = !!stripped && stripped !== "0";
+                  const isGuardianWardOp = tx.accountType === "guardian" && SHIELDED_TYPES.includes(tx.type);
+                  const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(tx.type);
+                  const isShielded = SHIELDED_TYPES.includes(tx.type) && !isGuardianWardOp;
+                  const isPublic = tx.type === "erc20_transfer" || isWardAdmin;
+
                   const title = getTxTitle(tx, wardNameLookup, wallet.keys?.starkAddress);
                   const statusText = getTxStatus(tx);
                   const statusColor = getStatusColor(tx);
                   const subtitle = `${formatRelativeTime(tx.timestamp)} \u00b7 ${isGuardianWardOp ? getWardActionLabel(tx) : statusText}`;
+
+                  // Compute display amounts
+                  let primaryAmount = "";
+                  let secondaryAmount = "";
+
+                  if (!hasAmount) {
+                    // No amount: show status label
+                    primaryAmount = tx.type === "rollover" ? "Claimed" : (isWardAdmin ? statusText : "");
+                  } else if (isGuardianWardOp) {
+                    // Guardian ward ops: amount may be STRK display (from formatWardAmount) — convert to units
+                    const units = toTongoUnits(amountRaw, token);
+                    primaryAmount = unitLabel(units);
+                    secondaryAmount = unitsToStrkDisplay(units, token);
+                  } else if (isShielded) {
+                    // Shielded ops: show units primary, STRK secondary
+                    const units = toTongoUnits(amountRaw, token);
+                    primaryAmount = `${amountPrefix}${unitLabel(units)}`;
+                    secondaryAmount = unitsToStrkDisplay(units, token);
+                  } else if (isPublic) {
+                    // Public / ward admin: show STRK only, no secondary
+                    const displayVal = isDisplayAmount(amountRaw) ? stripped : stripped;
+                    primaryAmount = `${amountPrefix}${displayVal} ${token}`;
+                  } else {
+                    // Fallback
+                    primaryAmount = `${amountPrefix}${stripped} ${token}`;
+                  }
 
                   const rowTestID = tx.txHash
                     ? `${testIDs.activity.rowPrefix}.${tx.txHash}`
@@ -513,26 +546,17 @@ export default function ActivityScreen({ navigation }: any) {
                       </View>
 
                       <View style={styles.rightText}>
-                        {(isWardAdmin && !hasAmount) || (isRollover && !hasAmount) ? (
-                          <Text style={[styles.amountText, { color: amountColor }]} numberOfLines={1}>
-                            {isRollover ? "Claimed" : statusText}
+                        <Text
+                          style={[styles.amountText, { color: isGuardianWardOp ? colors.textSecondary : amountColor }]}
+                          numberOfLines={1}
+                        >
+                          {primaryAmount}
+                        </Text>
+                        {secondaryAmount ? (
+                          <Text style={styles.tokenText} numberOfLines={1}>
+                            {secondaryAmount}
                           </Text>
-                        ) : isGuardianWardOp ? (
-                          <Text style={[styles.amountText, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {tokenLabel}
-                          </Text>
-                        ) : (
-                          <>
-                            <Text style={[styles.amountText, { color: amountColor }]} numberOfLines={1}>
-                              {isErc20Display
-                                ? `${amountPrefix}${amountUnits} ${token}`
-                                : `${amountPrefix}${amountUnits} units`}
-                            </Text>
-                            <Text style={styles.tokenText} numberOfLines={1}>
-                              {tokenLabel}
-                            </Text>
-                          </>
-                        )}
+                        ) : null}
                       </View>
                     </TouchableOpacity>
                   );
