@@ -405,8 +405,8 @@ export default function WardDetailScreen() {
                       backgroundColor: shieldTransition.interpolate({
                         inputRange: [0, 1],
                         outputRange: frozen
-                          ? ["#3B82F618", "#EF444418"]  // blue → red (just froze)
-                          : ["#EF444418", "#3B82F618"],  // red → blue (just unfroze)
+                          ? ["#3B82F618", "#EF444418"]  // blue → red (froze)
+                          : ["#EF444418", "#3B82F618"],  // red → blue (unfroze)
                       }),
                     },
                   ]}
@@ -432,8 +432,8 @@ export default function WardDetailScreen() {
             ) : freezeLoading ? (
               <>
                 {/* Processing State */}
-                <View style={[fm.iconWrap, { backgroundColor: frozen ? "#10B98118" : "#EF444418" }]}>
-                  <ActivityIndicator size="large" color={frozen ? colors.success : colors.error} />
+                <View style={[fm.iconWrap, { backgroundColor: frozen ? "#3B82F618" : "#EF444418" }]}>
+                  <ActivityIndicator size="large" color={frozen ? colors.primary : colors.error} />
                 </View>
                 <Text style={fm.title}>
                   {frozen ? "Unfreezing Ward..." : "Freezing Ward..."}
@@ -458,7 +458,7 @@ export default function WardDetailScreen() {
                   <Animated.View
                     style={[
                       fm.progressFill,
-                      { backgroundColor: frozen ? colors.success : colors.error },
+                      { backgroundColor: frozen ? colors.primary : colors.error },
                       {
                         width: progressAnim.interpolate({
                           inputRange: [0, 0.5, 1],
@@ -477,8 +477,8 @@ export default function WardDetailScreen() {
             ) : (
               <>
                 {/* Confirmation State */}
-                <View style={[fm.iconWrap, frozen && { backgroundColor: "#10B98118" }]}>
-                  <Shield size={36} color={frozen ? colors.success : colors.error} />
+                <View style={[fm.iconWrap, frozen ? { backgroundColor: "#3B82F618" } : { backgroundColor: "#EF444418" }]}>
+                  <Shield size={36} color={frozen ? colors.primary : colors.error} />
                 </View>
 
                 <Text style={fm.title}>
@@ -512,7 +512,7 @@ export default function WardDetailScreen() {
 
                 {/* Action Button */}
                 <TouchableOpacity
-                  style={[fm.actionBtn, { backgroundColor: frozen ? colors.success : colors.error }]}
+                  style={[fm.actionBtn, { backgroundColor: frozen ? colors.primary : colors.error }]}
                   onPress={handleConfirmFreeze}
                   activeOpacity={0.85}
                 >
