@@ -1,7 +1,7 @@
 /**
  * HomeScreen — Balance overview, portfolio, and quick actions.
  */
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -46,6 +46,7 @@ import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
 import { triggerSuccess } from "../lib/haptics";
 import { Confetti } from "../components/Confetti";
+import { getTransactions, toDisplayString, type TransactionRecord, type AmountUnit } from "@cloak-wallet/sdk";
 import WebView from "react-native-webview";
 
 type WardInvitePayload = {
@@ -71,6 +72,19 @@ type RecentActivityItem = {
   amountColor: string;
   txHash?: string;
 };
+
+function formatTimeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
 
 function parseWardInvitePayload(raw: string): WardInvitePayload {
   const trimmed = raw.trim();
@@ -527,8 +541,25 @@ export default function HomeScreen({ navigation }: any) {
     });
   }, []);
 
-  // NOTE: refreshTxHistory disabled — on-chain getTxHistory always fails
-  // from WebView bridge. Will be replaced with Supabase reads.
+  // Fetch recent transactions from Supabase for the "Recent Activity" section
+  const [recentTxs, setRecentTxs] = useState<TransactionRecord[]>([]);
+  const loadRecentTxs = useCallback(async () => {
+    if (!wallet.keys?.starkAddress) return;
+    try {
+      const records = await getTransactions(wallet.keys.starkAddress);
+      if (records && records.length > 0) {
+        setRecentTxs(records.slice(0, 3));
+      }
+    } catch {
+      // Non-critical — recent activity is supplementary
+    }
+  }, [wallet.keys?.starkAddress]);
+
+  useEffect(() => {
+    if (wallet.isWalletCreated && wallet.isDeployed) {
+      loadRecentTxs();
+    }
+  }, [wallet.isWalletCreated, wallet.isDeployed, loadRecentTxs]);
 
   const toggleBalanceVisibility = () => {
     const next = !balanceHidden;
@@ -893,26 +924,40 @@ export default function HomeScreen({ navigation }: any) {
     : "wallet_missing";
   const deployStatusMarker = `deploy.status=${deployStatusValue}`;
   const recentActivityItems: RecentActivityItem[] =
-    wallet.txHistory.length > 0
-      ? wallet.txHistory.slice(0, 3).map((tx: any, index: number) => {
-          const txType = `${tx.type || ""}`.toLowerCase();
-          const hash = tx.txHash || tx.transaction_hash || "";
+    recentTxs.length > 0
+      ? recentTxs.map((tx, index) => {
+          const txType = (tx.type || "").toLowerCase();
+          const hash = tx.tx_hash || "";
           const kind: RecentActivityItem["kind"] =
-            txType === "fund" ? "received" : txType === "withdraw" ? "shielded" : "sent";
+            txType === "fund" ? "received"
+            : txType === "withdraw" ? "shielded"
+            : "sent";
           const title =
-            kind === "received"
-              ? "Received shielded"
-              : kind === "shielded"
-              ? "Shielded funds"
-              : "Sent transaction";
-          const amountLabelRaw = `${tx.amount || "0"} units`;
+            txType === "fund" ? "Funded"
+            : txType === "withdraw" ? "Withdrawn"
+            : txType === "transfer" ? "Sent"
+            : txType === "rollover" ? "Claimed"
+            : txType === "erc20_transfer" ? "Sent (Public)"
+            : txType === "fund_ward" ? "Funded Ward"
+            : txType === "deploy_ward" ? "Deployed Ward"
+            : txType === "configure_ward" ? "Configured Ward"
+            : "Transaction";
+          const amountLabel = tx.amount
+            ? toDisplayString({
+                value: tx.amount,
+                unit: ((tx as any).amount_unit as AmountUnit) || "tongo_units",
+                token: (tx.token || "STRK") as any,
+              })
+            : "";
           const isPositive = kind === "received";
+          const ts = tx.created_at ? new Date(tx.created_at).getTime() : 0;
+          const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
           return {
             id: hash || `${txType || "tx"}-${index}`,
             kind,
             title,
-            subtitle: tx.timestamp ? "Just now" : "Pending sync",
-            amountLabel: `${isPositive ? "+" : "-"}${amountLabelRaw.replace(/^[+-]/, "")}`,
+            subtitle: timeAgo || txType,
+            amountLabel: amountLabel ? `${isPositive ? "+" : "-"}${amountLabel}` : "",
             amountColor: isPositive ? colors.success : colors.primaryLight,
             txHash: hash || undefined,
           };
@@ -937,6 +982,7 @@ export default function HomeScreen({ navigation }: any) {
   const handleRefresh = async () => {
     await wallet.refreshBalance();
     await wallet.refreshAllBalances();
+    await loadRecentTxs();
     if (ward.isWard) {
       await ward.refreshWardInfo();
     }
@@ -1218,7 +1264,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 4,
     paddingBottom: 96,
   },
   markerContainer: {
