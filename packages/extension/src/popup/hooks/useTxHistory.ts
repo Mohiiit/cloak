@@ -51,6 +51,7 @@ export function useTxHistory(walletAddress?: string) {
       const records = await getTransactions(walletAddress);
       if (records.length > 0) {
         setEvents(records.map(recordToEvent));
+        setIsLoading(false);
         return;
       }
     } catch {
