@@ -2,7 +2,7 @@
  * WardDetailScreen — Detail view for managing a single ward account.
  * Displays ward status, spending limits, freeze toggle, and danger zone.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
 import { colors, spacing, fontSize, borderRadius, typography } from "../../lib/theme";
 import { useToast } from "../../components/Toast";
+import { useWardContext } from "../../lib/wardContext";
 
 type WardDetailParams = {
   wardAddress: string;
@@ -50,8 +51,10 @@ export default function WardDetailScreen() {
   const route = useRoute();
   const params = route.params as WardDetailParams;
   const { showToast } = useToast();
+  const ward = useWardContext();
 
   const [frozen, setFrozen] = useState(params.isFrozen);
+  const [freezeLoading, setFreezeLoading] = useState(false);
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [localData, setLocalData] = useState<Record<string, any> | null>(null);
 
@@ -99,13 +102,43 @@ export default function WardDetailScreen() {
     showToast("Invite copied");
   }
 
-  function handleToggleFreeze() {
-    setFrozen((prev) => !prev);
-  }
+  const handleToggleFreeze = useCallback(async () => {
+    if (freezeLoading) return;
+    const action = frozen ? "unfreeze" : "freeze";
+    Alert.alert(
+      frozen ? "Unfreeze Ward" : "Freeze Ward",
+      frozen
+        ? `Unfreeze "${params.wardName}"? The ward will be able to transact again.`
+        : `Freeze "${params.wardName}"? The ward will not be able to make any transactions.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: frozen ? "Unfreeze" : "Freeze",
+          style: frozen ? "default" : "destructive",
+          onPress: async () => {
+            setFreezeLoading(true);
+            try {
+              if (frozen) {
+                await ward.unfreezeWard(params.wardAddress);
+              } else {
+                await ward.freezeWard(params.wardAddress);
+              }
+              setFrozen(!frozen);
+            } catch (err: any) {
+              showToast(err?.message || `Failed to ${action} ward`, "error");
+            } finally {
+              setFreezeLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [frozen, freezeLoading, params.wardAddress, params.wardName, ward, showToast]);
 
-  function handleSaveLimits() {
+  const handleSaveLimits = useCallback(async () => {
+    // TODO: wire up setWardSpendingLimit when limit editing UI is added
     Alert.alert("Limits Saved", "Spending limits have been updated successfully.");
-  }
+  }, []);
 
   function handleRemoveWard() {
     Alert.alert(
@@ -176,8 +209,10 @@ export default function WardDetailScreen() {
                 style={[
                   styles.toggleTrack,
                   frozen ? styles.toggleTrackOn : styles.toggleTrackOff,
+                  freezeLoading && { opacity: 0.5 },
                 ]}
                 onPress={handleToggleFreeze}
+                disabled={freezeLoading}
                 activeOpacity={0.8}
               >
                 <View
