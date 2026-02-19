@@ -543,17 +543,22 @@ export default function HomeScreen({ navigation }: any) {
 
   // Fetch recent transactions from Supabase for the "Recent Activity" section
   const [recentTxs, setRecentTxs] = useState<TransactionRecord[]>([]);
+  const guardianTxTypes = new Set(["fund_ward", "deploy_ward", "configure_ward"]);
   const loadRecentTxs = useCallback(async () => {
     if (!wallet.keys?.starkAddress) return;
     try {
       const records = await getTransactions(wallet.keys.starkAddress);
       if (records && records.length > 0) {
-        setRecentTxs(records.slice(0, 3));
+        // For ward accounts, filter out guardian-initiated transactions
+        const filtered = ward.isWard
+          ? records.filter((r) => !guardianTxTypes.has(r.type || ""))
+          : records;
+        setRecentTxs(filtered.slice(0, 3));
       }
     } catch {
       // Non-critical — recent activity is supplementary
     }
-  }, [wallet.keys?.starkAddress]);
+  }, [wallet.keys?.starkAddress, ward.isWard]);
 
   useEffect(() => {
     if (wallet.isWalletCreated && wallet.isDeployed) {
@@ -929,18 +934,17 @@ export default function HomeScreen({ navigation }: any) {
           const txType = (tx.type || "").toLowerCase();
           const hash = tx.tx_hash || "";
           const kind: RecentActivityItem["kind"] =
-            txType === "fund" ? "received"
-            : txType === "withdraw" ? "shielded"
+            txType === "fund" ? "shielded"
+            : txType === "rollover" ? "received"
+            : txType === "withdraw" ? "sent"
+            : txType === "transfer" ? "sent"
             : "sent";
           const title =
-            txType === "fund" ? "Funded"
-            : txType === "withdraw" ? "Withdrawn"
+            txType === "fund" ? "Shielded"
+            : txType === "withdraw" ? "Unshielded"
             : txType === "transfer" ? "Sent"
             : txType === "rollover" ? "Claimed"
             : txType === "erc20_transfer" ? "Sent (Public)"
-            : txType === "fund_ward" ? "Funded Ward"
-            : txType === "deploy_ward" ? "Deployed Ward"
-            : txType === "configure_ward" ? "Configured Ward"
             : "Transaction";
           const amountLabel = tx.amount
             ? toDisplayString({
@@ -949,7 +953,7 @@ export default function HomeScreen({ navigation }: any) {
                 token: (tx.token || "STRK") as any,
               })
             : "";
-          const isPositive = kind === "received";
+          const isPositive = kind === "received" || kind === "shielded";
           const ts = tx.created_at ? new Date(tx.created_at).getTime() : 0;
           const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
           return {
