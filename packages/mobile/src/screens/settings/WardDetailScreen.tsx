@@ -400,8 +400,8 @@ export default function WardDetailScreen() {
             ) : freezeLoading ? (
               <>
                 {/* Processing State */}
-                <View style={fm.iconWrap}>
-                  <ActivityIndicator size="large" color={colors.error} />
+                <View style={[fm.iconWrap, { backgroundColor: frozen ? "#10B98118" : "#EF444418" }]}>
+                  <ActivityIndicator size="large" color={frozen ? colors.success : colors.error} />
                 </View>
                 <Text style={fm.title}>
                   {frozen ? "Unfreezing Ward..." : "Freezing Ward..."}
@@ -426,6 +426,7 @@ export default function WardDetailScreen() {
                   <Animated.View
                     style={[
                       fm.progressFill,
+                      { backgroundColor: frozen ? colors.success : colors.error },
                       {
                         width: progressAnim.interpolate({
                           inputRange: [0, 0.5, 1],
