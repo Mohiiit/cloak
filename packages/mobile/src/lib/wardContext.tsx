@@ -863,10 +863,9 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         ),
       );
 
-      showToast("Ward account frozen", "warning");
       await refreshWards();
     },
-    [executeGuardianAction, showToast, refreshWards]
+    [executeGuardianAction, refreshWards]
   );
 
   const unfreezeWard = useCallback(
@@ -893,10 +892,9 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         ),
       );
 
-      showToast("Ward account unfrozen", "success");
       await refreshWards();
     },
-    [executeGuardianAction, showToast, refreshWards]
+    [executeGuardianAction, refreshWards]
   );
 
   const setWardSpendingLimit = useCallback(

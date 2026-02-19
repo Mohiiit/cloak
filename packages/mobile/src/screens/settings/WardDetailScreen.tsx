@@ -2,7 +2,7 @@
  * WardDetailScreen — Detail view for managing a single ward account.
  * Displays ward status, spending limits, freeze toggle, and danger zone.
  */
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Alert,
   ScrollView,
   Modal,
+  ActivityIndicator,
+  Animated,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeAddress } from "@cloak-wallet/sdk";
@@ -24,6 +26,7 @@ import {
   Copy,
   QrCode,
   X,
+  ShieldOff,
 } from "lucide-react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -55,8 +58,28 @@ export default function WardDetailScreen() {
 
   const [frozen, setFrozen] = useState(params.isFrozen);
   const [freezeLoading, setFreezeLoading] = useState(false);
+  const [freezeModalVisible, setFreezeModalVisible] = useState(false);
+  const [freezeSuccess, setFreezeSuccess] = useState(false);
+  const [freezeError, setFreezeError] = useState<string | null>(null);
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [localData, setLocalData] = useState<Record<string, any> | null>(null);
+
+  // Animated indeterminate progress bar
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (freezeLoading) {
+      progressAnim.setValue(0);
+      const loop = Animated.loop(
+        Animated.timing(progressAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: false,
+        }),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+  }, [freezeLoading, progressAnim]);
 
   // Load local ward data from AsyncStorage (for QR payload and limits)
   useEffect(() => {
@@ -102,38 +125,43 @@ export default function WardDetailScreen() {
     showToast("Invite copied");
   }
 
-  const handleToggleFreeze = useCallback(async () => {
+  const handleToggleFreeze = useCallback(() => {
     if (freezeLoading) return;
+    setFreezeError(null);
+    setFreezeSuccess(false);
+    setFreezeModalVisible(true);
+  }, [freezeLoading]);
+
+  const handleConfirmFreeze = useCallback(async () => {
+    setFreezeLoading(true);
+    setFreezeError(null);
     const action = frozen ? "unfreeze" : "freeze";
-    Alert.alert(
-      frozen ? "Unfreeze Ward" : "Freeze Ward",
-      frozen
-        ? `Unfreeze "${params.wardName}"? The ward will be able to transact again.`
-        : `Freeze "${params.wardName}"? The ward will not be able to make any transactions.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: frozen ? "Unfreeze" : "Freeze",
-          style: frozen ? "default" : "destructive",
-          onPress: async () => {
-            setFreezeLoading(true);
-            try {
-              if (frozen) {
-                await ward.unfreezeWard(params.wardAddress);
-              } else {
-                await ward.freezeWard(params.wardAddress);
-              }
-              setFrozen(!frozen);
-            } catch (err: any) {
-              showToast(err?.message || `Failed to ${action} ward`, "error");
-            } finally {
-              setFreezeLoading(false);
-            }
-          },
-        },
-      ],
-    );
-  }, [frozen, freezeLoading, params.wardAddress, params.wardName, ward, showToast]);
+    try {
+      if (frozen) {
+        await ward.unfreezeWard(params.wardAddress);
+      } else {
+        await ward.freezeWard(params.wardAddress);
+      }
+      setFrozen(!frozen);
+      setFreezeSuccess(true);
+      // Auto-close after brief success display
+      setTimeout(() => {
+        setFreezeModalVisible(false);
+        setFreezeSuccess(false);
+      }, 1500);
+    } catch (err: any) {
+      setFreezeError(err?.message || `Failed to ${action} ward`);
+    } finally {
+      setFreezeLoading(false);
+    }
+  }, [frozen, params.wardAddress, ward]);
+
+  const handleDismissFreezeModal = useCallback(() => {
+    if (freezeLoading) return; // Don't dismiss while processing
+    setFreezeModalVisible(false);
+    setFreezeError(null);
+    setFreezeSuccess(false);
+  }, [freezeLoading]);
 
   const handleSaveLimits = useCallback(async () => {
     // TODO: wire up setWardSpendingLimit when limit editing UI is added
@@ -346,6 +374,138 @@ export default function WardDetailScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Freeze Confirmation Modal */}
+      <Modal visible={freezeModalVisible} transparent animationType="slide" onRequestClose={handleDismissFreezeModal}>
+        <View style={fm.overlay}>
+          <View style={fm.sheet}>
+            {/* Handle */}
+            <View style={fm.handle} />
+
+            {freezeSuccess ? (
+              <>
+                {/* Success State */}
+                <View style={[fm.iconWrap, { backgroundColor: "#10B98118" }]}>
+                  <Shield size={36} color={colors.success} />
+                </View>
+                <Text style={fm.title}>
+                  {frozen ? "Ward Frozen" : "Ward Unfrozen"}
+                </Text>
+                <Text style={fm.desc}>
+                  {frozen
+                    ? `"${params.wardName}" has been frozen. All transactions are disabled.`
+                    : `"${params.wardName}" has been unfrozen. Transactions are now enabled.`}
+                </Text>
+              </>
+            ) : freezeLoading ? (
+              <>
+                {/* Processing State */}
+                <View style={fm.iconWrap}>
+                  <ActivityIndicator size="large" color={colors.error} />
+                </View>
+                <Text style={fm.title}>
+                  {frozen ? "Unfreezing Ward..." : "Freezing Ward..."}
+                </Text>
+                <Text style={fm.desc}>
+                  Submitting on-chain transaction. This may take a moment.
+                </Text>
+
+                {/* Ward Info Card */}
+                <View style={fm.wardInfo}>
+                  <View style={fm.wardIcon}>
+                    <Shield size={18} color={colors.primary} />
+                  </View>
+                  <View style={fm.wardNameCol}>
+                    <Text style={fm.wardTitle}>{params.wardName}</Text>
+                    <Text style={fm.wardAddr}>{shortenAddress(params.wardAddress)}</Text>
+                  </View>
+                </View>
+
+                {/* Animated Progress bar */}
+                <View style={fm.progressTrack}>
+                  <Animated.View
+                    style={[
+                      fm.progressFill,
+                      {
+                        width: progressAnim.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: ["0%", "70%", "100%"],
+                        }),
+                        left: progressAnim.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: ["0%", "0%", "30%"],
+                        }),
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={fm.progressHint}>Waiting for confirmation...</Text>
+              </>
+            ) : (
+              <>
+                {/* Confirmation State */}
+                <View style={[fm.iconWrap, frozen && { backgroundColor: "#10B98118" }]}>
+                  <Shield size={36} color={frozen ? colors.success : colors.error} />
+                </View>
+
+                <Text style={fm.title}>
+                  {frozen ? "Unfreeze Ward Account?" : "Freeze Ward Account?"}
+                </Text>
+
+                <Text style={fm.desc}>
+                  {frozen
+                    ? "This will re-enable all transactions on this ward account. The ward user will be able to send, shield, and unshield tokens again."
+                    : "This will immediately disable all transactions on this ward account. The ward user will not be able to send, shield, or unshield tokens."}
+                </Text>
+
+                {/* Ward Info Card */}
+                <View style={fm.wardInfo}>
+                  <View style={fm.wardIcon}>
+                    <Shield size={18} color={colors.primary} />
+                  </View>
+                  <View style={fm.wardNameCol}>
+                    <Text style={fm.wardTitle}>{params.wardName}</Text>
+                    <Text style={fm.wardAddr}>{shortenAddress(params.wardAddress)}</Text>
+                  </View>
+                </View>
+
+                {/* Error Banner */}
+                {freezeError && (
+                  <View style={fm.errorBanner}>
+                    <TriangleAlert size={16} color={colors.error} />
+                    <Text style={fm.errorText}>{freezeError}</Text>
+                  </View>
+                )}
+
+                {/* Action Button */}
+                <TouchableOpacity
+                  style={[fm.actionBtn, { backgroundColor: frozen ? colors.success : colors.error }]}
+                  onPress={handleConfirmFreeze}
+                  activeOpacity={0.85}
+                >
+                  {frozen ? (
+                    <ShieldOff size={20} color="#FFFFFF" />
+                  ) : (
+                    <Shield size={20} color="#FFFFFF" />
+                  )}
+                  <Text style={fm.actionBtnText}>
+                    {frozen ? "Unfreeze Account" : "Freeze Account"}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Cancel */}
+                <TouchableOpacity
+                  style={fm.cancelBtn}
+                  onPress={handleDismissFreezeModal}
+                  activeOpacity={0.7}
+                >
+                  <Text style={fm.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* QR Code Modal */}
       <Modal visible={qrModalVisible} transparent animationType="fade" onRequestClose={() => setQrModalVisible(false)}>
@@ -764,5 +924,157 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontFamily: typography.primarySemibold,
+  },
+});
+
+/* ── Freeze Modal Styles ─────────────────────────────────────────────────── */
+const fm = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 15, 28, 0.9)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.border,
+    paddingTop: 32,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    alignItems: "center",
+    gap: 20,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.textMuted,
+    opacity: 0.3,
+    marginBottom: -8,
+  },
+  iconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#EF444418",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: {
+    color: colors.text,
+    fontFamily: typography.primary,
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  desc: {
+    color: colors.textSecondary,
+    fontFamily: typography.secondary,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+  },
+  wardInfo: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: colors.inputBg,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  wardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "rgba(59, 130, 246, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wardNameCol: {
+    gap: 2,
+  },
+  wardTitle: {
+    color: colors.text,
+    fontFamily: typography.primary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  wardAddr: {
+    color: colors.textMuted,
+    fontFamily: typography.primary,
+    fontSize: 11,
+  },
+  actionBtn: {
+    width: "100%",
+    height: 52,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  actionBtnText: {
+    color: "#FFFFFF",
+    fontFamily: typography.primary,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  cancelBtn: {
+    width: "100%",
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelText: {
+    color: colors.textSecondary,
+    fontFamily: typography.primary,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  progressTrack: {
+    width: "100%",
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    overflow: "hidden",
+  },
+  progressFill: {
+    position: "absolute",
+    height: "100%",
+    borderRadius: 2,
+    backgroundColor: colors.error,
+  },
+  progressHint: {
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+    fontSize: 12,
+    marginTop: -8,
+  },
+  errorBanner: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderRadius: 8,
+    padding: 12,
+  },
+  errorText: {
+    flex: 1,
+    color: colors.error,
+    fontFamily: typography.secondary,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });
