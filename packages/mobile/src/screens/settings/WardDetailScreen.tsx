@@ -81,6 +81,19 @@ export default function WardDetailScreen() {
     }
   }, [freezeLoading, progressAnim]);
 
+  // Animated shield color transition on success
+  const shieldTransition = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (freezeSuccess) {
+      shieldTransition.setValue(0);
+      Animated.timing(shieldTransition, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [freezeSuccess, shieldTransition]);
+
   // Load local ward data from AsyncStorage (for QR payload and limits)
   useEffect(() => {
     AsyncStorage.getItem("cloak_ward_local_data").then((raw) => {
@@ -384,10 +397,29 @@ export default function WardDetailScreen() {
 
             {freezeSuccess ? (
               <>
-                {/* Success State */}
-                <View style={[fm.iconWrap, { backgroundColor: "#10B98118" }]}>
-                  <Shield size={36} color={colors.success} />
-                </View>
+                {/* Success State — animated shield color transition */}
+                <Animated.View
+                  style={[
+                    fm.iconWrap,
+                    {
+                      backgroundColor: shieldTransition.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: frozen
+                          ? ["#3B82F618", "#EF444418"]  // blue → red (just froze)
+                          : ["#EF444418", "#3B82F618"],  // red → blue (just unfroze)
+                      }),
+                    },
+                  ]}
+                >
+                  {/* "From" color shield — fades out */}
+                  <Animated.View style={[fm.shieldAbsolute, { opacity: shieldTransition.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
+                    <Shield size={36} color={frozen ? colors.primary : colors.error} />
+                  </Animated.View>
+                  {/* "To" color shield — fades in */}
+                  <Animated.View style={[fm.shieldAbsolute, { opacity: shieldTransition }]}>
+                    <Shield size={36} color={frozen ? colors.error : colors.primary} />
+                  </Animated.View>
+                </Animated.View>
                 <Text style={fm.title}>
                   {frozen ? "Ward Frozen" : "Ward Unfrozen"}
                 </Text>
@@ -962,6 +994,11 @@ const fm = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: "#EF444418",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shieldAbsolute: {
+    position: "absolute",
     alignItems: "center",
     justifyContent: "center",
   },
