@@ -48,7 +48,18 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return <Text style={[styles.icon, focused && styles.iconActive]}>{"•"}</Text>;
 }
 
-function HeaderLeft() {
+/** Centered logo+name for normal accounts */
+function HeaderTitleCenter() {
+  return (
+    <View style={styles.headerCenterGroup}>
+      <CloakIcon size={24} />
+      <Text style={styles.headerBrand}>Cloak</Text>
+    </View>
+  );
+}
+
+/** Left-aligned logo+name for ward accounts */
+function HeaderLeftLogo() {
   return (
     <View style={styles.headerLeftGroup}>
       <CloakIcon size={24} />
@@ -57,15 +68,7 @@ function HeaderLeft() {
   );
 }
 
-function HeaderRight() {
-  let isWard = false;
-  try {
-    const wardCtx = useWardContext();
-    isWard = wardCtx.isWard;
-  } catch {
-    // WardProvider not available yet
-  }
-  if (!isWard) return null;
+function HeaderWardBadge() {
   return (
     <View style={styles.headerWardBadge}>
       <Text style={styles.headerWardBadgeText}>Ward</Text>
@@ -125,10 +128,12 @@ export default function AppNavigator() {
         <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={{
+          options={ward.isWard ? {
             headerTitle: "",
-            headerLeft: () => <HeaderLeft />,
-            headerRight: () => <HeaderRight />,
+            headerLeft: () => <HeaderLeftLogo />,
+            headerRight: () => <HeaderWardBadge />,
+          } : {
+            headerTitle: () => <HeaderTitleCenter />,
           }}
         />
         <Tab.Screen
@@ -177,6 +182,11 @@ const styles = StyleSheet.create({
   },
   iconActive: {
     color: colors.primary,
+  },
+  headerCenterGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   headerLeftGroup: {
     flexDirection: "row",
