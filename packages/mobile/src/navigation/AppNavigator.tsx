@@ -48,7 +48,16 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return <Text style={[styles.icon, focused && styles.iconActive]}>{"•"}</Text>;
 }
 
-function HeaderTitle() {
+function HeaderLeft() {
+  return (
+    <View style={styles.headerLeftGroup}>
+      <CloakIcon size={24} />
+      <Text style={styles.headerBrand}>Cloak</Text>
+    </View>
+  );
+}
+
+function HeaderRight() {
   let isWard = false;
   try {
     const wardCtx = useWardContext();
@@ -56,18 +65,10 @@ function HeaderTitle() {
   } catch {
     // WardProvider not available yet
   }
-
+  if (!isWard) return null;
   return (
-    <View style={[styles.headerTitleRow, isWard && styles.headerTitleRowWard]}>
-      <View style={styles.headerLeftGroup}>
-        <CloakIcon size={24} />
-        <Text style={styles.headerBrand}>Cloak</Text>
-      </View>
-      {isWard && (
-        <View style={styles.headerWardBadge}>
-          <Text style={styles.headerWardBadgeText}>Ward</Text>
-        </View>
-      )}
+    <View style={styles.headerWardBadge}>
+      <Text style={styles.headerWardBadgeText}>Ward</Text>
     </View>
   );
 }
@@ -124,7 +125,11 @@ export default function AppNavigator() {
         <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={{ headerTitle: () => <HeaderTitle /> }}
+          options={{
+            headerTitle: "",
+            headerLeft: () => <HeaderLeft />,
+            headerRight: () => <HeaderRight />,
+          }}
         />
         <Tab.Screen
           name="Send"
@@ -173,21 +178,12 @@ const styles = StyleSheet.create({
   iconActive: {
     color: colors.primary,
   },
-  headerTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headerTitleRowWard: {
-    flex: 1,
-    justifyContent: "space-between",
-  },
   headerLeftGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    marginLeft: spacing.sm,
   },
-  headerShield: {},
   headerBrand: {
     fontSize: 16,
     fontWeight: "600",
@@ -199,6 +195,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 3,
+    marginRight: spacing.sm,
   },
   headerWardBadgeText: {
     color: colors.success,
