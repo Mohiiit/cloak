@@ -74,6 +74,17 @@ export async function saveTransaction(
     const rows = await client.insert<TransactionRecord>("transactions", row);
     return rows[0] || null;
   } catch (err) {
+    // Retry without amount_unit if column doesn't exist yet (migration not applied)
+    if (row.amount_unit != null && String(err).includes("amount_unit")) {
+      try {
+        const { amount_unit: _, ...rowWithout } = row;
+        const rows = await client.insert<TransactionRecord>("transactions", rowWithout as any);
+        return rows[0] || null;
+      } catch (retryErr) {
+        console.warn("[transactions] saveTransaction retry failed:", retryErr);
+        return null;
+      }
+    }
     console.warn("[transactions] saveTransaction failed:", err);
     return null;
   }
