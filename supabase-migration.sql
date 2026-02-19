@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS ward_configs (
   ward_public_key text NOT NULL,
   guardian_public_key text NOT NULL,
   status text DEFAULT 'active',           -- active, frozen, removed
-  spending_limit_per_tx text,             -- per-tx limit in wei (null = unlimited)
+  spending_limit_per_tx text,             -- daily limit in human-readable STRK (null = unlimited)
+  max_per_tx text,                        -- max per single transaction in human-readable STRK (null = unlimited)
   require_guardian_for_all boolean DEFAULT true,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()

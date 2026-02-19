@@ -14,7 +14,7 @@ import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY } from "./config";
 
 export type TransactionStatus = "pending" | "confirmed" | "failed";
 export type AccountType = "normal" | "ward" | "guardian";
-export type TransactionType = "fund" | "transfer" | "withdraw" | "rollover";
+export type TransactionType = "fund" | "transfer" | "withdraw" | "rollover" | "deploy_ward" | "fund_ward" | "configure_ward";
 
 export interface TransactionRecord {
   id?: string;

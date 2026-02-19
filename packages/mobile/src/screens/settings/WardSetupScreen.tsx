@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -19,12 +18,12 @@ import { colors, spacing, fontSize, borderRadius, typography } from '../../lib/t
 import { testIDs, testProps } from '../../testing/testIDs';
 
 const WARD_STEPS = [
-  { step: 1, label: "Generating keys" },
-  { step: 2, label: "Deploying contract" },
-  { step: 3, label: "Funding ward" },
-  { step: 4, label: "Configuring limits" },
-  { step: 5, label: "Setting permissions" },
-  { step: 6, label: "Complete" },
+  { step: 1, label: "Generate ward keys" },
+  { step: 2, label: "Deploy ward contract" },
+  { step: 3, label: "Confirm deployment" },
+  { step: 4, label: "Fund ward" },
+  { step: 5, label: "Add STRK as token" },
+  { step: 6, label: "Register in database" },
 ];
 
 /**
@@ -62,40 +61,37 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
   const [modalVisible, setModalVisible] = useState(false);
   const [failed, setFailed] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const validateInputs = useCallback((): boolean => {
     if (!pseudoName.trim()) {
-      Alert.alert('Validation Error', 'Ward pseudoname is required.');
+      setValidationError('Ward pseudoname is required.');
       return false;
     }
 
     const funding = Number(fundingAmount);
     if (!fundingAmount.trim() || isNaN(funding) || funding <= 0) {
-      Alert.alert('Validation Error', 'Please enter a valid funding amount greater than 0.');
+      setValidationError('Please enter a valid funding amount greater than 0.');
       return false;
     }
 
     const limit = Number(dailyLimit);
     if (!dailyLimit.trim() || isNaN(limit) || limit <= 0) {
-      Alert.alert('Validation Error', 'Please enter a valid daily spending limit greater than 0.');
-      return false;
-    }
-
-    if (limit > funding) {
-      Alert.alert('Validation Error', 'Daily spending limit cannot exceed the initial funding amount.');
+      setValidationError('Please enter a valid daily spending limit greater than 0.');
       return false;
     }
 
     const maxTx = Number(maxPerTx);
     if (!maxPerTx.trim() || isNaN(maxTx) || maxTx <= 0) {
-      Alert.alert('Validation Error', 'Please enter a valid max per transaction amount.');
+      setValidationError('Please enter a valid max per transaction amount.');
       return false;
     }
     if (maxTx > limit) {
-      Alert.alert('Validation Error', 'Max per transaction cannot exceed the daily spending limit.');
+      setValidationError('Max per transaction cannot exceed the daily spending limit.');
       return false;
     }
 
+    setValidationError(null);
     return true;
   }, [pseudoName, fundingAmount, dailyLimit, maxPerTx]);
 
@@ -371,6 +367,19 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
           </View>
         </View>
       </Modal>
+
+      {/* Validation Error Modal */}
+      <Modal visible={!!validationError} transparent animationType="fade" onRequestClose={() => setValidationError(null)}>
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.card}>
+            <Text style={modalStyles.title}>Validation Error</Text>
+            <Text style={[modalStyles.subtitle, { marginBottom: spacing.md }]}>{validationError}</Text>
+            <TouchableOpacity style={modalStyles.cancelBtn} onPress={() => setValidationError(null)}>
+              <Text style={modalStyles.cancelBtnText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -564,7 +573,7 @@ const modalStyles = StyleSheet.create({
     color: colors.text,
   },
   stepTextActive: {
-    color: colors.primary,
+    color: colors.success,
     fontFamily: typography.secondarySemibold,
   },
   stepTextFailed: {

@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowLeft, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, ExternalLink } from "lucide-react";
+import { ArrowLeft, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, ExternalLink, Shield, Wallet, Settings } from "lucide-react";
 import { useTxHistory, type TxEvent } from "../hooks/useTxHistory";
 
 interface Props {
@@ -14,6 +14,9 @@ function TxIcon({ type }: { type: string }) {
     case "transferOut":
     case "send": return <ArrowUpFromLine className="w-[18px] h-[18px] text-cloak-primary" />;
     case "withdraw": return <ShieldOff className="w-[18px] h-[18px] text-cloak-secondary" />;
+    case "deploy_ward": return <Shield className="w-[18px] h-[18px] text-cloak-secondary" />;
+    case "fund_ward": return <Wallet className="w-[18px] h-[18px] text-cloak-secondary" />;
+    case "configure_ward": return <Settings className="w-[18px] h-[18px] text-cloak-secondary" />;
     default: return <RefreshCw className="w-[18px] h-[18px] text-cloak-text-dim" />;
   }
 }
@@ -28,6 +31,9 @@ function TxLabel({ type }: { type: string }) {
     case "receive": return "Receive";
     case "withdraw": return "Unshield";
     case "rollover": return "Claim";
+    case "deploy_ward": return "Deploy Ward";
+    case "fund_ward": return "Fund Ward";
+    case "configure_ward": return "Configure Ward";
     default: return type;
   }
 }

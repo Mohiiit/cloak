@@ -794,14 +794,25 @@ export default function SettingsScreen({ navigation }: any) {
 
   const isBiometric2faEnabled = twoFactor.isEnabled;
 
-  const wardItems = ward.wards.map((w) => ({
-    id: w.wardAddress,
-    name: shortenMiddle(w.wardAddress, 6, 4),
-    status: w.status === "frozen" ? ("frozen" as const) : ("active" as const),
-    spendingLimit: w.spendingLimitPerTx ? `${w.spendingLimitPerTx} STRK/tx` : "-- STRK/day",
-    whitelist: "STRK only",
-    raw: w,
-  }));
+  const wardItems = ward.wards.map((w) => {
+    const normalizedAddr = w.wardAddress.replace(/^0x0*/, "").toLowerCase();
+    const localKey = Object.keys(wardLocalData).find((k) => normalizedAddr === k.replace(/^0x0*/, "").toLowerCase());
+    const local = localKey ? wardLocalData[localKey] : null;
+    const displayName = local?.pseudoName || shortenMiddle(w.wardAddress, 6, 4);
+    const limitDisplay = w.spendingLimitPerTx && w.spendingLimitPerTx !== "0"
+      ? `${w.spendingLimitPerTx} STRK/day`
+      : local?.dailyLimit
+        ? `${local.dailyLimit} STRK/day`
+        : null;
+    return {
+      id: w.wardAddress,
+      name: displayName,
+      status: w.status === "frozen" ? ("frozen" as const) : ("active" as const),
+      spendingLimit: limitDisplay,
+      whitelist: "STRK only",
+      raw: w,
+    };
+  });
 
   const contactItems = contacts;
 
@@ -2445,7 +2456,7 @@ const wardModalStyles = StyleSheet.create({
     color: colors.text,
   },
   stepTextActive: {
-    color: colors.primary,
+    color: colors.success,
     fontFamily: typography.secondarySemibold,
   },
   stepTextFailed: {

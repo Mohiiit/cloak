@@ -2,7 +2,7 @@
  * WardDetailScreen — Detail view for managing a single ward account.
  * Displays ward status, spending limits, freeze toggle, and danger zone.
  */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,10 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  Modal,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { normalizeAddress } from "@cloak-wallet/sdk";
 import {
   Shield,
   ArrowLeft,
@@ -20,8 +23,7 @@ import {
   TriangleAlert,
   Copy,
   QrCode,
-  ChevronDown,
-  ChevronUp,
+  X,
 } from "lucide-react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -47,36 +49,54 @@ export default function WardDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const params = route.params as WardDetailParams;
-  const toast = useToast();
+  const { showToast } = useToast();
 
   const [frozen, setFrozen] = useState(params.isFrozen);
-  const [qrExpanded, setQrExpanded] = useState(false);
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [localData, setLocalData] = useState<Record<string, any> | null>(null);
+
+  // Load local ward data from AsyncStorage (for QR payload and limits)
+  useEffect(() => {
+    AsyncStorage.getItem("cloak_ward_local_data").then((raw) => {
+      if (!raw) return;
+      try {
+        const allData = JSON.parse(raw);
+        const normalizedAddr = normalizeAddress(params.wardAddress);
+        // Match by normalized address suffix
+        const key = Object.keys(allData).find(
+          (k) => normalizedAddr.toLowerCase().endsWith(k.replace(/^0x0*/, "").toLowerCase())
+        );
+        if (key) setLocalData(allData[key]);
+      } catch { /* non-critical */ }
+    });
+  }, [params.wardAddress]);
 
   // Parse daily limit from spendingLimit param (e.g. "100 STRK/tx" → "100")
   const parsedDailyLimit = (() => {
     const match = params.spendingLimit?.match(/^([\d.]+)/);
-    return match ? match[1] : "0";
+    if (match) return match[1];
+    // Fallback to local data
+    return localData?.dailyLimit || "0";
   })();
   const dailyLimit = parsedDailyLimit;
-  const maxPerTx = params.maxPerTx || "0";
-
-  const dailyUsed = 15;
-  const dailyProgress = Math.min(dailyUsed / parseInt(dailyLimit || "1", 10), 1);
+  const maxPerTx = params.maxPerTx || localData?.maxPerTx || "0";
 
   const hasValidationError = parseFloat(maxPerTx) > parseFloat(dailyLimit);
 
-  const hasQrPayload = !!params.qrPayload;
+  // Use qrPayload from params first, then from local data
+  const qrPayload = qrPayload || localData?.qrPayload || "";
+  const hasQrPayload = !!qrPayload;
 
   function handleCopyAddress() {
     if (!params.wardAddress) return;
     Clipboard.setString(params.wardAddress);
-    toast("Address copied");
+    showToast("Address copied");
   }
 
   function handleCopyInviteJson() {
-    if (!params.qrPayload) return;
-    Clipboard.setString(params.qrPayload);
-    toast("Invite JSON copied");
+    if (!qrPayload) return;
+    Clipboard.setString(qrPayload);
+    showToast("Invite copied");
   }
 
   function handleToggleFreeze() {
@@ -191,40 +211,24 @@ export default function WardDetailScreen() {
             <Text style={styles.inviteTitle}>Ward Invite</Text>
           </View>
           {hasQrPayload ? (
-            <>
+            <View style={styles.inviteRow}>
               <TouchableOpacity
-                style={styles.inviteToggleBtn}
-                onPress={() => setQrExpanded((prev) => !prev)}
+                style={styles.inviteActionBtn}
+                onPress={() => setQrModalVisible(true)}
                 activeOpacity={0.7}
               >
-                {qrExpanded ? (
-                  <ChevronUp size={16} color={colors.textSecondary} />
-                ) : (
-                  <ChevronDown size={16} color={colors.textSecondary} />
-                )}
-                <Text style={styles.inviteToggleText}>
-                  {qrExpanded ? "Hide QR Code" : "Show QR Code"}
-                </Text>
+                <QrCode size={14} color={colors.primary} />
+                <Text style={styles.inviteActionBtnText}>Show QR</Text>
               </TouchableOpacity>
-              {qrExpanded && (
-                <View style={styles.qrWrapper}>
-                  <QRCode
-                    value={params.qrPayload!}
-                    size={180}
-                    backgroundColor="#FFFFFF"
-                    color="#000000"
-                  />
-                </View>
-              )}
               <TouchableOpacity
-                style={styles.copyInviteBtn}
+                style={styles.inviteActionBtn}
                 onPress={handleCopyInviteJson}
                 activeOpacity={0.7}
               >
                 <Copy size={14} color={colors.primary} />
-                <Text style={styles.copyInviteBtnText}>Copy Invite JSON</Text>
+                <Text style={styles.inviteActionBtnText}>Copy Invite</Text>
               </TouchableOpacity>
-            </>
+            </View>
           ) : (
             <Text style={styles.inviteUnavailableText}>
               Invite data not available. The ward invite QR was only shown at creation time.
@@ -247,18 +251,7 @@ export default function WardDetailScreen() {
                 <Text style={styles.limitPillText}>{dailyLimit} STRK</Text>
               </View>
             </View>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.round(dailyProgress * 100)}%`,
-                    backgroundColor: colors.primary,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={styles.limitUsed}>{dailyUsed} STRK used today</Text>
+            <Text style={styles.limitHelper}>Max the ward can spend per day</Text>
           </View>
 
           {/* Max Per Transaction */}
@@ -318,6 +311,37 @@ export default function WardDetailScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* QR Code Modal */}
+      <Modal visible={qrModalVisible} transparent animationType="fade" onRequestClose={() => setQrModalVisible(false)}>
+        <View style={styles.qrModalOverlay}>
+          <View style={styles.qrModalCard}>
+            <View style={styles.qrModalHeader}>
+              <Text style={styles.qrModalTitle}>Ward Invite QR</Text>
+              <TouchableOpacity onPress={() => setQrModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <X size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.qrWrapper}>
+              <QRCode
+                value={qrPayload || "empty"}
+                size={200}
+                backgroundColor="#FFFFFF"
+                color="#000000"
+              />
+            </View>
+            <Text style={styles.qrModalHint}>Scan this QR to import the ward on another device</Text>
+            <TouchableOpacity
+              style={styles.qrModalCopyBtn}
+              onPress={() => { handleCopyInviteJson(); setQrModalVisible(false); }}
+              activeOpacity={0.7}
+            >
+              <Copy size={14} color="#fff" />
+              <Text style={styles.qrModalCopyBtnText}>Copy Invite</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -492,47 +516,88 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: typography.primarySemibold,
   },
-  inviteToggleBtn: {
+  inviteRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  inviteActionBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: borderRadius.sm,
-    backgroundColor: colors.inputBg,
     borderWidth: 1,
-    borderColor: colors.border,
-    alignSelf: "flex-start",
+    borderColor: colors.primary,
+    backgroundColor: "rgba(59, 130, 246, 0.06)",
   },
-  inviteToggleText: {
-    color: colors.textSecondary,
+  inviteActionBtnText: {
+    color: colors.primary,
     fontSize: 13,
-    fontFamily: typography.secondary,
+    fontFamily: typography.primarySemibold,
   },
   qrWrapper: {
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "center",
-    marginTop: 12,
   },
-  copyInviteBtn: {
+
+  /* QR Modal */
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  qrModalCard: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  qrModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: spacing.md,
+  },
+  qrModalTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontFamily: typography.primarySemibold,
+  },
+  qrModalHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontFamily: typography.secondary,
+    textAlign: "center",
+    marginTop: spacing.md,
+    lineHeight: 18,
+  },
+  qrModalCopyBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    alignSelf: "flex-start",
-    marginTop: 12,
+    width: "100%",
+    paddingVertical: 12,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+    marginTop: spacing.md,
   },
-  copyInviteBtnText: {
-    color: colors.primary,
-    fontSize: 13,
+  qrModalCopyBtnText: {
+    color: "#fff",
+    fontSize: 14,
     fontFamily: typography.primarySemibold,
   },
   inviteUnavailableText: {
@@ -585,21 +650,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontFamily: typography.primarySemibold,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.inputBg,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: 6,
-    borderRadius: 3,
-  },
-  limitUsed: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.secondary,
   },
   limitHelper: {
     fontSize: 10,

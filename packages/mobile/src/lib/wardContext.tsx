@@ -411,6 +411,22 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           },
         ]);
         await provider.waitForTransaction(fundTx.transaction_hash);
+
+        // Track fund transaction
+        saveTransaction({
+          wallet_address: guardianAccount.address,
+          tx_hash: fundTx.transaction_hash,
+          type: "fund_ward",
+          token: "STRK",
+          amount: fundingAmountDisplay,
+          recipient: paddedWardAddress,
+          status: "confirmed",
+          account_type: "guardian",
+          ward_address: paddedWardAddress,
+          network: "sepolia",
+          platform: "mobile",
+          note: `Funded ward with ${fundingAmountDisplay} STRK`,
+        }).catch(() => {});
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
           wardAddress: paddedWardAddress,
@@ -446,6 +462,20 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           },
         ]);
         await provider.waitForTransaction(addTokenTx.transaction_hash);
+
+        // Track configure transaction
+        saveTransaction({
+          wallet_address: guardianAccount.address,
+          tx_hash: addTokenTx.transaction_hash,
+          type: "configure_ward",
+          token: "STRK",
+          status: "confirmed",
+          account_type: "guardian",
+          ward_address: paddedWardAddress,
+          network: "sepolia",
+          platform: "mobile",
+          note: "Added STRK as known token on ward",
+        }).catch(() => {});
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
           wardAddress: paddedWardAddress,
@@ -646,6 +676,19 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     // Step 3: Wait for deployment confirmation
     onProgress?.(3, WARD_CREATION_TOTAL_STEPS, "Waiting for deployment confirmation...");
     await provider.waitForTransaction(deployResult.transaction_hash);
+
+    // Track deploy transaction
+    saveTransaction({
+      wallet_address: wallet.keys.starkAddress,
+      tx_hash: deployResult.transaction_hash,
+      type: "deploy_ward",
+      token: "STRK",
+      status: "confirmed",
+      account_type: "guardian",
+      network: "sepolia",
+      platform: "mobile",
+      note: `Deployed ward contract`,
+    }).catch(() => {});
 
     const wardAddress =
       deployResult.contract_address && deployResult.contract_address.length > 0

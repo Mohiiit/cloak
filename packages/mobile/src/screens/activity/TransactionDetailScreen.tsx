@@ -89,13 +89,19 @@ function typeLabel(type?: TxMetadata["type"] | string): string {
       return "Unshield";
     case "rollover":
       return "Claim";
+    case "deploy_ward":
+      return "Deploy Ward";
+    case "fund_ward":
+      return "Fund Ward";
+    case "configure_ward":
+      return "Configure Ward";
     default:
       return type ? String(type) : "Transaction";
   }
 }
 
 function isDebit(type?: TxMetadata["type"] | string): boolean {
-  return type === "send" || type === "withdraw";
+  return ["send", "withdraw", "deploy_ward", "fund_ward", "configure_ward"].includes(type || "");
 }
 
 /** Status pill colors */

@@ -13,6 +13,9 @@ import {
   ArrowUpFromLine,
   ArrowDownToLine,
   RefreshCw,
+  Shield,
+  Wallet,
+  Settings,
 } from "lucide-react-native";
 import { getTransactions, type TransactionRecord } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
@@ -81,6 +84,12 @@ function getTxTitle(tx: TxMetadataExtended): string {
       return `Unshielded ${formatTokenFromUnits(tx.amount || "0", tx.token as TokenKey)}`;
     case "rollover":
       return "Claimed pending funds";
+    case "deploy_ward":
+      return "Deployed ward contract";
+    case "fund_ward":
+      return tx.note || "Funded ward account";
+    case "configure_ward":
+      return tx.note || "Configured ward";
     default:
       return "Transaction";
   }
@@ -100,6 +109,12 @@ function getTxStatus(tx: TxMetadataExtended): string {
       return "Fund";
     case "withdraw":
       return "Withdraw";
+    case "deploy_ward":
+      return "Deployed";
+    case "fund_ward":
+      return "Funded";
+    case "configure_ward":
+      return "Configured";
     default:
       return "Pending";
   }
@@ -112,7 +127,8 @@ function getStatusColor(tx: TxMetadataExtended): string | undefined {
 }
 
 function getTxPolarity(tx: TxMetadataExtended): "credit" | "debit" {
-  return ["receive", "fund", "rollover"].includes(tx.type) ? "credit" : "debit";
+  if (["receive", "fund", "rollover"].includes(tx.type)) return "credit";
+  return "debit";
 }
 
 function getTxColor(tx: TxMetadataExtended): string {
@@ -126,6 +142,10 @@ function getTxColor(tx: TxMetadataExtended): string {
       return colors.secondary;
     case "rollover":
       return colors.warning;
+    case "deploy_ward":
+    case "fund_ward":
+    case "configure_ward":
+      return colors.secondary;
     default:
       return colors.textMuted;
   }
@@ -143,6 +163,12 @@ function getTxIcon(tx: TxMetadataExtended): React.ReactNode {
       return <ArrowDownToLine size={18} color={colors.success} />;
     case "rollover":
       return <RefreshCw size={18} color={colors.warning} />;
+    case "deploy_ward":
+      return <Shield size={18} color={colors.secondary} />;
+    case "fund_ward":
+      return <Wallet size={18} color={colors.secondary} />;
+    case "configure_ward":
+      return <Settings size={18} color={colors.secondary} />;
     default:
       return <RefreshCw size={18} color={colors.textMuted} />;
   }
@@ -154,6 +180,9 @@ function getTxIconBg(tx: TxMetadataExtended): string {
     case "receive":
       return "rgba(16, 185, 129, 0.14)";
     case "withdraw":
+    case "deploy_ward":
+    case "fund_ward":
+    case "configure_ward":
       return "rgba(139, 92, 246, 0.14)";
     case "send":
       return "rgba(59, 130, 246, 0.14)";
