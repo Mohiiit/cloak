@@ -137,6 +137,7 @@ function WardCreationModal({ visible, currentStep, stepMessage, failed, errorMes
                     isFailed && wardModalStyles.stepDotFailed,
                   ]}>
                     {isComplete && <Check size={12} color="#fff" />}
+                    {isActive && <ActivityIndicator size="small" color="#3B82F6" />}
                     {isFailed && <X size={12} color={colors.error} />}
                   </View>
                   <Text style={[
@@ -405,6 +406,7 @@ function TwoFAProgressModal({
                       ]}
                     >
                       {isComplete && <Check size={14} color="#fff" />}
+                      {isActive && <ActivityIndicator size="small" color={isEnabling ? "#3B82F6" : "#EF4444"} />}
                       {isFailed && <X size={14} color={colors.error} />}
                     </View>
                     <Text
