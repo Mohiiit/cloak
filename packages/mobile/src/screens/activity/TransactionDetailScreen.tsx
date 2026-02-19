@@ -19,6 +19,7 @@ import {
   type AmountUnit,
 } from "@cloak-wallet/sdk";
 import { colors, borderRadius, typography } from "../../lib/theme";
+import { useWallet } from "../../lib/WalletContext";
 import type { RootStackParamList } from "../../navigation/types";
 import { getTxNotes, type TxMetadata } from "../../lib/storage";
 import { TOKENS, type TokenKey } from "../../lib/tokens";
@@ -34,6 +35,7 @@ interface TxMetadataExtended extends TxMetadata {
   fee?: string;
   amount_unit?: AmountUnit | null;
   wardAddress?: string;
+  walletAddress?: string;
 }
 
 function truncateMiddle(value: string, start = 6, end = 4): string {
@@ -53,6 +55,11 @@ function formatDateTime(timestamp?: string | number): string {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${month} ${day}, ${year} ${hh}:${mm}`;
+}
+
+/** Strip token suffix from amount if present (e.g. "0.05 STRK" → "0.05") */
+function stripTokenSuffix(raw: string): string {
+  return raw.replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
 }
 
 function formatTokenAmountFixed2(unitsStr: string, token: TokenKey): string {
@@ -143,6 +150,7 @@ function getStatusPill(status?: string): { label: string; dotColor: string; bgCo
 
 export default function TransactionDetailScreen({ navigation, route }: Props) {
   const { txHash } = route.params;
+  const wallet = useWallet();
 
   const [meta, setMeta] = useState<TxMetadataExtended | null>(null);
   const [copied, setCopied] = useState(false);
@@ -176,6 +184,7 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
             accountType: r.account_type || undefined,
             fee: r.fee || undefined,
             wardAddress: r.ward_address || undefined,
+            walletAddress: r.wallet_address || undefined,
           });
           return;
         }
@@ -202,19 +211,31 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
 
   const token = ((meta?.token as TokenKey) || "STRK") satisfies TokenKey;
   const amountRaw = meta?.amount || "0";
-  // Guardian-submitted ward operations: guardian didn't send/receive, just approved
-  const isGuardianWardOp = meta?.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(meta?.type || "");
+
+  // Determine viewer perspective: am I the ward or the guardian?
+  const myAddress = wallet.keys?.starkAddress;
+  const myNorm = myAddress?.toLowerCase().replace(/^0x0+/, "0x") || "";
+  const wardNorm = meta?.wardAddress?.toLowerCase().replace(/^0x0+/, "0x") || "";
+  const walletNorm = meta?.walletAddress?.toLowerCase().replace(/^0x0+/, "0x") || "";
+  // I'm viewing as the ward if my address matches the ward address (and I'm not the guardian who submitted it)
+  const viewingAsWard = !!myNorm && !!wardNorm && myNorm === wardNorm && myNorm !== walletNorm;
+
+  // Guardian-submitted ward operations — only show guardian perspective if viewer IS the guardian
+  const isGuardianWardOp = !viewingAsWard && meta?.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(meta?.type || "");
   // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
   const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(meta?.type || "");
-  const isPublicTransfer = meta?.amount_unit === "erc20_display" || meta?.type === "erc20_transfer" || meta?.type === "fund_ward" || meta?.type === "configure_ward";
+  // Ward viewing guardian-submitted tx: amount is already STRK display (from formatWardAmount)
+  const isPublicTransfer = meta?.amount_unit === "erc20_display" || meta?.type === "erc20_transfer" || meta?.type === "fund_ward" || meta?.type === "configure_ward" || (viewingAsWard && meta?.accountType === "guardian");
   // Shielded ops show units, public ops show token amount
   const isShieldedOp = !isPublicTransfer && !isGuardianWardOp && !isWardAdmin;
   const prefix = isDebit(meta?.type) ? "-" : "+";
+  const cleanAmount = stripTokenSuffix(amountRaw);
+  // Guardian ward ops: amount is already STRK display from formatWardAmount
   const signedAmount = isGuardianWardOp
-    ? `${formatTokenAmountFixed2(amountRaw, token)} ${token}`
+    ? `${cleanAmount} ${token}`
     : isShieldedOp
-      ? `${prefix}${amountRaw} units`
-      : `${prefix}${isPublicTransfer ? amountRaw : formatTokenAmountFixed2(amountRaw, token)} ${token}`;
+      ? `${prefix}${cleanAmount} units`
+      : `${prefix}${isPublicTransfer ? cleanAmount : formatTokenAmountFixed2(cleanAmount, token)} ${token}`;
 
   const toValue = meta?.recipient
     ? truncateMiddle(meta.recipient, 6, 4)
@@ -256,8 +277,8 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
             (isGuardianWardOp || isWardAdmin) && { backgroundColor: wardYellowBg, borderColor: wardYellowBorder },
           ]}>{headerIcon}</View>
           <Text style={styles.heroAmount}>{signedAmount}</Text>
-          {isShieldedOp && amountRaw !== "0" ? (
-            <Text style={styles.heroSubAmount}>({formatTokenAmountFixed2(amountRaw, token)} {token})</Text>
+          {isShieldedOp && cleanAmount !== "0" ? (
+            <Text style={styles.heroSubAmount}>({formatTokenAmountFixed2(cleanAmount, token)} {token})</Text>
           ) : null}
           <View
             style={[
@@ -296,7 +317,7 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
             <Text style={styles.detailLabel}>Type</Text>
             <View style={styles.typeRow}>
               <Text style={[styles.detailValue, styles.detailValueType]}>{typeValue}</Text>
-              {meta?.accountType && meta.accountType !== "normal" ? (
+              {meta?.accountType && meta.accountType !== "normal" && !viewingAsWard ? (
                 <View style={[
                   styles.accountTypeBadge,
                   (isGuardianWardOp || meta.accountType === "ward") && { backgroundColor: wardYellowBg },
