@@ -85,30 +85,31 @@ function resolveWardLabel(tx: TxMetadataExtended, wardNameLookup?: (addr: string
   return "Ward";
 }
 
+/** For guardian-submitted ward ops, returns just the ward pseudoname as the title */
 function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => string | undefined): string {
-  // Guardian-submitted ward operations: use ward's name if available
   const isGuardianSubmittedWardOp =
     tx.accountType === "guardian" &&
     ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
-  const wardLabel = isGuardianSubmittedWardOp ? resolveWardLabel(tx, wardNameLookup) : "";
+
+  // Ward ops: title is just the ward name
+  if (isGuardianSubmittedWardOp) {
+    return resolveWardLabel(tx, wardNameLookup);
+  }
+
   const tokenAmount = formatTokenFromUnits(tx.amount || "0", (tx.token || "STRK") as TokenKey);
 
   switch (tx.type) {
     case "send":
-      if (isGuardianSubmittedWardOp) return `${wardLabel}: Sent payment`;
       return tx.recipientName ? `Sent to ${tx.recipientName}` : "Sent payment";
     case "erc20_transfer":
       return tx.recipientName ? `Sent to ${tx.recipientName} (Public)` : "Public send";
     case "receive":
       return "Received shielded";
     case "fund":
-      if (isGuardianSubmittedWardOp) return `${wardLabel}: Shielded ${tokenAmount}`;
       return `Shielded ${tokenAmount}`;
     case "withdraw":
-      if (isGuardianSubmittedWardOp) return `${wardLabel}: Unshielded ${tokenAmount}`;
       return `Unshielded ${tokenAmount}`;
     case "rollover":
-      if (isGuardianSubmittedWardOp) return `${wardLabel}: Claimed pending`;
       return "Claimed pending funds";
     case "deploy_ward":
       return "Deployed ward contract";
@@ -118,6 +119,18 @@ function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => s
       return tx.note || "Configured ward";
     default:
       return "Transaction";
+  }
+}
+
+/** Short action label for guardian ward ops (shown as subtitle) */
+function getWardActionLabel(tx: TxMetadataExtended): string {
+  switch (tx.type) {
+    case "fund": return "Shielded";
+    case "transfer":
+    case "send": return "Sent";
+    case "withdraw": return "Unshielded";
+    case "rollover": return "Claimed";
+    default: return "Transaction";
   }
 }
 
@@ -411,7 +424,9 @@ export default function ActivityScreen({ navigation }: any) {
                   const title = getTxTitle(tx, wardNameLookup);
                   const statusText = getTxStatus(tx);
                   const statusColor = getStatusColor(tx);
-                  const subtitle = `${formatRelativeTime(tx.timestamp)} \u00b7 ${statusText}`;
+                  const subtitle = isGuardianWardOp
+                    ? `${getWardActionLabel(tx)} \u00b7 ${formatRelativeTime(tx.timestamp)}`
+                    : `${formatRelativeTime(tx.timestamp)} \u00b7 ${statusText}`;
 
                   const rowTestID = tx.txHash
                     ? `${testIDs.activity.rowPrefix}.${tx.txHash}`
