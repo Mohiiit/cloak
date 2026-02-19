@@ -203,7 +203,7 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   const token = ((meta?.token as TokenKey) || "STRK") satisfies TokenKey;
   const amountRaw = meta?.amount || "0";
   // Guardian-submitted ward operations: guardian didn't send/receive, just approved
-  const isGuardianWardOp = meta?.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(meta?.type || "");
+  const isGuardianWardOp = meta?.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(meta?.type || "");
   // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
   const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(meta?.type || "");
   const isPublicTransfer = meta?.amount_unit === "erc20_display" || meta?.type === "erc20_transfer" || meta?.type === "fund_ward" || meta?.type === "configure_ward";

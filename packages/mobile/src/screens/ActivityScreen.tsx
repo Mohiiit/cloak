@@ -101,7 +101,7 @@ function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => s
   }
   const isGuardianSubmittedWardOp =
     tx.accountType === "guardian" &&
-    ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
+    ["fund", "transfer", "send", "withdraw", "rollover"].includes(tx.type);
 
   // Ward ops: title is just the ward name
   if (isGuardianSubmittedWardOp) {
@@ -151,7 +151,7 @@ function getTxStatus(tx: TxMetadataExtended): string {
   if (tx.status === "failed") return "Failed";
   if (tx.status === "pending") return "Pending";
   // Guardian-submitted ward operations get a "Ward" badge
-  if (tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type)) {
+  if (tx.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(tx.type)) {
     return "Ward";
   }
   switch (tx.type) {
@@ -197,7 +197,7 @@ function getTxPolarity(tx: TxMetadataExtended, myAddress?: string): "credit" | "
     }
   }
   // Guardian-submitted ward ops: guardian didn't send or receive — just approved
-  if (tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type)) {
+  if (tx.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(tx.type)) {
     return "neutral";
   }
   if (["receive", "fund", "rollover"].includes(tx.type)) return "credit";
@@ -454,7 +454,7 @@ export default function ActivityScreen({ navigation }: any) {
                   const token = (tx.token || "STRK") as TokenKey;
                   const strippedAmount = stripTokenSuffix(amountRaw);
                   // Guardian-submitted ward ops: amounts are tongo units from the ward's perspective
-                  const isGuardianWardOp = tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
+                  const isGuardianWardOp = tx.accountType === "guardian" && ["fund", "transfer", "send", "withdraw", "rollover"].includes(tx.type);
                   // fund_ward/configure_ward amounts were always saved in ERC-20 display format, even before amount_unit existed
                   const isWardAdmin = tx.type === "deploy_ward" || tx.type === "fund_ward" || tx.type === "configure_ward";
                   const isErc20Display = !isGuardianWardOp && (tx.amount_unit === "erc20_display" || tx.type === "erc20_transfer" || isWardAdmin || isDisplayAmount(amountRaw));
