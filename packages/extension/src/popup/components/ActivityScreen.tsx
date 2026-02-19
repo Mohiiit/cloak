@@ -1,6 +1,6 @@
 import React from "react";
 import { ArrowLeft, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, ExternalLink, Shield, Wallet, Settings } from "lucide-react";
-import { toDisplayString } from "@cloak-wallet/sdk";
+
 import { useTxHistory, type TxEvent } from "../hooks/useTxHistory";
 
 interface Props {
@@ -13,10 +13,15 @@ function isGuardianWardOp(tx: TxEvent): boolean {
   return tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
 }
 
-/** Check if the amount is stored in ERC-20 display format */
-function isErc20Display(tx: TxEvent): boolean {
-  return tx.amount_unit === "erc20_display" || tx.type === "erc20_transfer" ||
-    tx.type === "fund_ward" || tx.type === "configure_ward" || tx.type === "deploy_ward";
+/** Public ops show token amount, everything else shows units */
+function isPublicOp(tx: TxEvent): boolean {
+  return tx.type === "erc20_transfer" || tx.type === "fund_ward" || tx.type === "configure_ward" || tx.type === "deploy_ward";
+}
+
+/** Pluralize unit/units */
+function unitLabel(n: string): string {
+  const s = n.replace(/\D/g, "");
+  return s === "1" ? "1 unit" : `${n} units`;
 }
 
 function TxIcon({ type }: { type: string }) {
@@ -101,20 +106,25 @@ export function ActivityScreen({ onBack, walletAddress }: Props) {
           {events.map((tx, i) => {
             const token = (tx.token || "STRK") as any;
             const hasAmount = !!tx.amount && tx.amount !== "0";
-            const erc20 = isErc20Display(tx);
-            const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(tx.type);
+            const pubOp = isPublicOp(tx);
             let amountDisplay = "";
             if (hasAmount && tx.amount) {
-              if (erc20) {
+              if (pubOp) {
                 amountDisplay = `${tx.amount} ${token}`;
               } else {
-                amountDisplay = `${tx.amount} units`;
+                amountDisplay = unitLabel(tx.amount);
               }
-            } else if (isWardAdmin) {
-              amountDisplay = "";
             }
             return (
-              <div key={tx.txHash || i} className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light">
+              <div
+                key={tx.txHash || i}
+                className="flex items-center gap-3 p-3 rounded-xl bg-cloak-card border border-cloak-border-light cursor-pointer hover:border-cloak-primary/30 transition-colors"
+                onClick={() => {
+                  if (tx.txHash) {
+                    alert("Transaction details are available on the Cloak mobile app.\n\nTx: " + tx.txHash.slice(0, 12) + "..." + tx.txHash.slice(-6));
+                  }
+                }}
+              >
                 <TxIcon type={tx.type} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
@@ -138,14 +148,7 @@ export function ActivityScreen({ onBack, walletAddress }: Props) {
                   )}
                 </div>
                 {tx.txHash && (
-                  <a
-                    href={`https://sepolia.voyager.online/tx/${tx.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-cloak-muted hover:text-cloak-primary transition-colors shrink-0"
-                  >
-                    <ExternalLink className="w-[14px] h-[14px]" />
-                  </a>
+                  <ExternalLink className="w-[14px] h-[14px] text-cloak-muted shrink-0" />
                 )}
               </div>
             );

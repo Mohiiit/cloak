@@ -288,52 +288,64 @@ export default function App() {
 
         {/* Recent Activity section */}
         <div className="flex flex-col gap-2">
-          <span className="text-[9px] font-semibold text-cloak-muted uppercase tracking-[1.5px]">
-            Recent Activity
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-semibold text-cloak-muted uppercase tracking-[1.5px]">
+              Recent Activity
+            </span>
+            {txHistory.events.length > 0 && (
+              <button
+                onClick={() => setScreen("activity")}
+                className="text-[10px] font-medium text-cloak-primary hover:text-blue-400 transition-colors"
+              >
+                View all &rarr;
+              </button>
+            )}
+          </div>
           {txHistory.events.length === 0 ? (
             <div className="flex items-center justify-center py-3">
               <p className="text-[11px] text-cloak-muted">No recent activity</p>
             </div>
           ) : (
-            <>
-              <div className="flex flex-col gap-0">
-                {txHistory.events.slice(0, 3).map((ev) => {
-                  const icon = ev.type === "fund" || ev.type === "shield"
-                    ? <ShieldPlus className="w-4 h-4 text-cloak-success" />
-                    : ev.type === "send" || ev.type === "transfer"
-                    ? <ArrowUpRight className="w-4 h-4 text-cloak-primary" />
-                    : ev.type === "withdraw"
-                    ? <ArrowDownLeft className="w-4 h-4 text-cloak-secondary" />
-                    : ev.type === "rollover"
-                    ? <Clock className="w-4 h-4 text-cloak-warning" />
-                    : <ShieldPlus className="w-4 h-4 text-cloak-muted" />;
-                  const label = ev.type === "fund" ? "Shield" : ev.type === "send" ? "Send" : ev.type === "withdraw" ? "Unshield" : ev.type === "rollover" ? "Claim" : ev.type;
-                  return (
-                    <div key={ev.txHash} className="flex items-center justify-between py-1.5">
-                      <div className="flex items-center gap-2">
-                        {icon}
-                        <div>
-                          <p className="text-xs font-medium text-cloak-text capitalize">{label}</p>
-                          {ev.amount && (
-                            <p className="text-[10px] text-cloak-muted">{ev.amount} {ev.token || "STRK"}</p>
-                          )}
-                        </div>
+            <div className="flex flex-col gap-0">
+              {txHistory.events.slice(0, 3).map((ev) => {
+                const icon = ev.type === "fund" || ev.type === "shield"
+                  ? <ShieldPlus className="w-4 h-4 text-cloak-success" />
+                  : ev.type === "send" || ev.type === "transfer"
+                  ? <ArrowUpRight className="w-4 h-4 text-cloak-primary" />
+                  : ev.type === "withdraw"
+                  ? <ArrowDownLeft className="w-4 h-4 text-cloak-secondary" />
+                  : ev.type === "rollover"
+                  ? <Clock className="w-4 h-4 text-cloak-warning" />
+                  : <ShieldPlus className="w-4 h-4 text-cloak-muted" />;
+                const label = ev.type === "fund" ? "Shield" : ev.type === "send" ? "Send" : ev.type === "withdraw" ? "Unshield" : ev.type === "rollover" ? "Claim" : ev.type;
+                const isPublic = ev.type === "erc20_transfer";
+                const amountStr = ev.amount && ev.amount !== "0"
+                  ? isPublic ? `${ev.amount} ${ev.token || "STRK"}` : `${ev.amount} ${ev.amount === "1" ? "unit" : "units"}`
+                  : "";
+                return (
+                  <div key={ev.txHash} className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-cloak-card/50 rounded-md px-1 -mx-1 transition-colors"
+                    onClick={() => {
+                      if (ev.txHash) {
+                        alert("Transaction details are available on the Cloak mobile app.\n\nTx: " + ev.txHash.slice(0, 12) + "..." + ev.txHash.slice(-6));
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {icon}
+                      <div>
+                        <p className="text-xs font-medium text-cloak-text capitalize">{label}</p>
+                        {amountStr && (
+                          <p className="text-[10px] text-cloak-muted">{amountStr}</p>
+                        )}
                       </div>
-                      <span className="text-[10px] text-cloak-muted">
-                        {ev.timestamp ? new Date(ev.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "--"}
-                      </span>
                     </div>
-                  );
-                })}
-              </div>
-              <button
-                onClick={() => setScreen("activity")}
-                className="text-[11px] font-medium text-cloak-primary hover:text-blue-400 transition-colors text-left"
-              >
-                View all activity &rarr;
-              </button>
-            </>
+                    <span className="text-[10px] text-cloak-muted">
+                      {ev.timestamp ? new Date(ev.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "--"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
