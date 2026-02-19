@@ -35,6 +35,7 @@ interface TxMetadataExtended extends TxMetadata {
   fee?: string;
   amount_unit?: AmountUnit | null;
   wardAddress?: string;
+  walletAddress?: string;
 }
 
 function formatIntWithCommas(intStr: string): string {
@@ -86,7 +87,18 @@ function resolveWardLabel(tx: TxMetadataExtended, wardNameLookup?: (addr: string
 }
 
 /** For guardian-submitted ward ops, returns just the ward pseudoname as the title */
-function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => string | undefined): string {
+function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => string | undefined, myAddress?: string): string {
+  // Ward viewing guardian-initiated tx: show from ward's perspective
+  if (myAddress && tx.walletAddress && tx.wardAddress) {
+    const myNorm = myAddress.toLowerCase().replace(/^0x0+/, "0x");
+    const wardNorm = tx.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
+    const walletNorm = tx.walletAddress.toLowerCase().replace(/^0x0+/, "0x");
+    if (myNorm === wardNorm && myNorm !== walletNorm) {
+      if (tx.type === "fund_ward") return "Received from Guardian";
+      if (tx.type === "configure_ward") return tx.note || "Guardian configured account";
+      if (tx.type === "deploy_ward") return "Account deployed by Guardian";
+    }
+  }
   const isGuardianSubmittedWardOp =
     tx.accountType === "guardian" &&
     ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
@@ -171,7 +183,19 @@ function getStatusColor(tx: TxMetadataExtended): string | undefined {
   return undefined;
 }
 
-function getTxPolarity(tx: TxMetadataExtended): "credit" | "debit" | "neutral" {
+function getTxPolarity(tx: TxMetadataExtended, myAddress?: string): "credit" | "debit" | "neutral" {
+  // Ward viewing guardian-initiated tx: flip perspective
+  if (myAddress && tx.walletAddress && tx.wardAddress) {
+    const myNorm = myAddress.toLowerCase().replace(/^0x0+/, "0x");
+    const wardNorm = tx.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
+    const walletNorm = tx.walletAddress.toLowerCase().replace(/^0x0+/, "0x");
+    // I'm the ward, but the tx was initiated by the guardian
+    if (myNorm === wardNorm && myNorm !== walletNorm) {
+      if (tx.type === "fund_ward") return "credit"; // Ward received funds
+      if (["configure_ward", "deploy_ward"].includes(tx.type)) return "neutral";
+      return "neutral";
+    }
+  }
   // Guardian-submitted ward ops: guardian didn't send or receive — just approved
   if (tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type)) {
     return "neutral";
@@ -283,6 +307,7 @@ function recordToMetadata(r: TransactionRecord): TxMetadataExtended {
     accountType: r.account_type || undefined,
     fee: r.fee || undefined,
     wardAddress: r.ward_address || undefined,
+    walletAddress: r.wallet_address || undefined,
   };
 }
 
@@ -405,7 +430,7 @@ export default function ActivityScreen({ navigation }: any) {
               <View style={styles.sectionCard}>
                 {items.map((tx, i) => {
                   const amountUnitsRaw = tx.amount || "0";
-                  const polarity = getTxPolarity(tx);
+                  const polarity = getTxPolarity(tx, wallet.keys?.starkAddress);
                   const amountPrefix = polarity === "credit" ? "+" : polarity === "debit" ? "-" : "";
                   const amountColor = getTxColor(tx);
                   const token = (tx.token || "STRK") as TokenKey;
@@ -421,7 +446,7 @@ export default function ActivityScreen({ navigation }: any) {
                     : isErc20Display
                       ? toDisplayString({ value: amountUnitsRaw, unit: "erc20_display", token })
                       : formatTokenFromUnits(amountUnitsRaw, token);
-                  const title = getTxTitle(tx, wardNameLookup);
+                  const title = getTxTitle(tx, wardNameLookup, wallet.keys?.starkAddress);
                   const statusText = getTxStatus(tx);
                   const statusColor = getStatusColor(tx);
                   const subtitle = isGuardianWardOp
