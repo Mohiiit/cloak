@@ -1584,6 +1584,16 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     refreshWards,
   ]);
 
+  // Periodic refresh for ward accounts — keeps spending limits, frozen status up to date
+  // when guardian changes config while ward app is open.
+  useEffect(() => {
+    if (!isWard || !wallet.keys?.starkAddress) return;
+    const interval = setInterval(() => {
+      refreshWardInfo();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [isWard, wallet.keys?.starkAddress, refreshWardInfo]);
+
   return (
     <WardContext.Provider
       value={{

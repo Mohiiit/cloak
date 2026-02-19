@@ -397,7 +397,7 @@ function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
   return (
     <View style={styles.wardLimitsCard}>
       <View style={styles.wardLimitsHeader}>
-        <Gauge size={16} color={colors.primaryLight} />
+        <Gauge size={18} color={colors.primary} />
         <Text style={styles.wardLimitsTitle}>Spending Limits</Text>
       </View>
 
@@ -1952,9 +1952,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
+    padding: 16,
+    gap: 14,
     marginBottom: 10,
   },
   wardLimitsHeader: {
@@ -1977,14 +1976,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   wardLimitLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
     fontFamily: typography.primary,
   },
   wardLimitValue: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textSecondary,
     fontFamily: typography.primarySemibold,
+    fontWeight: "500",
   },
   wardLimitTrack: {
     width: "100%",
