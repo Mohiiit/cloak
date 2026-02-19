@@ -62,23 +62,17 @@ function HeaderTitleCenter() {
 function HeaderLeftLogo() {
   return (
     <View style={styles.headerLeftGroup}>
-      <CloakIcon size={24} />
+      <CloakIcon size={18} />
       <Text style={styles.headerBrand}>Cloak</Text>
     </View>
   );
 }
 
 function HeaderWardBadge() {
-  const ward = useWardContext();
-  const isFrozen = !!ward.wardInfo?.isFrozen;
-  const badgeColor = isFrozen ? "#F59E0B" : "#8B5CF6";
   return (
-    <View style={[
-      styles.headerWardBadge,
-      { backgroundColor: `${badgeColor}18`, borderColor: `${badgeColor}40` },
-    ]}>
-      <Shield size={14} color={badgeColor} />
-      <Text style={[styles.headerWardBadgeText, { color: badgeColor }]}>Ward</Text>
+    <View style={styles.headerWardBadge}>
+      <Shield size={14} color="#F59E0B" />
+      <Text style={styles.headerWardBadgeText}>Ward</Text>
     </View>
   );
 }
@@ -139,6 +133,8 @@ export default function AppNavigator() {
             headerTitle: "",
             headerLeft: () => <HeaderLeftLogo />,
             headerRight: () => <HeaderWardBadge />,
+            headerLeftContainerStyle: { paddingLeft: 22, paddingRight: 22 },
+            headerRightContainerStyle: { paddingLeft: 22, paddingRight: 22 },
           } : {
             headerTitle: () => <HeaderTitleCenter />,
           }}
@@ -199,7 +195,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    marginLeft: spacing.sm,
   },
   headerBrand: {
     fontSize: 18,
@@ -211,13 +206,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    backgroundColor: "#F59E0B18",
     borderRadius: 8,
     borderWidth: 1,
+    borderColor: "#F59E0B40",
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginRight: spacing.sm,
   },
   headerWardBadgeText: {
+    color: "#F59E0B",
     fontSize: 11,
     fontWeight: "600",
     fontFamily: typography.primarySemibold,

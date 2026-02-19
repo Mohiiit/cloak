@@ -92,14 +92,13 @@ const styles = StyleSheet.create({
   markerContainer: {
     position: "absolute",
     left: 0,
-    width: 240,
-    height: 9,
-    opacity: 1,
-    zIndex: 9999,
+    width: 1,
+    height: 1,
+    opacity: 0,
+    overflow: "hidden",
   },
   marker: {
-    fontSize: 7,
-    lineHeight: 9,
-    color: "#0F172A",
+    fontSize: 1,
+    color: "transparent",
   },
 });
