@@ -21,9 +21,9 @@ export function BalanceCard({ balances, erc20Balance, selectedToken, onRefresh, 
   const shieldedErc20 = balances.balance * token.rate;
   const pendingErc20 = balances.pending * token.rate;
 
-  const shieldedDisplay = formatTokenAmount(shieldedErc20, token.decimals);
-  const pendingDisplay = formatTokenAmount(pendingErc20, token.decimals);
-  const publicDisplay = formatTokenAmount(erc20Balance, token.decimals);
+  const shieldedDisplay = formatTokenAmount(shieldedErc20, token.decimals, 2);
+  const pendingDisplay = formatTokenAmount(pendingErc20, token.decimals, 2);
+  const publicDisplay = formatTokenAmount(erc20Balance, token.decimals, 2);
 
   return (
     <div className="relative overflow-hidden bg-cloak-card border border-cloak-border rounded-xl p-4">

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Settings as SettingsIcon, Send, ShieldPlus, ShieldOff, Clock, Users, ShieldAlert, ChevronDown, ChevronUp, ArrowDownLeft, Copy, Check } from "lucide-react";
+import { Settings as SettingsIcon, ShieldPlus, ShieldOff, Clock, Users, ShieldAlert, ChevronDown, ChevronUp, ArrowUpRight, ArrowDownLeft, Copy, Check } from "lucide-react";
 import { useExtensionWallet } from "./hooks/useExtensionWallet";
 import { useWard } from "./hooks/useWard";
+import { useTxHistory } from "./hooks/useTxHistory";
 import { TOKENS, formatTokenAmount } from "@cloak-wallet/sdk";
 import { CloakIcon } from "./components/CloakIcon";
 import { Onboarding } from "./components/Onboarding";
@@ -26,6 +27,7 @@ export default function App() {
   const [wardExpanded, setWardExpanded] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [copied, setCopied] = useState(false);
+  const txHistory = useTxHistory(w.wallet?.starkAddress);
 
   // Loading state
   if (w.loading) {
@@ -90,8 +92,8 @@ export default function App() {
   const token = TOKENS[w.selectedToken];
   const shieldedErc20 = w.balances.balance * token.rate;
   const pendingErc20 = w.balances.pending * token.rate;
-  const shieldedDisplay = formatTokenAmount(shieldedErc20, token.decimals);
-  const publicDisplay = formatTokenAmount(w.erc20Balance, token.decimals);
+  const shieldedDisplay = formatTokenAmount(shieldedErc20, token.decimals, 2);
+  const publicDisplay = formatTokenAmount(w.erc20Balance, token.decimals, 2);
 
   const truncatedAddress = w.wallet.starkAddress
     ? `${w.wallet.starkAddress.slice(0, 8)}...${w.wallet.starkAddress.slice(-6)}`
@@ -235,7 +237,7 @@ export default function App() {
             onClick={() => setScreen("send")}
             className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-cloak-card border border-cloak-border h-[68px] flex-1 hover:border-cloak-primary/50 transition-all"
           >
-            <Send className="w-5 h-5 text-cloak-primary" />
+            <ArrowUpRight className="w-5 h-5 text-cloak-primary" />
             <span className="text-[11px] font-semibold text-cloak-text">Send</span>
           </button>
           <button
@@ -289,25 +291,50 @@ export default function App() {
           <span className="text-[9px] font-semibold text-cloak-muted uppercase tracking-[1.5px]">
             Recent Activity
           </span>
-          <div className="flex flex-col gap-0">
-            {/* Placeholder rows — no activity hook yet */}
-            <div className="flex items-center justify-between py-1.5">
-              <div className="flex items-center gap-2">
-                <ShieldPlus className="w-4 h-4 text-cloak-success" />
-                <div>
-                  <p className="text-xs font-medium text-cloak-text">Shield</p>
-                  <p className="text-[10px] text-cloak-muted">No recent activity</p>
-                </div>
-              </div>
-              <span className="text-xs font-semibold text-cloak-muted">--</span>
+          {txHistory.events.length === 0 ? (
+            <div className="flex items-center justify-center py-3">
+              <p className="text-[11px] text-cloak-muted">No recent activity</p>
             </div>
-          </div>
-          <button
-            onClick={() => setScreen("activity")}
-            className="text-[11px] font-medium text-cloak-primary hover:text-blue-400 transition-colors text-left"
-          >
-            View all activity &rarr;
-          </button>
+          ) : (
+            <>
+              <div className="flex flex-col gap-0">
+                {txHistory.events.slice(0, 3).map((ev) => {
+                  const icon = ev.type === "fund" || ev.type === "shield"
+                    ? <ShieldPlus className="w-4 h-4 text-cloak-success" />
+                    : ev.type === "send" || ev.type === "transfer"
+                    ? <ArrowUpRight className="w-4 h-4 text-cloak-primary" />
+                    : ev.type === "withdraw"
+                    ? <ArrowDownLeft className="w-4 h-4 text-cloak-secondary" />
+                    : ev.type === "rollover"
+                    ? <Clock className="w-4 h-4 text-cloak-warning" />
+                    : <ShieldPlus className="w-4 h-4 text-cloak-muted" />;
+                  const label = ev.type === "fund" ? "Shield" : ev.type === "send" ? "Send" : ev.type === "withdraw" ? "Unshield" : ev.type === "rollover" ? "Claim" : ev.type;
+                  return (
+                    <div key={ev.txHash} className="flex items-center justify-between py-1.5">
+                      <div className="flex items-center gap-2">
+                        {icon}
+                        <div>
+                          <p className="text-xs font-medium text-cloak-text capitalize">{label}</p>
+                          {ev.amount && (
+                            <p className="text-[10px] text-cloak-muted">{ev.amount} {ev.token || "STRK"}</p>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-cloak-muted">
+                        {ev.timestamp ? new Date(ev.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "--"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setScreen("activity")}
+                className="text-[11px] font-medium text-cloak-primary hover:text-blue-400 transition-colors text-left"
+              >
+                View all activity &rarr;
+              </button>
+            </>
+          )}
         </div>
 
         {/* Error toast */}
