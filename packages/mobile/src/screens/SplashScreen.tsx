@@ -1,11 +1,19 @@
 /**
  * SplashScreen -- Premium loading screen shown during app initialization.
  *
- * Matches cloak.pen "Cloak - Splash Screen" (dark bg, glow, rings, particles, logo, text, loading bar),
- * animated with react-native-reanimated per the 2.5–3s timeline spec.
+ * Uses React Native's built-in Animated API (no native reanimated dependency).
+ * 4-phase timeline: logo entrance → text reveal → loading bar → exit fade.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Dimensions, InteractionManager, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  Dimensions,
+  Easing,
+  InteractionManager,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Svg, {
   Defs,
   Ellipse,
@@ -16,17 +24,6 @@ import Svg, {
   Rect,
   Stop,
 } from "react-native-svg";
-import Animated, {
-  Easing,
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  type SharedValue,
-  withDelay,
-  withRepeat,
-  withSpring,
-  withTiming,
-} from "react-native-reanimated";
 import { colors, typography } from "../lib/theme";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -47,15 +44,14 @@ const TIMING = {
   exitMs: 400,
 } as const;
 
-// Lucide shield path (same as CloakIcon)
 const SHIELD_PATH =
   "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z";
 
 type ParticleSpec = {
-  x: number; // base px in 390x844 design space
-  y: number; // base px in 390x844 design space
+  x: number;
+  y: number;
   size: number;
-  fill: string; // rgba/8-digit hex
+  fill: string;
 };
 
 const PARTICLES: ParticleSpec[] = [
@@ -76,10 +72,10 @@ function Particle({
   globalOpacity,
 }: {
   spec: ParticleSpec;
-  globalOpacity: SharedValue<number>;
+  globalOpacity: Animated.Value;
 }) {
-  const dx = useSharedValue(0);
-  const dy = useSharedValue(0);
+  const dx = useRef(new Animated.Value(0)).current;
+  const dy = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const ampX = (Math.random() * 2 - 1) * rand(3, 5) * SCALE;
@@ -87,28 +83,54 @@ function Particle({
     const duration = rand(2000, 3000);
     const delay = rand(0, 900);
 
-    dx.value = withDelay(
-      delay,
-      withRepeat(
-        withTiming(ampX, { duration, easing: Easing.inOut(Easing.quad) }),
-        -1,
-        true,
-      ),
+    const loopX = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.sequence([
+          Animated.timing(dx, {
+            toValue: ampX,
+            duration,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dx, {
+            toValue: 0,
+            duration,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
     );
-    dy.value = withDelay(
-      delay,
-      withRepeat(
-        withTiming(ampY, { duration: duration + rand(0, 300), easing: Easing.inOut(Easing.quad) }),
-        -1,
-        true,
-      ),
-    );
-  }, [dx, dy]);
 
-  const style = useAnimatedStyle(() => ({
-    opacity: globalOpacity.value,
-    transform: [{ translateX: dx.value }, { translateY: dy.value }],
-  }));
+    const loopY = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.sequence([
+          Animated.timing(dy, {
+            toValue: ampY,
+            duration: duration + rand(0, 300),
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dy, {
+            toValue: 0,
+            duration: duration + rand(0, 300),
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    );
+
+    loopX.start();
+    loopY.start();
+
+    return () => {
+      loopX.stop();
+      loopY.stop();
+    };
+  }, [dx, dy]);
 
   return (
     <Animated.View
@@ -122,8 +144,9 @@ function Particle({
           height: spec.size * SCALE,
           borderRadius: (spec.size * SCALE) / 2,
           backgroundColor: spec.fill,
+          opacity: globalOpacity,
+          transform: [{ translateX: dx }, { translateY: dy }],
         },
-        style,
       ]}
     />
   );
@@ -139,53 +162,55 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
   const exitStarted = useRef(false);
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [statusText, setStatusText] = useState("Initializing secure vault...");
-  const readyRef = useRef(false);
   const statusTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [statusText, setStatusText] = useState("Initializing secure vault...");
+
   // Phase 1
-  const logoScale = useSharedValue(0.6);
-  const logoOpacity = useSharedValue(0);
-  const glowOpacity = useSharedValue(0);
-  const innerRingOpacity = useSharedValue(0);
-  const outerRingOpacity = useSharedValue(0);
-  const particleOpacity = useSharedValue(0);
+  const logoScale = useRef(new Animated.Value(0.6)).current;
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const glowOpacity = useRef(new Animated.Value(0)).current;
+  const innerRingOpacity = useRef(new Animated.Value(0)).current;
+  const outerRingOpacity = useRef(new Animated.Value(0)).current;
+  const particleOpacity = useRef(new Animated.Value(0)).current;
 
   // Phase 2
-  const titleOpacity = useSharedValue(0);
-  const titleY = useSharedValue(12);
-  const taglineOpacity = useSharedValue(0);
-  const taglineY = useSharedValue(12);
+  const titleOpacity = useRef(new Animated.Value(0)).current;
+  const titleY = useRef(new Animated.Value(12)).current;
+  const taglineOpacity = useRef(new Animated.Value(0)).current;
+  const taglineY = useRef(new Animated.Value(12)).current;
 
   // Phase 3
-  const bottomOpacity = useSharedValue(0);
-  const progress = useSharedValue(0);
+  const bottomOpacity = useRef(new Animated.Value(0)).current;
+  const progress = useRef(new Animated.Value(0)).current;
 
   // Phase 4
-  const exitOpacity = useSharedValue(1);
-  const exitScale = useSharedValue(1);
+  const exitOpacity = useRef(new Animated.Value(1)).current;
+  const exitScale = useRef(new Animated.Value(1)).current;
 
-  const handleFinished = useCallback(() => {
-    onFinished();
-  }, [onFinished]);
+  const trackWidth = useMemo(() => Math.round(120 * SCALE), []);
 
   const startExit = useCallback(() => {
     if (exitStarted.current) return;
     exitStarted.current = true;
 
-    exitScale.value = withTiming(1.02, {
-      duration: TIMING.exitMs,
-      easing: Easing.in(Easing.cubic),
+    Animated.parallel([
+      Animated.timing(exitScale, {
+        toValue: 1.02,
+        duration: TIMING.exitMs,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(exitOpacity, {
+        toValue: 0,
+        duration: TIMING.exitMs,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) onFinished();
     });
-    exitOpacity.value = withTiming(
-      0,
-      { duration: TIMING.exitMs, easing: Easing.in(Easing.cubic) },
-      (finished) => {
-        if (finished) runOnJS(handleFinished)();
-      },
-    );
-  }, [exitOpacity, exitScale, handleFinished]);
+  }, [exitOpacity, exitScale, onFinished]);
 
   const requestExit = useCallback(() => {
     if (exitStarted.current) return;
@@ -197,75 +222,122 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
   }, [startExit]);
 
   useEffect(() => {
-    // Entrance timeline (0ms -> 2400ms).
-    glowOpacity.value = withTiming(1, {
+    // Phase 1: Logo entrance (0 → 800ms)
+    Animated.timing(glowOpacity, {
+      toValue: 1,
       duration: TIMING.logoInMs,
       easing: Easing.out(Easing.cubic),
-    });
-    particleOpacity.value = withDelay(
-      150,
-      withTiming(1, { duration: TIMING.logoInMs, easing: Easing.out(Easing.cubic) }),
-    );
-    logoOpacity.value = withTiming(1, {
+      useNativeDriver: true,
+    }).start();
+
+    Animated.sequence([
+      Animated.delay(150),
+      Animated.timing(particleOpacity, {
+        toValue: 1,
+        duration: TIMING.logoInMs,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    Animated.timing(logoOpacity, {
+      toValue: 1,
       duration: TIMING.logoInMs,
       easing: Easing.out(Easing.cubic),
-    });
-    logoScale.value = withSpring(1, {
+      useNativeDriver: true,
+    }).start();
+
+    Animated.spring(logoScale, {
+      toValue: 1,
       stiffness: 110,
       damping: 14,
       mass: 0.9,
-      overshootClamping: false,
-    });
+      useNativeDriver: true,
+    }).start();
 
-    innerRingOpacity.value = withDelay(
-      TIMING.innerRingDelayMs,
-      withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) }),
-    );
-    outerRingOpacity.value = withDelay(
-      TIMING.outerRingDelayMs,
-      withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) }),
-    );
-
-    titleOpacity.value = withDelay(
-      TIMING.textStartMs,
-      withTiming(1, {
+    // Rings staggered
+    Animated.sequence([
+      Animated.delay(TIMING.innerRingDelayMs),
+      Animated.timing(innerRingOpacity, {
+        toValue: 1,
         duration: 600,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
-    );
-    titleY.value = withDelay(
-      TIMING.textStartMs,
-      withTiming(0, {
-        duration: 600,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-      }),
-    );
+    ]).start();
 
-    taglineOpacity.value = withDelay(
-      TIMING.textStartMs + TIMING.taglineDelayMs,
-      withTiming(1, {
+    Animated.sequence([
+      Animated.delay(TIMING.outerRingDelayMs),
+      Animated.timing(outerRingOpacity, {
+        toValue: 1,
         duration: 600,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
-    );
-    taglineY.value = withDelay(
-      TIMING.textStartMs + TIMING.taglineDelayMs,
-      withTiming(0, {
-        duration: 600,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+    ]).start();
+
+    // Phase 2: Text reveal (600ms → 1200ms)
+    const textEasing = Easing.bezier(0.25, 0.1, 0.25, 1);
+
+    Animated.sequence([
+      Animated.delay(TIMING.textStartMs),
+      Animated.parallel([
+        Animated.timing(titleOpacity, {
+          toValue: 1,
+          duration: 600,
+          easing: textEasing,
+          useNativeDriver: true,
+        }),
+        Animated.timing(titleY, {
+          toValue: 0,
+          duration: 600,
+          easing: textEasing,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    Animated.sequence([
+      Animated.delay(TIMING.textStartMs + TIMING.taglineDelayMs),
+      Animated.parallel([
+        Animated.timing(taglineOpacity, {
+          toValue: 1,
+          duration: 600,
+          easing: textEasing,
+          useNativeDriver: true,
+        }),
+        Animated.timing(taglineY, {
+          toValue: 0,
+          duration: 600,
+          easing: textEasing,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    // Phase 3: Loading bar (1000ms → 2400ms)
+    Animated.sequence([
+      Animated.delay(TIMING.bottomStartMs),
+      Animated.timing(bottomOpacity, {
+        toValue: 1,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
-    );
+    ]).start();
 
-    bottomOpacity.value = withDelay(
-      TIMING.bottomStartMs,
-      withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) }),
-    );
-    progress.value = withDelay(
-      TIMING.bottomStartMs,
-      withTiming(1, { duration: TIMING.progressMs, easing: Easing.inOut(Easing.cubic) }),
-    );
+    // Progress bar width can't use native driver, so use JS driver
+    Animated.sequence([
+      Animated.delay(TIMING.bottomStartMs),
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: TIMING.progressMs,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start();
 
-    // Fixed status cycling — runs on a schedule regardless of readyToExit.
+    // Fixed status cycling
     statusTimer.current = setTimeout(() => {
       setStatusText("Connecting to Starknet...");
     }, 1200);
@@ -278,34 +350,25 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
       if (statusTimer.current) clearTimeout(statusTimer.current);
       if (statusTimer2.current) clearTimeout(statusTimer2.current);
     };
-  }, [
-    bottomOpacity,
-    glowOpacity,
-    innerRingOpacity,
-    logoOpacity,
-    logoScale,
-    outerRingOpacity,
-    particleOpacity,
-    progress,
-    taglineOpacity,
-    taglineY,
-    titleOpacity,
-    titleY,
-  ]);
+  }, []);
 
   useEffect(() => {
     if (!readyToExit) return;
-    readyRef.current = true;
 
-    // Schedule "Ready" text near the end of the animation, not immediately.
+    // Schedule "Ready" text near the end of the animation.
     const elapsed = Date.now() - startAtMs.current;
     const readyTextDelay = Math.max(0, TIMING.exitStartMs - 400 - elapsed);
 
     const readyTimer = setTimeout(() => {
       setStatusText("Ready");
-      // Clear cycling timers so they don't overwrite "Ready"
-      if (statusTimer.current) { clearTimeout(statusTimer.current); statusTimer.current = null; }
-      if (statusTimer2.current) { clearTimeout(statusTimer2.current); statusTimer2.current = null; }
+      if (statusTimer.current) {
+        clearTimeout(statusTimer.current);
+        statusTimer.current = null;
+      }
+      if (statusTimer2.current) {
+        clearTimeout(statusTimer2.current);
+        statusTimer2.current = null;
+      }
     }, readyTextDelay);
 
     const handle = InteractionManager.runAfterInteractions(() => {
@@ -318,56 +381,26 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
     };
   }, [readyToExit, requestExit]);
 
-  const exitStyle = useAnimatedStyle(() => ({
-    opacity: exitOpacity.value,
-    transform: [{ scale: exitScale.value }],
-  }));
-
-  const logoStyle = useAnimatedStyle(() => ({
-    opacity: logoOpacity.value,
-    transform: [{ scale: logoScale.value }],
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: glowOpacity.value,
-  }));
-
-  const innerRingStyle = useAnimatedStyle(() => ({
-    opacity: innerRingOpacity.value,
-  }));
-
-  const outerRingStyle = useAnimatedStyle(() => ({
-    opacity: outerRingOpacity.value,
-  }));
-
-  const titleStyle = useAnimatedStyle(() => ({
-    opacity: titleOpacity.value,
-    transform: [{ translateY: titleY.value }],
-  }));
-
-  const taglineStyle = useAnimatedStyle(() => ({
-    opacity: taglineOpacity.value,
-    transform: [{ translateY: taglineY.value }],
-  }));
-
-  const bottomStyle = useAnimatedStyle(() => ({
-    opacity: bottomOpacity.value,
-  }));
-
-  const trackWidth = useMemo(() => Math.round(120 * SCALE), []);
-  const fillStyle = useAnimatedStyle(() => ({
-    width: trackWidth * progress.value,
-  }));
-
   const ringCenterY = SCREEN_H * (363 / BASE_H);
   const glowCenterY = SCREEN_H * (372 / BASE_H);
   const centerX = SCREEN_W / 2;
 
+  const progressWidth = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, trackWidth],
+  });
+
   return (
-    <Animated.View style={[styles.root, exitStyle]} pointerEvents="auto">
+    <Animated.View
+      style={[
+        styles.root,
+        { opacity: exitOpacity, transform: [{ scale: exitScale }] },
+      ]}
+      pointerEvents="auto"
+    >
       {/* Background: ambient glows + rings + particles */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Animated.View style={[StyleSheet.absoluteFill, glowStyle]}>
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: glowOpacity }]}>
           <Svg width={SCREEN_W} height={SCREEN_H}>
             <Defs>
               <RadialGradient id="outerGlow" cx="50%" cy="50%" rx="50%" ry="50%">
@@ -400,7 +433,7 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
           </Svg>
         </Animated.View>
 
-        <Animated.View style={[StyleSheet.absoluteFill, innerRingStyle]}>
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: innerRingOpacity }]}>
           <Svg width={SCREEN_W} height={SCREEN_H}>
             <Defs>
               <LinearGradient id="innerRing" x1="1" y1="0" x2="0" y2="1">
@@ -421,7 +454,7 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
           </Svg>
         </Animated.View>
 
-        <Animated.View style={[StyleSheet.absoluteFill, outerRingStyle]}>
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: outerRingOpacity }]}>
           <Svg width={SCREEN_W} height={SCREEN_H}>
             <Defs>
               <LinearGradient id="outerRing" x1="1" y1="0" x2="0" y2="1">
@@ -450,7 +483,15 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
       {/* Phase 1+2: logo + text */}
       <View style={styles.content} pointerEvents="none">
         <View style={styles.logoStack}>
-          <Animated.View style={[styles.logoShadow, logoStyle]}>
+          <Animated.View
+            style={[
+              styles.logoShadow,
+              {
+                opacity: logoOpacity,
+                transform: [{ scale: logoScale }],
+              },
+            ]}
+          >
             <View style={styles.logoClip}>
               <Svg width={110 * SCALE} height={110 * SCALE} viewBox="0 0 110 110">
                 <Defs>
@@ -481,17 +522,38 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
             </View>
           </Animated.View>
 
-          <Animated.Text style={[styles.title, titleStyle]}>Cloak</Animated.Text>
-          <Animated.Text style={[styles.tagline, taglineStyle]}>
+          <Animated.Text
+            style={[
+              styles.title,
+              {
+                opacity: titleOpacity,
+                transform: [{ translateY: titleY }],
+              },
+            ]}
+          >
+            Cloak
+          </Animated.Text>
+          <Animated.Text
+            style={[
+              styles.tagline,
+              {
+                opacity: taglineOpacity,
+                transform: [{ translateY: taglineY }],
+              },
+            ]}
+          >
             Shielded Payments on Starknet
           </Animated.Text>
         </View>
       </View>
 
       {/* Phase 3: loading */}
-      <Animated.View style={[styles.bottomArea, bottomStyle]} pointerEvents="none">
+      <Animated.View
+        style={[styles.bottomArea, { opacity: bottomOpacity }]}
+        pointerEvents="none"
+      >
         <View style={[styles.loadingTrack, { width: trackWidth }]}>
-          <Animated.View style={[styles.loadingFill, fillStyle]}>
+          <Animated.View style={[styles.loadingFill, { width: progressWidth }]}>
             <Svg width="100%" height={3} preserveAspectRatio="none">
               <Defs>
                 <LinearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
