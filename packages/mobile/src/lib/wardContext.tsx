@@ -135,6 +135,7 @@ export interface WardEntry {
   wardPublicKey: string;
   status: string;
   spendingLimitPerTx: string | null;
+  maxPerTx?: string | null;
   requireGuardianForAll: boolean;
   pseudoName?: string;
 }
@@ -387,6 +388,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         wardPublicKey: r.ward_public_key,
         status: r.status,
         spendingLimitPerTx: r.spending_limit_per_tx,
+        maxPerTx: r.max_per_tx || null,
         requireGuardianForAll: r.require_guardian_for_all ?? true,
         pseudoName: r.pseudo_name || undefined,
       }));

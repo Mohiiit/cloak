@@ -126,8 +126,15 @@ function GuardianCardContent({
   onApproved: () => void;
   onRejected: () => void;
 }) {
-  const { approveAsGuardian, rejectWardRequest } = useWardContext();
+  const { approveAsGuardian, rejectWardRequest, wards } = useWardContext();
   const wardName = useWardName(request.ward_address);
+
+  // Look up ward config from guardian's ward list for actual limits
+  const wardConfig = wards.find((w) => {
+    const reqAddr = normalizeAddress(request.ward_address).toLowerCase();
+    const wAddr = normalizeAddress(w.wardAddress).toLowerCase();
+    return reqAddr === wAddr;
+  });
   const modal = useThemedModal();
   const countdown = useCountdown(request.expires_at);
   const [isApproving, setIsApproving] = useState(false);
@@ -220,11 +227,27 @@ function GuardianCardContent({
           label="Amount"
           value={request.amount || "Claim pending balance"}
         />
-        <DetailRow
-          label="Policy"
-          value="Exceeded limit"
-          highlight
-        />
+        {wardConfig?.spendingLimitPerTx && (
+          <DetailRow
+            label="Daily Limit"
+            value={`${wardConfig.spendingLimitPerTx} STRK`}
+            highlight
+          />
+        )}
+        {wardConfig?.maxPerTx && (
+          <DetailRow
+            label="Max Per Txn"
+            value={`${wardConfig.maxPerTx} STRK`}
+            highlight
+          />
+        )}
+        {!wardConfig?.spendingLimitPerTx && !wardConfig?.maxPerTx && (
+          <DetailRow
+            label="Policy"
+            value="Exceeded limit"
+            highlight
+          />
+        )}
       </View>
 
       {/* Expiry pill + hint */}

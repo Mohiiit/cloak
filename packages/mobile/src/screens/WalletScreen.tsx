@@ -4,7 +4,7 @@
  * Note: Shield input is in token units (e.g. STRK). It is converted to Tongo units before execution.
  * Unshield input is in Tongo units ("units").
  */
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -20,7 +20,8 @@ import { parseInsufficientGasError } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { TOKENS, type TokenKey, erc20ToDisplay, tongoUnitToErc20Display } from "../lib/tokens";
-import { triggerMedium } from "../lib/haptics";
+import { triggerMedium, triggerSuccess } from "../lib/haptics";
+import { Confetti } from "../components/Confetti";
 import { colors, spacing, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { FeeRetryModal } from "../components/FeeRetryModal";
@@ -49,6 +50,91 @@ function parseDecimalToWei(value: string, decimals: number): bigint | null {
   const frac = BigInt(fracPadded || "0");
 
   return whole * 10n ** BigInt(decimals) + frac;
+}
+
+function WalletSuccessCard({
+  successInfo,
+  token,
+  copiedTx,
+  onCopyTx,
+  onDone,
+}: {
+  successInfo: SuccessInfo;
+  token: TokenKey;
+  copiedTx: boolean;
+  onCopyTx: (hash: string) => void;
+  onDone: () => void;
+}) {
+  const hasFiredHaptic = useRef(false);
+  useEffect(() => {
+    if (!hasFiredHaptic.current) {
+      hasFiredHaptic.current = true;
+      triggerSuccess();
+    }
+  }, []);
+
+  const displayTxHash =
+    successInfo.txHash.length > 20
+      ? `${successInfo.txHash.slice(0, 10)}...${successInfo.txHash.slice(-8)}`
+      : successInfo.txHash;
+
+  const isShield = successInfo.type === "shield";
+  const erc20Display = tongoUnitToErc20Display(successInfo.amountUnits, token);
+
+  return (
+    <View style={styles.successCard}>
+      <Confetti />
+      {/* Check circle — 80x80 matching SendScreen */}
+      <View style={styles.successIconCircle}>
+        <Check size={36} color="#10B981" />
+      </View>
+      <Text style={styles.successTitle}>
+        {isShield ? "Shielded!" : "Unshielded!"}
+      </Text>
+      <Text style={styles.successDesc}>
+        {isShield
+          ? "Funds deposited into your\nshielded balance"
+          : "Funds withdrawn to your\npublic wallet"}
+      </Text>
+
+      {/* Detail card */}
+      <View style={styles.successDetailCard}>
+        <View style={styles.successDetailRow}>
+          <Text style={styles.successDetailLabel}>Amount</Text>
+          <Text style={styles.successDetailValue}>
+            {successInfo.amountUnits} units ({erc20Display})
+          </Text>
+        </View>
+        <View style={styles.successDetailRow}>
+          <Text style={styles.successDetailLabel}>Tx Hash</Text>
+          <TouchableOpacity onPress={() => onCopyTx(successInfo.txHash)}>
+            <Text style={[styles.successDetailValue, { color: "#3B82F6" }]} numberOfLines={1} ellipsizeMode="middle">
+              {copiedTx ? "Copied!" : displayTxHash}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Done button */}
+      <TouchableOpacity
+        {...testProps(testIDs.wallet.successDone)}
+        style={styles.successDoneBtn}
+        onPress={onDone}
+        activeOpacity={0.8}
+      >
+        <Check size={18} color="#fff" />
+        <Text style={styles.successDoneBtnText}>Done</Text>
+      </TouchableOpacity>
+
+      {/* Explorer link */}
+      <TouchableOpacity
+        {...testProps(testIDs.wallet.successViewVoyager)}
+        onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${successInfo.txHash}`)}
+      >
+        <Text style={styles.successExplorerLink}>View on Voyager</Text>
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 export default function WalletScreen() {
@@ -227,51 +313,13 @@ export default function WalletScreen() {
       />
 
       {successInfo ? (
-        <View style={styles.successCard}>
-          <View style={styles.successIconCircle}>
-            <Check size={32} color={colors.success} />
-          </View>
-          <Text style={styles.successTitle}>
-            {successInfo.type === "shield" ? "Shielded!" : "Unshielded!"}
-          </Text>
-          <Text style={styles.successAmount}>{successInfo.amountUnits} units</Text>
-          <Text style={styles.successDesc}>
-            {successInfo.type === "shield"
-              ? "Funds deposited into your shielded balance."
-              : "Funds withdrawn to your public wallet."}
-          </Text>
-
-          <View style={styles.successTxSection}>
-            <Text style={styles.successTxLabel}>Transaction Hash</Text>
-            <Text style={styles.successTxHash} numberOfLines={2} selectable>
-              {successInfo.txHash}
-            </Text>
-            <View style={styles.successTxActions}>
-              <TouchableOpacity
-                {...testProps(testIDs.wallet.successCopyTx)}
-                style={styles.successTxBtn}
-                onPress={() => handleCopyTx(successInfo.txHash)}
-              >
-                <Text style={styles.successTxBtnText}>{copiedTx ? "Copied!" : "Copy Tx Hash"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                {...testProps(testIDs.wallet.successViewVoyager)}
-                style={styles.successTxBtn}
-                onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${successInfo.txHash}`)}
-              >
-                <Text style={styles.successTxBtnText}>View on Voyager</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            {...testProps(testIDs.wallet.successDone)}
-            style={styles.successDoneBtn}
-            onPress={() => setSuccessInfo(null)}
-          >
-            <Text style={styles.successDoneBtnText}>Done</Text>
-          </TouchableOpacity>
-        </View>
+        <WalletSuccessCard
+          successInfo={successInfo}
+          token={token}
+          copiedTx={copiedTx}
+          onCopyTx={handleCopyTx}
+          onDone={() => setSuccessInfo(null)}
+        />
       ) : (
         <View style={styles.cards}>
           {showShieldCard ? (
@@ -624,95 +672,88 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondary,
   },
 
-  // Success UI (will be replaced by modal parity later; kept for functional feedback)
+  // Success UI (matches SendScreen success modal design)
   successCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.xl,
-    alignItems: "center",
+    width: "100%",
+    backgroundColor: "#1E293B",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
+    borderColor: "#2D3B4D",
+    paddingTop: 40,
+    paddingHorizontal: 32,
+    paddingBottom: 32,
+    alignItems: "center",
+    gap: 20,
+    position: "relative",
+    overflow: "hidden",
   },
   successIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
-    borderWidth: 2,
-    borderColor: "rgba(16, 185, 129, 0.3)",
-    alignItems: "center",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(16, 185, 129, 0.13)",
+    borderWidth: 3,
+    borderColor: "#10B981",
     justifyContent: "center",
-    marginBottom: spacing.md,
+    alignItems: "center",
   },
   successTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: colors.success,
-    marginBottom: spacing.sm,
-    fontFamily: typography.primarySemibold,
-  },
-  successAmount: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: colors.text,
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#10B981",
     fontFamily: typography.primarySemibold,
   },
   successDesc: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-    textAlign: "center",
+    fontSize: 14,
+    color: "#94A3B8",
     fontFamily: typography.secondary,
+    textAlign: "center",
+    lineHeight: 21,
   },
-  successTxSection: {
+  successDetailCard: {
     width: "100%",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.xl,
+    backgroundColor: "#0F172A",
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
   },
-  successTxLabel: {
-    fontSize: 11,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: spacing.xs,
-    fontFamily: typography.primarySemibold,
-  },
-  successTxHash: {
-    fontSize: 11,
-    color: colors.text,
-    fontFamily: typography.primary,
-    marginBottom: spacing.sm,
-  },
-  successTxActions: { flexDirection: "row", gap: spacing.sm },
-  successTxBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.surface,
+  successDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.borderLight,
   },
-  successTxBtnText: {
-    fontSize: 11,
-    color: colors.primary,
-    fontWeight: "600",
-    fontFamily: typography.secondarySemibold,
+  successDetailLabel: {
+    fontSize: 12,
+    color: "#64748B",
+    fontFamily: typography.primary,
+  },
+  successDetailValue: {
+    fontSize: 12,
+    color: "#F8FAFC",
+    fontFamily: typography.primarySemibold,
+    flexShrink: 1,
+    textAlign: "right",
+    maxWidth: "60%",
   },
   successDoneBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 48,
-    borderRadius: borderRadius.md,
     width: "100%",
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#10B981",
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
   },
   successDoneBtnText: {
+    fontSize: 16,
+    fontWeight: "bold",
     color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
+    fontFamily: typography.primarySemibold,
+  },
+  successExplorerLink: {
+    fontSize: 13,
+    color: "#3B82F6",
     fontFamily: typography.primarySemibold,
   },
 });

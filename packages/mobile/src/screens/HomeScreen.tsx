@@ -1,7 +1,7 @@
 /**
  * HomeScreen — Balance overview, portfolio, and quick actions.
  */
-import React, { useState, useEffect, useLayoutEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -44,6 +44,8 @@ import { colors, spacing, fontSize, borderRadius, typography } from "../lib/them
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
+import { triggerSuccess } from "../lib/haptics";
+import { Confetti } from "../components/Confetti";
 import WebView from "react-native-webview";
 
 type WardInvitePayload = {
@@ -421,6 +423,76 @@ function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
           </Text>
         </View>
       </View>
+    </View>
+  );
+}
+
+function ClaimSuccessCard({
+  claimSuccess,
+  token,
+  onDone,
+}: {
+  claimSuccess: { txHash: string; amount: string };
+  token: string;
+  onDone: () => void;
+}) {
+  const hasFiredHaptic = useRef(false);
+  useEffect(() => {
+    if (!hasFiredHaptic.current) {
+      hasFiredHaptic.current = true;
+      triggerSuccess();
+    }
+  }, []);
+
+  const displayTxHash =
+    claimSuccess.txHash.length > 20
+      ? `${claimSuccess.txHash.slice(0, 10)}...${claimSuccess.txHash.slice(-8)}`
+      : claimSuccess.txHash;
+
+  return (
+    <View style={styles.claimSuccessCard}>
+      <Confetti />
+      {/* Check circle — 80x80, matching SendScreen */}
+      <View style={styles.claimSuccessCircle}>
+        <Check size={36} color="#10B981" />
+      </View>
+      <Text style={styles.claimSuccessTitle}>Claimed!</Text>
+      <Text style={styles.claimSuccessDesc}>
+        Pending funds have been added{"\n"}to your shielded balance
+      </Text>
+
+      {/* Detail card */}
+      <View style={styles.claimDetailCard}>
+        <View style={styles.claimDetailRow}>
+          <Text style={styles.claimDetailLabel}>Amount</Text>
+          <Text style={styles.claimDetailValue}>
+            {claimSuccess.amount} units ({tongoToDisplay(claimSuccess.amount, token as any)} {token})
+          </Text>
+        </View>
+        <View style={styles.claimDetailRow}>
+          <Text style={styles.claimDetailLabel}>Tx Hash</Text>
+          <Text style={[styles.claimDetailValue, { color: "#3B82F6" }]} numberOfLines={1} ellipsizeMode="middle">
+            {displayTxHash}
+          </Text>
+        </View>
+      </View>
+
+      {/* Done button */}
+      <TouchableOpacity
+        style={styles.claimDoneBtn}
+        onPress={onDone}
+        activeOpacity={0.8}
+      >
+        <Check size={18} color="#fff" />
+        <Text style={styles.claimDoneBtnText}>Done</Text>
+      </TouchableOpacity>
+
+      {/* Explorer link */}
+      <TouchableOpacity
+        onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${claimSuccess.txHash}`)}
+      >
+        <Text style={styles.claimExplorerLink}>View on Voyager</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -972,52 +1044,14 @@ export default function HomeScreen({ navigation }: any) {
       {modal.ModalComponent}
 
       {claimSuccess && (
-        <View style={styles.claimSuccessCard}>
-          <Check size={48} color={colors.success} style={{ marginBottom: spacing.md }} />
-          <Text style={styles.claimSuccessTitle}>Claimed!</Text>
-          <Text style={styles.claimSuccessAmount}>
-            {claimSuccess.amount} units
-          </Text>
-          <Text style={styles.claimSuccessEquiv}>
-            ({tongoToDisplay(claimSuccess.amount, wallet.selectedToken)} {wallet.selectedToken})
-          </Text>
-          <Text style={styles.claimSuccessDesc}>
-            Pending funds added to your balance.
-          </Text>
-
-          <View style={styles.claimTxSection}>
-            <Text style={styles.claimTxLabel}>Transaction Hash</Text>
-            <Text style={styles.claimTxHash} numberOfLines={2} selectable>
-              {claimSuccess.txHash}
-            </Text>
-            <View style={styles.claimTxActions}>
-              <TouchableOpacity
-                style={styles.claimTxBtn}
-                onPress={() => {
-                  Clipboard.setString(claimSuccess.txHash);
-                }}
-              >
-                <Text style={styles.claimTxBtnText}>Copy Tx Hash</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.claimTxBtn}
-                onPress={() => Linking.openURL(`https://sepolia.voyager.online/tx/${claimSuccess.txHash}`)}
-              >
-                <Text style={styles.claimTxBtnText}>View on Voyager</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.claimDoneBtn}
-            onPress={async () => {
-              setClaimSuccess(null);
-              await wallet.refreshBalance();
-            }}
-          >
-            <Text style={styles.claimDoneBtnText}>Done</Text>
-          </TouchableOpacity>
-        </View>
+        <ClaimSuccessCard
+          claimSuccess={claimSuccess}
+          token={wallet.selectedToken}
+          onDone={async () => {
+            setClaimSuccess(null);
+            await wallet.refreshBalance();
+          }}
+        />
       )}
 
       {!claimSuccess && (
@@ -1648,61 +1682,90 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  // Claim Success Card
+  // Claim Success Card (matches SendScreen success modal design)
   claimSuccessCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.xl,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
-  },
-  claimSuccessTitle: { fontSize: fontSize.xl, fontWeight: "bold", color: colors.success, marginBottom: spacing.sm },
-  claimSuccessAmount: { fontSize: fontSize.xxl, fontWeight: "bold", color: colors.text },
-  claimSuccessEquiv: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.xs },
-  claimSuccessDesc: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.lg },
-  claimTxSection: {
     width: "100%",
-    backgroundColor: colors.bg,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  claimTxLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: spacing.xs,
-  },
-  claimTxHash: {
-    fontSize: fontSize.xs,
-    color: colors.text,
-    fontFamily: "monospace",
-    marginBottom: spacing.sm,
-  },
-  claimTxActions: { flexDirection: "row", gap: spacing.sm },
-  claimTxBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.surface,
-    alignItems: "center",
+    backgroundColor: "#1E293B",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: "#2D3B4D",
+    paddingTop: 40,
+    paddingHorizontal: 32,
+    paddingBottom: 32,
+    alignItems: "center",
+    gap: 20,
+    position: "relative",
+    overflow: "hidden",
   },
-  claimTxBtnText: {
-    fontSize: fontSize.xs,
-    color: colors.primary,
-    fontWeight: "600",
+  claimSuccessCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(16, 185, 129, 0.13)",
+    borderWidth: 3,
+    borderColor: "#10B981",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  claimSuccessTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#10B981",
+    fontFamily: typography.primarySemibold,
+  },
+  claimSuccessDesc: {
+    fontSize: 14,
+    color: "#94A3B8",
+    fontFamily: typography.secondary,
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  claimDetailCard: {
+    width: "100%",
+    backgroundColor: "#0F172A",
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+  },
+  claimDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  claimDetailLabel: {
+    fontSize: 12,
+    color: "#64748B",
+    fontFamily: typography.primary,
+  },
+  claimDetailValue: {
+    fontSize: 12,
+    color: "#F8FAFC",
+    fontFamily: typography.primarySemibold,
+    flexShrink: 1,
+    textAlign: "right",
+    maxWidth: "60%",
   },
   claimDoneBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 48,
-    borderRadius: borderRadius.md,
+    width: "100%",
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#10B981",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
   },
-  claimDoneBtnText: { color: "#fff", fontSize: fontSize.md, fontWeight: "600" },
+  claimDoneBtnText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#fff",
+    fontFamily: typography.primarySemibold,
+  },
+  claimExplorerLink: {
+    fontSize: 13,
+    color: "#3B82F6",
+    fontFamily: typography.primarySemibold,
+  },
 
   // Ward Badge & Info
   wardBanner: {

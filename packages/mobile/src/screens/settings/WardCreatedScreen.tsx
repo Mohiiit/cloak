@@ -22,6 +22,7 @@ type WardCreatedParams = {
   pseudoName?: string;
   initialFundingAmountWei?: string;
   dailyLimit?: string;
+  maxPerTx?: string;
 };
 
 type WardCreatedRouteProp = RouteProp<
@@ -57,6 +58,7 @@ export default function WardCreatedScreen() {
     pseudoName,
     initialFundingAmountWei,
     dailyLimit,
+    maxPerTx,
   } = route.params;
 
   const wardName = pseudoName || "ward";
@@ -160,6 +162,10 @@ export default function WardCreatedScreen() {
           <View style={styles.configRow}>
             <Text style={styles.configLabel}>Daily Limit</Text>
             <Text style={styles.configValue}>{dailyLimit ? `${dailyLimit} STRK` : "-- STRK"}</Text>
+          </View>
+          <View style={styles.configRow}>
+            <Text style={styles.configLabel}>Max Per Txn</Text>
+            <Text style={styles.configValue}>{maxPerTx ? `${maxPerTx} STRK` : "-- STRK"}</Text>
           </View>
           <View style={styles.configRow}>
             <Text style={styles.configLabel}>Initial Funding</Text>

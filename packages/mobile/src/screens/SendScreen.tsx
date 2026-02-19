@@ -45,7 +45,8 @@ import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { tongoUnitToErc20Display, erc20ToDisplay, type TokenKey } from "../lib/tokens";
 import { useContacts } from "../hooks/useContacts";
 import { saveTxNote } from "../lib/storage";
-import { triggerMedium } from "../lib/haptics";
+import { triggerMedium, triggerSuccess } from "../lib/haptics";
+import { Confetti } from "../components/Confetti";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { FeeRetryModal } from "../components/FeeRetryModal";
 import { KeyboardSafeScreen } from "../components/KeyboardSafeContainer";
@@ -223,6 +224,17 @@ function SuccessModal({
   onDone: () => void;
   sendMode?: "private" | "public";
 }) {
+  const hasFiredHaptic = useRef(false);
+  useEffect(() => {
+    if (visible && !hasFiredHaptic.current) {
+      hasFiredHaptic.current = true;
+      triggerSuccess();
+    }
+    if (!visible) {
+      hasFiredHaptic.current = false;
+    }
+  }, [visible]);
+
   const isPublic = sendMode === "public";
   const displayAmount = isPublic
     ? `${amount || "0"} ${token}`
@@ -248,7 +260,8 @@ function SuccessModal({
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={modalStyles.overlay}>
-        <View style={[modalStyles.card, { gap: 20 }]}>
+        <View style={[modalStyles.card, { gap: 20, position: "relative", overflow: "hidden" }]}>
+          {visible && <Confetti />}
           {/* Check circle */}
           <View style={modalStyles.successCircle}>
             <Check size={36} color="#10B981" />

@@ -131,7 +131,7 @@ export default function WardSetupScreen({ navigation }: WardSetupScreenProps) {
           wardPrivateKey: result?.wardPrivateKey,
           qrPayload: result?.qrPayload,
           pseudoName: pseudoName.trim(),
-          fundingAmount,
+          initialFundingAmountWei: fundingWei,
           dailyLimit,
           maxPerTx,
         });
