@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ShieldAlert } from "lucide-react-native";
-import { normalizeAddress } from "@cloak-wallet/sdk";
+import { normalizeAddress, toWardApprovalUiModel } from "@cloak-wallet/sdk";
 import { useWardContext, type WardApprovalRequest } from "../lib/wardContext";
 import { useThemedModal } from "./ThemedModal";
 import { promptBiometric } from "../lib/twoFactor";
@@ -41,18 +41,6 @@ function truncate(str: string, front = 8, back = 6): string {
   if (!str) return "";
   if (str.length <= front + back + 3) return str;
   return `${str.slice(0, front)}...${str.slice(-back)}`;
-}
-
-function formatAction(action: string): { label: string; isPrivate: boolean } {
-  const map: Record<string, { label: string; isPrivate: boolean }> = {
-    fund: { label: "Shield Tokens", isPrivate: true },
-    shield: { label: "Shield Tokens", isPrivate: true },
-    transfer: { label: "Private Transfer", isPrivate: true },
-    withdraw: { label: "Unshield Tokens", isPrivate: false },
-    unshield: { label: "Unshield Tokens", isPrivate: false },
-    rollover: { label: "Claim Pending", isPrivate: true },
-  };
-  return map[action] || { label: action, isPrivate: false };
 }
 
 function useCountdown(expiresAt: string): string {
@@ -151,6 +139,7 @@ function GuardianCardContent({
   const countdown = useCountdown(request.expires_at);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  const ui = toWardApprovalUiModel(request);
 
   const isExpired = countdown === "Expired";
 
@@ -232,21 +221,20 @@ function GuardianCardContent({
       {/* Detail card */}
       <View style={styles.detailCard}>
         {(() => {
-          const actionInfo = formatAction(request.action);
           return (
             <>
-              <DetailRow label="Action" value={actionInfo.label} />
+              <DetailRow label="Action" value={ui.actionLabel} />
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Type</Text>
                 <View style={[
                   styles.typeBadge,
-                  actionInfo.isPrivate ? styles.typeBadgePrivate : styles.typeBadgePublic,
+                  ui.visibility === "shielded" ? styles.typeBadgePrivate : styles.typeBadgePublic,
                 ]}>
                   <Text style={[
                     styles.typeBadgeText,
-                    actionInfo.isPrivate ? styles.typeBadgeTextPrivate : styles.typeBadgeTextPublic,
+                    ui.visibility === "shielded" ? styles.typeBadgeTextPrivate : styles.typeBadgeTextPublic,
                   ]}>
-                    {actionInfo.isPrivate ? "Shielded" : "Public"}
+                    {ui.visibility === "shielded" ? "Shielded" : "Public"}
                   </Text>
                 </View>
               </View>
@@ -259,7 +247,7 @@ function GuardianCardContent({
         )}
         <DetailRow
           label="Amount"
-          value={request.amount || "Claim pending balance"}
+          value={ui.amount.displayValue ? `${ui.amount.displayValue} ${ui.amount.token}` : "Claim pending balance"}
         />
         {wardConfig?.spendingLimitPerTx && (
           <DetailRow

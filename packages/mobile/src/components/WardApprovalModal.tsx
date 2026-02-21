@@ -15,6 +15,7 @@ import {
   Easing,
 } from "react-native";
 import { Smartphone } from "lucide-react-native";
+import { toWardApprovalUiModel } from "@cloak-wallet/sdk";
 import { useWardContext, type WardApprovalRequest } from "../lib/wardContext";
 import { useThemedModal } from "./ThemedModal";
 import { promptBiometric } from "../lib/twoFactor";
@@ -27,18 +28,6 @@ function truncate(str: string, front = 8, back = 6): string {
   if (!str) return "";
   if (str.length <= front + back + 3) return str;
   return `${str.slice(0, front)}...${str.slice(-back)}`;
-}
-
-function formatAction(action: string): { label: string; type: string } {
-  const map: Record<string, { label: string; type: string }> = {
-    fund: { label: "Shield Tokens", type: "Private" },
-    shield: { label: "Shield Tokens", type: "Private" },
-    transfer: { label: "Private Transfer", type: "Private" },
-    withdraw: { label: "Unshield Tokens", type: "Public" },
-    unshield: { label: "Unshield Tokens", type: "Public" },
-    rollover: { label: "Claim Pending", type: "Private" },
-  };
-  return map[action] || { label: action, type: "Unknown" };
 }
 
 function useCountdown(expiresAt: string): string {
@@ -125,6 +114,7 @@ export default function WardApprovalModal() {
   const request = pendingWard2faRequests[0] as WardApprovalRequest | undefined;
   const countdown = useCountdown(request?.expires_at ?? new Date().toISOString());
   const isExpired = countdown === "Expired";
+  const ui = request ? toWardApprovalUiModel(request) : null;
 
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
@@ -211,21 +201,20 @@ export default function WardApprovalModal() {
           {/* ── Details card ── */}
           <View style={styles.detailsCard}>
             {(() => {
-              const actionInfo = formatAction(request?.action ?? "");
               return (
                 <>
-                  <DetailRow label="Action" value={actionInfo.label} />
+                  <DetailRow label="Action" value={ui?.actionLabel || "Transaction"} />
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Type</Text>
                     <View style={[
                       styles.typeBadge,
-                      actionInfo.type === "Private" ? styles.typeBadgePrivate : styles.typeBadgePublic,
+                      ui?.visibility === "shielded" ? styles.typeBadgePrivate : styles.typeBadgePublic,
                     ]}>
                       <Text style={[
                         styles.typeBadgeText,
-                        actionInfo.type === "Private" ? styles.typeBadgeTextPrivate : styles.typeBadgeTextPublic,
+                        ui?.visibility === "shielded" ? styles.typeBadgeTextPrivate : styles.typeBadgeTextPublic,
                       ]}>
-                        {actionInfo.type === "Private" ? "Shielded" : "Public"}
+                        {ui?.visibility === "shielded" ? "Shielded" : "Public"}
                       </Text>
                     </View>
                   </View>
@@ -233,8 +222,11 @@ export default function WardApprovalModal() {
               );
             })()}
             <DetailRow label="Token" value={request?.token ?? ""} />
-            {request?.amount ? (
-              <DetailRow label="Amount" value={request.amount} />
+            {ui?.amount.hasAmount ? (
+              <DetailRow
+                label="Amount"
+                value={ui.amount.displayValue ? `${ui.amount.displayValue} ${ui.amount.token}` : (request?.amount || "")}
+              />
             ) : null}
             {request?.recipient ? (
               <DetailRow

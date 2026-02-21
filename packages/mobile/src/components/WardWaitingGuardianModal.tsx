@@ -13,6 +13,7 @@ import {
   Animated,
 } from "react-native";
 import { ShieldCheck } from "lucide-react-native";
+import { toWardApprovalUiModel } from "@cloak-wallet/sdk";
 import { useWardContext } from "../lib/wardContext";
 import { colors, spacing, typography } from "../lib/theme";
 
@@ -30,18 +31,6 @@ function truncate(str: string, front = 8, back = 6): string {
   if (!str) return "";
   if (str.length <= front + back + 3) return str;
   return `${str.slice(0, front)}...${str.slice(-back)}`;
-}
-
-function formatAction(action: string): string {
-  const map: Record<string, string> = {
-    fund: "Shield (Fund)",
-    shield: "Shield (Fund)",
-    transfer: "Shielded Transfer",
-    withdraw: "Withdraw (Unshield)",
-    unshield: "Withdraw (Unshield)",
-    rollover: "Claim (Rollover)",
-  };
-  return map[action] || action;
 }
 
 // ── Polling Dots ─────────────────────────────────────────────────────────────
@@ -126,6 +115,7 @@ export default function WardWaitingGuardianModal() {
   if (!wardWaitingRequest) return null;
 
   const request = wardWaitingRequest;
+  const ui = toWardApprovalUiModel(request);
   const dailyLimit = wardInfo?.spendingLimitPerTx || "--";
 
   return (
@@ -157,7 +147,7 @@ export default function WardWaitingGuardianModal() {
           <View style={styles.detailCard}>
             <DetailRow
               label="Type"
-              value={formatAction(request.action)}
+              value={ui.actionLabel}
             />
             {request.recipient && (
               <DetailRow
@@ -167,13 +157,13 @@ export default function WardWaitingGuardianModal() {
             )}
             <DetailRow
               label="Amount"
-              value={request.amount || "Claim pending balance"}
+              value={ui.amount.displayValue ? `${ui.amount.displayValue} ${ui.amount.token}` : "Claim pending balance"}
             />
             <DetailRow
               label="Daily used"
               value={
-                request.amount
-                  ? `${request.amount} / ${dailyLimit} STRK`
+                ui.amount.displayValue
+                  ? `${ui.amount.displayValue} ${ui.amount.token} / ${dailyLimit} STRK`
                   : `-- / ${dailyLimit} STRK`
               }
               highlight

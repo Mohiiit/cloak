@@ -129,4 +129,79 @@ describe("Repositories", () => {
       { initialStatus: "pending_guardian" },
     );
   });
+
+  it("delegates typed ward request lifecycle helpers", async () => {
+    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
+    const repo = new ApprovalsRepository(sb);
+
+    const sample = {
+      id: "req-1",
+      ward_address: "0xward",
+      guardian_address: "0xguardian",
+      action: "transfer",
+      token: "STRK",
+      amount: "20",
+      amount_unit: "tongo_units",
+      recipient: "0x2",
+      calls_json: "[]",
+      nonce: "0x1",
+      resource_bounds_json: "{}",
+      tx_hash: "0xtx",
+      ward_sig_json: "[]",
+      ward_2fa_sig_json: null,
+      guardian_sig_json: null,
+      guardian_2fa_sig_json: null,
+      needs_ward_2fa: false,
+      needs_guardian: true,
+      needs_guardian_2fa: false,
+      status: "pending_guardian" as const,
+      final_tx_hash: null,
+      error_message: null,
+      created_at: "2026-02-21T00:00:00.000Z",
+      expires_at: "2026-02-21T00:10:00.000Z",
+      responded_at: null,
+    };
+
+    const createSpy = vi.spyOn(wardFns, "createWardApprovalRequest").mockResolvedValue(sample as any);
+    const getSpy = vi.spyOn(wardFns, "getWardApprovalRequestById").mockResolvedValue(sample as any);
+    const updateSpy = vi.spyOn(wardFns, "updateWardApprovalRequest").mockResolvedValue({
+      ...sample,
+      status: "approved",
+    } as any);
+    const listGuardianSpy = vi
+      .spyOn(wardFns, "listWardApprovalRequestsForGuardian")
+      .mockResolvedValue([sample as any]);
+    const listWardSpy = vi
+      .spyOn(wardFns, "listWardApprovalRequestsForWard")
+      .mockResolvedValue([sample as any]);
+
+    await repo.createWardRequest({
+      wardAddress: "0xward",
+      guardianAddress: "0xguardian",
+      action: "transfer",
+      token: "STRK",
+      amount: "20",
+      recipient: "0x2",
+      callsJson: "[]",
+      wardSigJson: "[]",
+      nonce: "0x1",
+      resourceBoundsJson: "{}",
+      txHash: "0xtx",
+      needsWard2fa: false,
+      needsGuardian: true,
+      needsGuardian2fa: false,
+    });
+    await repo.getWardRequest("req-1");
+    await repo.updateWardRequest("req-1", { status: "approved" });
+    await repo.listGuardianWardRequests("0xguardian", ["pending_guardian"], 20);
+    await repo.listWardRequests("0xward", ["approved"], 20);
+    const ui = repo.toWardRequestView(sample as any);
+
+    expect(createSpy).toHaveBeenCalledWith(sb, expect.objectContaining({ wardAddress: "0xward" }), undefined);
+    expect(getSpy).toHaveBeenCalledWith(sb, "req-1");
+    expect(updateSpy).toHaveBeenCalledWith(sb, "req-1", { status: "approved" });
+    expect(listGuardianSpy).toHaveBeenCalledWith(sb, "0xguardian", ["pending_guardian"], 20);
+    expect(listWardSpy).toHaveBeenCalledWith(sb, "0xward", ["approved"], 20);
+    expect(ui.actionLabel).toBe("Private Transfer");
+  });
 });

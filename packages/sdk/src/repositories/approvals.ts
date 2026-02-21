@@ -5,10 +5,20 @@ import {
   type TwoFAApprovalResult,
 } from "../two-factor";
 import {
+  createWardApprovalRequest,
+  getWardApprovalRequestById,
+  updateWardApprovalRequest,
+  listWardApprovalRequestsForGuardian,
+  listWardApprovalRequestsForWard,
+  toWardApprovalUiModel,
   requestWardApproval,
   type WardApprovalParams,
   type WardApprovalResult,
   type WardApprovalRequestOptions,
+  type WardApprovalRequest,
+  type WardApprovalUpdate,
+  type WardApprovalStatus,
+  type WardApprovalUiModel,
 } from "../ward";
 
 export type TwoFactorRequestStatus =
@@ -65,5 +75,43 @@ export class ApprovalsRepository {
       options.signal,
       options.requestOptions,
     );
+  }
+
+  async createWardRequest(
+    params: WardApprovalParams,
+    options?: WardApprovalRequestOptions,
+  ): Promise<WardApprovalRequest> {
+    return createWardApprovalRequest(this.supabase, params, options);
+  }
+
+  async getWardRequest(requestId: string): Promise<WardApprovalRequest | null> {
+    return getWardApprovalRequestById(this.supabase, requestId);
+  }
+
+  async updateWardRequest(
+    requestId: string,
+    update: WardApprovalUpdate,
+  ): Promise<WardApprovalRequest | null> {
+    return updateWardApprovalRequest(this.supabase, requestId, update);
+  }
+
+  async listGuardianWardRequests(
+    guardianAddress: string,
+    statuses?: WardApprovalStatus[],
+    limit?: number,
+  ): Promise<WardApprovalRequest[]> {
+    return listWardApprovalRequestsForGuardian(this.supabase, guardianAddress, statuses, limit);
+  }
+
+  async listWardRequests(
+    wardAddress: string,
+    statuses?: WardApprovalStatus[],
+    limit?: number,
+  ): Promise<WardApprovalRequest[]> {
+    return listWardApprovalRequestsForWard(this.supabase, wardAddress, statuses, limit);
+  }
+
+  toWardRequestView(request: WardApprovalRequest): WardApprovalUiModel {
+    return toWardApprovalUiModel(request);
   }
 }

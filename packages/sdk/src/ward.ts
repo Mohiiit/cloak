@@ -10,7 +10,7 @@ import type { SupabaseLite } from "./supabase";
 import { TOKENS, formatTokenAmount } from "./tokens";
 import type { TokenKey } from "./types";
 import { DEFAULT_RPC } from "./config";
-import type { AmountUnit } from "./token-convert";
+import { convertAmount, type AmountUnit } from "./token-convert";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -56,12 +56,56 @@ export interface WardApprovalRequest {
   needs_ward_2fa: boolean;
   needs_guardian: boolean;
   needs_guardian_2fa: boolean;
-  status: string;
+  status: WardApprovalStatus;
   final_tx_hash: string | null;
   error_message: string | null;
   created_at: string;
   expires_at: string;
   responded_at: string | null;
+}
+
+export type WardApprovalStatus =
+  | "pending_ward_sig"
+  | "pending_guardian"
+  | "approved"
+  | "rejected"
+  | "failed"
+  | "gas_error"
+  | "expired";
+
+export type WardApprovalStage = "ward_signature" | "guardian_approval" | "terminal";
+export type WardApprovalVisibility = "shielded" | "public";
+
+export interface WardApprovalAmountView {
+  token: string;
+  rawValue: string | null;
+  unit: AmountUnit | null;
+  displayValue: string | null;
+  unitValue: string | null;
+  hasAmount: boolean;
+}
+
+export interface WardApprovalUiModel {
+  requestId: string;
+  stage: WardApprovalStage;
+  status: WardApprovalStatus;
+  statusLabel: string;
+  action: string;
+  actionLabel: string;
+  visibility: WardApprovalVisibility;
+  wardAddress: string;
+  guardianAddress: string;
+  recipient: string | null;
+  amount: WardApprovalAmountView;
+  needsWard2fa: boolean;
+  needsGuardian: boolean;
+  needsGuardian2fa: boolean;
+  txHash: string;
+  finalTxHash: string | null;
+  createdAt: string;
+  expiresAt: string;
+  respondedAt: string | null;
+  errorMessage: string | null;
 }
 
 export interface WardApprovalParams {
@@ -99,6 +143,20 @@ export interface WardApprovalResult {
   approved: boolean;
   txHash?: string;
   error?: string;
+}
+
+export interface WardApprovalUpdate {
+  status: WardApprovalStatus;
+  nonce?: string | null;
+  resourceBoundsJson?: string | null;
+  txHash?: string | null;
+  wardSigJson?: string | null;
+  ward2faSigJson?: string | null;
+  guardianSigJson?: string | null;
+  guardian2faSigJson?: string | null;
+  finalTxHash?: string | null;
+  errorMessage?: string | null;
+  respondedAt?: string | null;
 }
 
 // ─── Address Normalization ────────────────────────────────────────────────────
@@ -659,8 +717,299 @@ export function getProvider(network: "sepolia" | "mainnet" = "sepolia"): RpcProv
 
 // ─── Ward Approval Request + Poll ─────────────────────────────────────────────
 
+const TOKEN_SUFFIX_RE = /\s*(STRK|ETH|USDC)\s*$/i;
 const POLL_INTERVAL = 2000;
 const TIMEOUT = 10 * 60 * 1000; // 10 minutes
+
+const TERMINAL_WARD_STATUSES = new Set<WardApprovalStatus>([
+  "approved",
+  "rejected",
+  "failed",
+  "gas_error",
+  "expired",
+]);
+
+function asWardApprovalStatus(status: string | null | undefined): WardApprovalStatus {
+  switch (status) {
+    case "pending_ward_sig":
+    case "pending_guardian":
+    case "approved":
+    case "rejected":
+    case "failed":
+    case "gas_error":
+    case "expired":
+      return status;
+    default:
+      return "pending_ward_sig";
+  }
+}
+
+function isAmountUnit(unit: unknown): unit is AmountUnit {
+  return unit === "tongo_units" || unit === "erc20_wei" || unit === "erc20_display";
+}
+
+function sanitizeAmountValue(raw: string, unit: AmountUnit): string {
+  const stripped = (raw || "").replace(TOKEN_SUFFIX_RE, "").replace(/,/g, "").trim();
+  if (!stripped) return "0";
+  if (unit === "erc20_display") {
+    return /^\d+(\.\d+)?$/.test(stripped) ? stripped : "0";
+  }
+  const digits = stripped.replace(/[^\d]/g, "");
+  return digits || "0";
+}
+
+function resolveWardAmountUnit(request: WardApprovalRequest): AmountUnit | null {
+  if (isAmountUnit(request.amount_unit)) return request.amount_unit;
+  if (!request.amount) return null;
+  if (request.action === "erc20_transfer") return "erc20_display";
+  const stripped = request.amount.replace(TOKEN_SUFFIX_RE, "").trim();
+  if (stripped.includes(".") || TOKEN_SUFFIX_RE.test(request.amount)) return "erc20_display";
+  return "tongo_units";
+}
+
+function wardActionLabel(action: string): string {
+  switch (action) {
+    case "fund":
+    case "shield":
+      return "Shield Tokens";
+    case "transfer":
+    case "send":
+      return "Private Transfer";
+    case "erc20_transfer":
+      return "Public Transfer";
+    case "withdraw":
+    case "unshield":
+      return "Unshield Tokens";
+    case "rollover":
+      return "Claim Pending";
+    default:
+      return action || "Transaction";
+  }
+}
+
+function wardStatusLabel(status: WardApprovalStatus): string {
+  switch (status) {
+    case "pending_ward_sig":
+      return "Waiting for ward signature";
+    case "pending_guardian":
+      return "Waiting for guardian approval";
+    case "approved":
+      return "Approved";
+    case "rejected":
+      return "Rejected";
+    case "failed":
+      return "Failed";
+    case "gas_error":
+      return "Gas retry required";
+    case "expired":
+      return "Expired";
+  }
+}
+
+function wardStageFromStatus(status: WardApprovalStatus): WardApprovalStage {
+  if (status === "pending_ward_sig") return "ward_signature";
+  if (status === "pending_guardian") return "guardian_approval";
+  return "terminal";
+}
+
+function toWardApprovalRequest(row: any): WardApprovalRequest {
+  return {
+    id: String(row?.id || ""),
+    ward_address: normalizeAddress(String(row?.ward_address || "0x0")),
+    guardian_address: normalizeAddress(String(row?.guardian_address || "0x0")),
+    action: String(row?.action || ""),
+    token: String(row?.token || "STRK"),
+    amount: row?.amount ?? null,
+    amount_unit: isAmountUnit(row?.amount_unit) ? row.amount_unit : null,
+    recipient: row?.recipient ?? null,
+    calls_json: String(row?.calls_json || "[]"),
+    nonce: String(row?.nonce || ""),
+    resource_bounds_json: String(row?.resource_bounds_json || "{}"),
+    tx_hash: String(row?.tx_hash || ""),
+    ward_sig_json: row?.ward_sig_json ?? null,
+    ward_2fa_sig_json: row?.ward_2fa_sig_json ?? null,
+    guardian_sig_json: row?.guardian_sig_json ?? null,
+    guardian_2fa_sig_json: row?.guardian_2fa_sig_json ?? null,
+    needs_ward_2fa: !!row?.needs_ward_2fa,
+    needs_guardian: !!row?.needs_guardian,
+    needs_guardian_2fa: !!row?.needs_guardian_2fa,
+    status: asWardApprovalStatus(row?.status),
+    final_tx_hash: row?.final_tx_hash ?? null,
+    error_message: row?.error_message ?? null,
+    created_at: String(row?.created_at || new Date().toISOString()),
+    expires_at: String(row?.expires_at || new Date(Date.now() + TIMEOUT).toISOString()),
+    responded_at: row?.responded_at ?? null,
+  };
+}
+
+function buildAmountView(request: WardApprovalRequest): WardApprovalAmountView {
+  const amount = request.amount;
+  const token = request.token || "STRK";
+  const unit = resolveWardAmountUnit(request);
+  if (!amount || !unit) {
+    return {
+      token,
+      rawValue: amount ?? null,
+      unit,
+      displayValue: null,
+      unitValue: null,
+      hasAmount: false,
+    };
+  }
+
+  try {
+    const safeToken = (token in TOKENS ? token : "STRK") as TokenKey;
+    const safeValue = sanitizeAmountValue(amount, unit);
+    const displayValue = convertAmount(
+      { value: safeValue, unit, token: safeToken },
+      "erc20_display",
+    );
+    const unitValue = convertAmount(
+      { value: safeValue, unit, token: safeToken },
+      "tongo_units",
+    );
+    return {
+      token,
+      rawValue: amount,
+      unit,
+      displayValue,
+      unitValue,
+      hasAmount: displayValue !== "0",
+    };
+  } catch {
+    return {
+      token,
+      rawValue: amount,
+      unit,
+      displayValue: amount.replace(TOKEN_SUFFIX_RE, "").trim(),
+      unitValue: null,
+      hasAmount: true,
+    };
+  }
+}
+
+export function toWardApprovalUiModel(request: WardApprovalRequest): WardApprovalUiModel {
+  const status = asWardApprovalStatus(request.status);
+  const visibility: WardApprovalVisibility = request.action === "erc20_transfer" ? "public" : "shielded";
+  return {
+    requestId: request.id,
+    stage: wardStageFromStatus(status),
+    status,
+    statusLabel: wardStatusLabel(status),
+    action: request.action,
+    actionLabel: wardActionLabel(request.action),
+    visibility,
+    wardAddress: normalizeAddress(request.ward_address),
+    guardianAddress: normalizeAddress(request.guardian_address),
+    recipient: request.recipient ?? null,
+    amount: buildAmountView(request),
+    needsWard2fa: request.needs_ward_2fa,
+    needsGuardian: request.needs_guardian,
+    needsGuardian2fa: request.needs_guardian_2fa,
+    txHash: request.tx_hash || "",
+    finalTxHash: request.final_tx_hash ?? null,
+    createdAt: request.created_at,
+    expiresAt: request.expires_at,
+    respondedAt: request.responded_at ?? null,
+    errorMessage: request.error_message ?? null,
+  };
+}
+
+export async function createWardApprovalRequest(
+  sb: SupabaseLite,
+  params: WardApprovalParams,
+  options?: WardApprovalRequestOptions,
+): Promise<WardApprovalRequest> {
+  const normalizedWard = normalizeAddress(params.wardAddress);
+  const normalizedGuardian = normalizeAddress(params.guardianAddress);
+  const rows = await sb.insert("ward_approval_requests", {
+    ward_address: normalizedWard,
+    guardian_address: normalizedGuardian,
+    action: params.action,
+    token: params.token,
+    amount: params.amount,
+    amount_unit: params.amountUnit ?? null,
+    recipient: params.recipient,
+    calls_json: params.callsJson,
+    nonce: params.nonce,
+    resource_bounds_json: params.resourceBoundsJson,
+    tx_hash: params.txHash || "",
+    ward_sig_json: params.wardSigJson,
+    needs_ward_2fa: params.needsWard2fa,
+    needs_guardian: params.needsGuardian,
+    needs_guardian_2fa: params.needsGuardian2fa,
+    status: options?.initialStatus || "pending_ward_sig",
+  });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  if (!row) throw new Error("Failed to create ward approval request");
+  return toWardApprovalRequest(row);
+}
+
+export async function getWardApprovalRequestById(
+  sb: SupabaseLite,
+  requestId: string,
+): Promise<WardApprovalRequest | null> {
+  const rows = await sb.select("ward_approval_requests", `id=eq.${requestId}`);
+  if (!rows || rows.length === 0) return null;
+  return toWardApprovalRequest(rows[0]);
+}
+
+export async function updateWardApprovalRequest(
+  sb: SupabaseLite,
+  requestId: string,
+  update: WardApprovalUpdate,
+): Promise<WardApprovalRequest | null> {
+  const body: Record<string, any> = { status: update.status };
+  if (update.nonce !== undefined) body.nonce = update.nonce;
+  if (update.resourceBoundsJson !== undefined) body.resource_bounds_json = update.resourceBoundsJson;
+  if (update.txHash !== undefined) body.tx_hash = update.txHash;
+  if (update.wardSigJson !== undefined) body.ward_sig_json = update.wardSigJson;
+  if (update.ward2faSigJson !== undefined) body.ward_2fa_sig_json = update.ward2faSigJson;
+  if (update.guardianSigJson !== undefined) body.guardian_sig_json = update.guardianSigJson;
+  if (update.guardian2faSigJson !== undefined) body.guardian_2fa_sig_json = update.guardian2faSigJson;
+  if (update.finalTxHash !== undefined) body.final_tx_hash = update.finalTxHash;
+  if (update.errorMessage !== undefined) body.error_message = update.errorMessage;
+  if (update.respondedAt !== undefined) {
+    body.responded_at = update.respondedAt;
+  } else if (TERMINAL_WARD_STATUSES.has(update.status)) {
+    body.responded_at = new Date().toISOString();
+  }
+  const rows = await sb.update("ward_approval_requests", `id=eq.${requestId}`, body);
+  if (rows && rows.length > 0) return toWardApprovalRequest(rows[0]);
+  return getWardApprovalRequestById(sb, requestId);
+}
+
+export async function listWardApprovalRequestsForGuardian(
+  sb: SupabaseLite,
+  guardianAddress: string,
+  statuses?: WardApprovalStatus[],
+  limit = 50,
+): Promise<WardApprovalRequest[]> {
+  const normalizedGuardian = normalizeAddress(guardianAddress);
+  const filters = [`guardian_address=eq.${normalizedGuardian}`];
+  if (statuses && statuses.length > 0) {
+    filters.push(`status=in.(${statuses.join(",")})`);
+  }
+  filters.push(`limit=${Math.max(limit, 1)}`);
+  const rows = await sb.select("ward_approval_requests", filters.join("&"), "created_at.desc");
+  return rows.map(toWardApprovalRequest);
+}
+
+export async function listWardApprovalRequestsForWard(
+  sb: SupabaseLite,
+  wardAddress: string,
+  statuses?: WardApprovalStatus[],
+  limit = 50,
+): Promise<WardApprovalRequest[]> {
+  const normalizedWard = normalizeAddress(wardAddress);
+  const filters = [`ward_address=eq.${normalizedWard}`];
+  if (statuses && statuses.length > 0) {
+    filters.push(`status=in.(${statuses.join(",")})`);
+  }
+  filters.push(`limit=${Math.max(limit, 1)}`);
+  const rows = await sb.select("ward_approval_requests", filters.join("&"), "created_at.desc");
+  return rows.map(toWardApprovalRequest);
+}
 
 /**
  * Insert a ward approval request into Supabase and poll for completion.
@@ -673,44 +1022,23 @@ export async function requestWardApproval(
   signal?: AbortSignal,
   options?: WardApprovalRequestOptions,
 ): Promise<WardApprovalResult> {
-  const normalizedWard = normalizeAddress(params.wardAddress);
-  const normalizedGuardian = normalizeAddress(params.guardianAddress);
-
   onStatusChange?.("Submitting ward approval request...");
 
-  let rows: any[];
+  let createdRequest: WardApprovalRequest;
   try {
-    rows = await sb.insert("ward_approval_requests", {
-      ward_address: normalizedWard,
-      guardian_address: normalizedGuardian,
-      action: params.action,
-      token: params.token,
-      amount: params.amount,
-      amount_unit: params.amountUnit ?? null,
-      recipient: params.recipient,
-      calls_json: params.callsJson,
-      nonce: params.nonce,
-      resource_bounds_json: params.resourceBoundsJson,
-      tx_hash: params.txHash || "",
-      ward_sig_json: params.wardSigJson,
-      needs_ward_2fa: params.needsWard2fa,
-      needs_guardian: params.needsGuardian,
-      needs_guardian_2fa: params.needsGuardian2fa,
-      status: options?.initialStatus || "pending_ward_sig",
-    });
+    createdRequest = await createWardApprovalRequest(sb, params, options);
   } catch (err: any) {
     return { approved: false, error: `Failed to submit ward approval: ${err.message}` };
   }
 
-  const requestId = Array.isArray(rows) ? rows[0]?.id : (rows as any)?.id;
+  const requestId = createdRequest.id;
   if (!requestId) {
     return { approved: false, error: "Failed to get ward approval request ID" };
   }
 
   if (options?.onRequestCreated) {
     try {
-      const inserted = Array.isArray(rows) ? rows[0] : (rows as any);
-      await options.onRequestCreated(inserted as WardApprovalRequest);
+      await options.onRequestCreated(createdRequest);
     } catch (err: any) {
       return {
         approved: false,
@@ -736,8 +1064,7 @@ export async function requestWardApproval(
       }
 
       try {
-        const results = await sb.select("ward_approval_requests", `id=eq.${requestId}`);
-        const row = results[0];
+        const row = await getWardApprovalRequestById(sb, requestId);
 
         if (!row) {
           resolve({ approved: false, error: "Ward approval request not found" });
