@@ -9,5 +9,6 @@ export type {
   CloakRuntimeTransactionsModule,
   CloakRuntimeWardModule,
   CloakRuntimeRepositories,
+  CloakRuntimeRouterModule,
   CloakRuntime,
 } from "./types";

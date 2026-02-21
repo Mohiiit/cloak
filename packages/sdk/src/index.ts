@@ -12,18 +12,24 @@ export type {
   CloakRuntimeTransactionsModule,
   CloakRuntimeWardModule,
   CloakRuntimeRepositories,
+  CloakRuntimeRouterModule,
   CloakRuntime,
 } from "./runtime";
 export {
   parseSpendFromCalls,
   evaluateWardExecutionPolicy,
   fetchWardPolicySnapshot,
+  orchestrateExecution,
 } from "./router";
 export type {
   WardPolicyReason,
   WardPolicySnapshot,
   RouterCall,
   WardExecutionDecision,
+  RouteExecutionMeta,
+  RouteExecutionInput,
+  RouteExecutionResult,
+  OrchestratorDeps,
 } from "./router";
 export {
   TransactionsRepository,

@@ -10,3 +10,11 @@ export type {
 } from "./policy";
 
 export { fetchWardPolicySnapshot } from "./snapshot";
+
+export { orchestrateExecution } from "./orchestrator";
+export type {
+  RouteExecutionMeta,
+  RouteExecutionInput,
+  RouteExecutionResult,
+  OrchestratorDeps,
+} from "./orchestrator";

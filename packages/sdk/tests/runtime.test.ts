@@ -158,9 +158,24 @@ describe("createCloakRuntime", () => {
     await runtime.ward.fetchInfo("0xward");
     await runtime.ward.getBlockGasPrices();
     await runtime.ward.estimateInvokeFee("0xward", []);
+    await runtime.router.execute({
+      walletAddress: "0x1",
+      wardAddress: "0xward",
+      calls: [],
+      meta: {
+        type: "transfer",
+        token: "STRK",
+        network: "sepolia",
+      },
+      executeDirect: async () => ({ txHash: "0xrouter" }),
+    });
 
     expect(saveSpy).toHaveBeenCalledWith(
       expect.objectContaining({ tx_hash: "0xtx" }),
+      sb,
+    );
+    expect(saveSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ tx_hash: "0xrouter" }),
       sb,
     );
     expect(updateSpy).toHaveBeenCalledWith(
@@ -172,6 +187,7 @@ describe("createCloakRuntime", () => {
     );
     expect(listSpy).toHaveBeenCalledWith("0x1", 10, sb);
     expect(confirmSpy).toHaveBeenCalledWith(provider, "0xtx", sb);
+    expect(confirmSpy).toHaveBeenCalledWith(provider, "0xrouter", sb);
 
     expect(snapshotSpy).toHaveBeenCalledWith(provider, "0xward");
     expect(evaluateSpy).toHaveBeenCalledWith(

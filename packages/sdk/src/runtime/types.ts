@@ -27,6 +27,8 @@ import type {
   WardPolicySnapshot,
   WardExecutionDecision,
   RouterCall,
+  RouteExecutionInput,
+  RouteExecutionResult,
 } from "../router";
 
 export interface RuntimeLogger {
@@ -112,6 +114,10 @@ export interface CloakRuntimeRepositories {
   transactions: TransactionsRepository;
 }
 
+export interface CloakRuntimeRouterModule {
+  execute(input: RouteExecutionInput): Promise<RouteExecutionResult>;
+}
+
 export interface CloakRuntime {
   config: Readonly<{
     network: Network;
@@ -119,6 +125,7 @@ export interface CloakRuntime {
   }>;
   deps: Readonly<CloakRuntimeDeps>;
   repositories: CloakRuntimeRepositories;
+  router: CloakRuntimeRouterModule;
   policy: CloakRuntimePolicyModule;
   approvals: CloakRuntimeApprovalsModule;
   transactions: CloakRuntimeTransactionsModule;

@@ -12,6 +12,7 @@ import {
 import {
   fetchWardPolicySnapshot,
   evaluateWardExecutionPolicy,
+  orchestrateExecution,
 } from "../router";
 import {
   saveTransaction,
@@ -63,6 +64,22 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     deps.supabase,
     deps.provider,
   );
+  const policyModule = {
+    getWardPolicySnapshot(wardAddress: string) {
+      return fetchWardPolicySnapshot(deps.provider, wardAddress);
+    },
+    async evaluateWardExecutionPolicy(wardAddress: string, calls: any[]) {
+      const snapshot = await fetchWardPolicySnapshot(deps.provider, wardAddress);
+      if (!snapshot) return null;
+      return evaluateWardExecutionPolicy(snapshot, calls);
+    },
+    getWardApprovalNeeds(wardAddress: string) {
+      return fetchWardApprovalNeeds(deps.provider, wardAddress);
+    },
+    getWardInfo(wardAddress: string) {
+      return fetchWardInfo(deps.provider, wardAddress);
+    },
+  };
 
   return {
     config: Object.freeze({
@@ -74,22 +91,20 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
       approvals: approvalsRepo,
       transactions: transactionsRepo,
     },
-    policy: {
-      getWardPolicySnapshot(wardAddress: string) {
-        return fetchWardPolicySnapshot(deps.provider, wardAddress);
-      },
-      async evaluateWardExecutionPolicy(wardAddress, calls) {
-        const snapshot = await fetchWardPolicySnapshot(deps.provider, wardAddress);
-        if (!snapshot) return null;
-        return evaluateWardExecutionPolicy(snapshot, calls);
-      },
-      getWardApprovalNeeds(wardAddress: string) {
-        return fetchWardApprovalNeeds(deps.provider, wardAddress);
-      },
-      getWardInfo(wardAddress: string) {
-        return fetchWardInfo(deps.provider, wardAddress);
+    router: {
+      execute(input) {
+        return orchestrateExecution(
+          {
+            getWardPolicySnapshot: policyModule.getWardPolicySnapshot,
+            evaluateWardExecutionPolicy: policyModule.evaluateWardExecutionPolicy,
+            saveTransaction: (record) => transactionsRepo.save(record),
+            confirmTransaction: (txHash) => transactionsRepo.confirm(txHash),
+          },
+          input,
+        );
       },
     },
+    policy: policyModule,
     approvals: {
       request2FAApproval(params, onStatusChange, signal) {
         return approvalsRepo.requestTwoFactor(params, {
