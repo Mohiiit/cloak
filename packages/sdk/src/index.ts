@@ -35,6 +35,8 @@ export type {
 export {
   createSwapModule,
   SwapModuleNotConfiguredError,
+  executeComposedShieldedSwap,
+  ComposedShieldedSwapError,
   normalizeSwapMode,
   assertValidSwapPair,
   assertValidSwapAmount,
@@ -56,6 +58,11 @@ export type {
   SwapExecutionInput,
   SwapExecutionResult,
   SwapValidationErrorCode,
+  SwapSourceAccountLike,
+  SwapDestinationAccountLike,
+  ExecuteComposedShieldedSwapInput,
+  ComposedShieldedSwapResult,
+  ComposedShieldedSwapErrorCode,
 } from "./swaps";
 export {
   TransactionsRepository,

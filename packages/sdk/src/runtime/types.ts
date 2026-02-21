@@ -33,6 +33,8 @@ import type {
 } from "../router";
 import type {
   CloakSwapModuleAdapter,
+  ComposedShieldedSwapResult,
+  ExecuteComposedShieldedSwapInput,
   SwapBuildRequest,
   SwapExecutionInput,
   SwapExecutionResult,
@@ -124,6 +126,9 @@ export interface CloakRuntimeSwapsModule {
   quote(params: SwapQuoteRequest): Promise<SwapQuote>;
   build(params: SwapBuildRequest): Promise<ShieldedSwapPlan>;
   execute(params: SwapExecutionInput): Promise<SwapExecutionResult>;
+  executeComposed(
+    params: ExecuteComposedShieldedSwapInput,
+  ): Promise<ComposedShieldedSwapResult>;
 }
 
 export interface CloakRuntimeRepositories {

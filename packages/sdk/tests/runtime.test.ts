@@ -271,4 +271,89 @@ describe("createCloakRuntime", () => {
     expect(executeResult.txHash).toBe("0xswap");
   });
 
+  it("runs executeComposed on runtime swap module", async () => {
+    const provider = {} as any;
+    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
+    const quote = {
+      id: "q2",
+      provider: "avnu" as const,
+      pair: { sellToken: "STRK" as const, buyToken: "ETH" as const },
+      mode: "exact_in" as const,
+      sellAmountWei: "100000000000000000",
+      estimatedBuyAmountWei: "10000000000000",
+      minBuyAmountWei: "9000000000000",
+      route: {},
+    };
+    const plan = {
+      provider: "avnu" as const,
+      pair: quote.pair,
+      mode: "exact_in" as const,
+      quoteId: quote.id,
+      calls: [{ contractAddress: "0xdex", entrypoint: "swap", calldata: [] }],
+      dexCalls: [{ contractAddress: "0xdex", entrypoint: "swap", calldata: [] }],
+      sellAmount: { value: quote.sellAmountWei, unit: "erc20_wei" as const },
+      estimatedBuyAmountWei: quote.estimatedBuyAmountWei,
+      minBuyAmountWei: quote.minBuyAmountWei,
+    };
+    const adapter = {
+      quote: vi.fn().mockResolvedValue(quote),
+      build: vi.fn().mockResolvedValue(plan),
+      execute: vi.fn().mockImplementation(async (input: any) => ({
+        txHash: "0xswap",
+        route: "direct",
+        plan: input.plan,
+      })),
+    };
+    const runtime = createCloakRuntime({
+      provider,
+      supabase: sb,
+      swapsAdapter: adapter,
+    });
+
+    const prepareWithdraw = vi.fn(async () => ({
+      calls: [{ contractAddress: "0xtongo_sell", entrypoint: "withdraw", calldata: ["0x2"] }],
+    }));
+    const prepareFund = vi.fn(async () => ({
+      calls: [
+        { contractAddress: "0xeth", entrypoint: "approve", calldata: ["0xtongo_buy", "0x3"] },
+        { contractAddress: "0xtongo_buy", entrypoint: "fund", calldata: ["0x3"] },
+      ],
+    }));
+
+    const result = await runtime.swaps.executeComposed({
+      walletAddress: "0xabc",
+      sourceToken: "STRK",
+      destinationToken: "ETH",
+      sellAmount: { value: "0.1", unit: "erc20_display" },
+      sourceAccount: { prepareWithdraw },
+      destinationAccount: { prepareFund },
+      executeDirect: async () => ({ txHash: "0xswap" }),
+    });
+
+    expect(adapter.quote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        walletAddress: "0xabc",
+        pair: { sellToken: "STRK", buyToken: "ETH" },
+      }),
+    );
+    expect(adapter.build).toHaveBeenCalledWith(
+      expect.objectContaining({
+        walletAddress: "0xabc",
+      }),
+    );
+    expect(prepareWithdraw).toHaveBeenCalledWith(2n);
+    expect(prepareFund).toHaveBeenCalledWith(3n);
+    expect(adapter.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        walletAddress: "0xabc",
+        plan: expect.objectContaining({
+          quoteId: "q2",
+          calls: expect.any(Array),
+        }),
+      }),
+    );
+    expect(result.txHash).toBe("0xswap");
+    expect(result.composedPlan.calls).toHaveLength(4);
+  });
+
 });

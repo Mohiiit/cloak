@@ -8,6 +8,17 @@ export type {
   ComposeShieldedSwapPlanInput,
 } from "./builder";
 export {
+  executeComposedShieldedSwap,
+  ComposedShieldedSwapError,
+} from "./composed";
+export type {
+  SwapSourceAccountLike,
+  SwapDestinationAccountLike,
+  ExecuteComposedShieldedSwapInput,
+  ComposedShieldedSwapResult,
+  ComposedShieldedSwapErrorCode,
+} from "./composed";
+export {
   executeShieldedSwap,
 } from "./executor";
 export type {

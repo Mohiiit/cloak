@@ -26,6 +26,7 @@ import {
 import {
   createAvnuSwapAdapter,
   createSwapModule,
+  executeComposedShieldedSwap,
   executeShieldedSwap,
 } from "../swaps";
 import type {
@@ -33,6 +34,7 @@ import type {
   CloakRuntimeConfig,
   CloakRuntimeDeps,
   RuntimeLogger,
+  CloakRuntimeSwapsModule,
 } from "./types";
 
 const NOOP_LOGGER: RuntimeLogger = {
@@ -113,7 +115,21 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
         return result;
       }),
   };
-  const swapsModule = createSwapModule(runtimeSwapAdapter);
+  const baseSwapsModule = createSwapModule(runtimeSwapAdapter);
+  const swapsModule: CloakRuntimeSwapsModule = {
+    quote(params) {
+      return baseSwapsModule.quote(params);
+    },
+    build(params) {
+      return baseSwapsModule.build(params);
+    },
+    execute(params) {
+      return baseSwapsModule.execute(params);
+    },
+    executeComposed(params) {
+      return executeComposedShieldedSwap(baseSwapsModule, params);
+    },
+  };
   const policyModule = {
     getWardPolicySnapshot(wardAddress: string) {
       return fetchWardPolicySnapshot(deps.provider, wardAddress);
