@@ -11,3 +11,8 @@ export {
   type ApprovalPollOptions,
   type WardApprovalPollOptions,
 } from "./approvals";
+
+export {
+  SwapsRepository,
+  type SaveSwapExecutionInput,
+} from "./swaps";

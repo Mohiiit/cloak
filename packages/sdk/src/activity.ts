@@ -8,6 +8,7 @@ import {
 } from "./transactions";
 import { normalizeAddress } from "./ward";
 import type { AmountUnit } from "./token-convert";
+import { getSwapExecutions, type SwapExecutionRecord } from "./swaps";
 
 export type ActivitySource = "transaction" | "ward_request";
 
@@ -58,6 +59,15 @@ export interface ActivityRecord {
   platform?: string | null;
   created_at?: string;
   responded_at?: string | null;
+  swap?: {
+    provider: string;
+    sell_token: string;
+    buy_token: string;
+    sell_amount_wei: string;
+    estimated_buy_amount_wei: string;
+    min_buy_amount_wei: string;
+    buy_actual_amount_wei?: string | null;
+  } | null;
 }
 
 let _sharedSb: SupabaseLite | null = null;
@@ -120,7 +130,10 @@ function statusNoteForWardRequest(status: string): string | null {
   return null;
 }
 
-function mapTransactionToActivity(tx: TransactionRecord): ActivityRecord {
+function mapTransactionToActivity(
+  tx: TransactionRecord,
+  swap?: SwapExecutionRecord | null,
+): ActivityRecord {
   return {
     id: tx.tx_hash,
     source: "transaction",
@@ -141,6 +154,17 @@ function mapTransactionToActivity(tx: TransactionRecord): ActivityRecord {
     network: tx.network,
     platform: tx.platform ?? null,
     created_at: tx.created_at,
+    swap: swap
+      ? {
+          provider: swap.provider,
+          sell_token: swap.sell_token,
+          buy_token: swap.buy_token,
+          sell_amount_wei: swap.sell_amount_wei,
+          estimated_buy_amount_wei: swap.estimated_buy_amount_wei,
+          min_buy_amount_wei: swap.min_buy_amount_wei,
+          buy_actual_amount_wei: swap.buy_actual_amount_wei ?? null,
+        }
+      : null,
   };
 }
 
@@ -176,6 +200,7 @@ function mapWardRequestToActivity(
     platform: "approval",
     created_at: row.created_at,
     responded_at: row.responded_at ?? null,
+    swap: null,
   };
 }
 
@@ -231,6 +256,12 @@ export async function getActivityRecords(
   const client = sb || getDefaultSb();
   const normalized = normalizeAddress(walletAddress);
   const txRows = await getTransactions(normalized, Math.max(limit * 2, 200), client);
+  const swapRows = await getSwapExecutions(normalized, Math.max(limit * 2, 200), client);
+  const swapsByTxHash = new Map<string, SwapExecutionRecord>(
+    swapRows
+      .filter((row) => !!row.tx_hash)
+      .map((row) => [row.tx_hash, row]),
+  );
   const seenTxHashes = new Set(
     txRows.map((row) => row.tx_hash).filter((hash): hash is string => !!hash),
   );
@@ -241,7 +272,7 @@ export async function getActivityRecords(
     .map((row) => mapWardRequestToActivity(row, normalized));
 
   const combined = [
-    ...txRows.map(mapTransactionToActivity),
+    ...txRows.map((tx) => mapTransactionToActivity(tx, swapsByTxHash.get(tx.tx_hash) || null)),
     ...requestActivities,
   ];
 

@@ -22,6 +22,7 @@ import type {
   SaveTransactionInput,
   TransactionsRepository,
   ApprovalsRepository,
+  SwapsRepository,
 } from "../repositories";
 import type {
   WardPolicySnapshot,
@@ -128,6 +129,7 @@ export interface CloakRuntimeSwapsModule {
 export interface CloakRuntimeRepositories {
   approvals: ApprovalsRepository;
   transactions: TransactionsRepository;
+  swaps: SwapsRepository;
 }
 
 export interface CloakRuntimeRouterModule {

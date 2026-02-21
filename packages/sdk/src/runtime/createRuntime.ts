@@ -2,6 +2,7 @@ import { RpcProvider } from "starknet";
 import { DEFAULT_RPC, DEFAULT_SUPABASE_KEY, DEFAULT_SUPABASE_URL } from "../config";
 import { MemoryStorage } from "../storage/memory";
 import { SupabaseLite } from "../supabase";
+import { convertAmount } from "../token-convert";
 import {
   checkIfWardAccount,
   fetchWardApprovalNeeds,
@@ -19,6 +20,7 @@ import {
 } from "../transactions";
 import {
   ApprovalsRepository,
+  SwapsRepository,
   TransactionsRepository,
 } from "../repositories";
 import {
@@ -69,6 +71,7 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     deps.supabase,
     deps.provider,
   );
+  const swapsRepo = new SwapsRepository(deps.supabase);
   const avnuAdapter = createAvnuSwapAdapter();
   const runtimeSwapAdapter = config.swapsAdapter ?? {
     quote: avnuAdapter.quote,
@@ -84,7 +87,31 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
           network,
         },
         input,
-      ),
+      ).then(async (result) => {
+        const sellAmountWei = convertAmount(
+          {
+            value: input.plan.sellAmount.value,
+            unit: input.plan.sellAmount.unit,
+            token: input.plan.pair.sellToken,
+          },
+          "erc20_wei",
+        );
+        await swapsRepo.save({
+          wallet_address: input.walletAddress,
+          ward_address: input.wardAddress || null,
+          tx_hash: result.txHash,
+          provider: input.plan.provider,
+          sell_token: input.plan.pair.sellToken,
+          buy_token: input.plan.pair.buyToken,
+          sell_amount_wei: sellAmountWei,
+          estimated_buy_amount_wei: input.plan.estimatedBuyAmountWei,
+          min_buy_amount_wei: input.plan.minBuyAmountWei,
+          buy_actual_amount_wei: null,
+          status: "pending",
+          error_message: null,
+        });
+        return result;
+      }),
   };
   const swapsModule = createSwapModule(runtimeSwapAdapter);
   const policyModule = {
@@ -113,6 +140,7 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     repositories: {
       approvals: approvalsRepo,
       transactions: transactionsRepo,
+      swaps: swapsRepo,
     },
     router: {
       execute(input) {

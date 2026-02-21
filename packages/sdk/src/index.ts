@@ -60,6 +60,7 @@ export type {
 export {
   TransactionsRepository,
   ApprovalsRepository,
+  SwapsRepository,
 } from "./repositories";
 export type {
   CanonicalAmount,
@@ -68,6 +69,7 @@ export type {
   WardRequestStatus,
   ApprovalPollOptions,
   WardApprovalPollOptions,
+  SaveSwapExecutionInput,
 } from "./repositories";
 
 // Centralized config constants

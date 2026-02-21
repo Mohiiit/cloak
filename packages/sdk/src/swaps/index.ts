@@ -14,6 +14,15 @@ export type {
   ShieldedSwapExecutorDeps,
 } from "./executor";
 export {
+  saveSwapExecution,
+  updateSwapExecution,
+  getSwapExecutions,
+} from "./storage";
+export type {
+  SwapExecutionStatus,
+  SwapExecutionRecord,
+} from "./storage";
+export {
   AVNU_BASE_URL,
   AvnuSwapApiError,
   AvnuSwapStaleQuoteError,
