@@ -188,20 +188,39 @@ function shouldIncludeWardRequest(
   return !seenTxHashes.has(hash);
 }
 
-async function fetchGuardianWardRequests(
+async function fetchWardRequestsForViewer(
   client: SupabaseLite,
-  guardianAddress: string,
+  viewerAddress: string,
 ): Promise<WardApprovalActivityRow[]> {
-  try {
-    return await client.select<WardApprovalActivityRow>(
-      "ward_approval_requests",
-      `guardian_address=eq.${guardianAddress}`,
-      "created_at.desc",
-    );
-  } catch (err) {
-    console.warn("[activity] ward request lookup failed:", err);
-    return [];
+  const rows: WardApprovalActivityRow[] = [];
+  const seen = new Set<string>();
+  const queries = [
+    `guardian_address=eq.${viewerAddress}`,
+    `ward_address=eq.${viewerAddress}`,
+  ];
+
+  for (const filters of queries) {
+    try {
+      const result = await client.select<WardApprovalActivityRow>(
+        "ward_approval_requests",
+        filters,
+        "created_at.desc",
+      );
+      for (const row of result) {
+        if (!row?.id || seen.has(row.id)) continue;
+        seen.add(row.id);
+        rows.push(row);
+      }
+    } catch (err) {
+      console.warn("[activity] ward request lookup failed:", err);
+    }
   }
+
+  if (rows.length > 1) {
+    rows.sort((a, b) => asTimestamp(b.created_at) - asTimestamp(a.created_at));
+  }
+
+  return rows;
 }
 
 export async function getActivityRecords(
@@ -216,7 +235,7 @@ export async function getActivityRecords(
     txRows.map((row) => row.tx_hash).filter((hash): hash is string => !!hash),
   );
 
-  const requestRows = await fetchGuardianWardRequests(client, normalized);
+  const requestRows = await fetchWardRequestsForViewer(client, normalized);
   const requestActivities = requestRows
     .filter((row) => shouldIncludeWardRequest(row, seenTxHashes))
     .map((row) => mapWardRequestToActivity(row, normalized));
