@@ -101,14 +101,15 @@ export default function App() {
   const pendingErc20 = w.balances.pending * token.rate;
   const shieldedDisplay = formatTokenAmount(shieldedErc20, token.decimals, 2);
   const publicDisplay = formatTokenAmount(w.erc20Balance, token.decimals, 2);
+  const starkAddress = w.wallet?.starkAddress || "";
 
-  const truncatedAddress = w.wallet.starkAddress
-    ? `${w.wallet.starkAddress.slice(0, 8)}...${w.wallet.starkAddress.slice(-6)}`
+  const truncatedAddress = starkAddress
+    ? `${starkAddress.slice(0, 8)}...${starkAddress.slice(-6)}`
     : "";
 
   const handleCopy = async () => {
-    if (!w.wallet.starkAddress) return;
-    await navigator.clipboard.writeText(w.wallet.starkAddress);
+    if (!starkAddress) return;
+    await navigator.clipboard.writeText(starkAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

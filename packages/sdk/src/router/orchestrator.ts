@@ -36,7 +36,7 @@ export interface RouteExecutionInput {
 
 export interface RouteExecutionResult {
   txHash: string;
-  route: "ward_direct" | "ward_guardian" | "2fa" | "direct";
+  route: "ward_direct" | "ward_approval" | "2fa" | "direct";
   decision?: WardExecutionDecision;
   snapshot?: WardPolicySnapshot;
 }
@@ -100,7 +100,8 @@ export async function orchestrateExecution(
     );
     if (!decision) throw new Error("Ward policy decision failed");
 
-    if (!decision.needsGuardian) {
+    const needsWardApproval = decision.needsGuardian || decision.needsWard2fa;
+    if (!needsWardApproval) {
       input.onStatusChange?.("Executing ward transaction directly...");
       const txHash = extractTxHash(await input.executeDirect());
       await persistPendingTx(deps, input, txHash, "ward");
@@ -111,7 +112,7 @@ export async function orchestrateExecution(
       throw new Error("Ward approval executor is required for guarded transactions");
     }
 
-    input.onStatusChange?.("Requesting guardian approval...");
+    input.onStatusChange?.("Requesting ward approval...");
     const approval = await input.executeWardApproval(decision, snapshot);
     if (!approval.approved || !approval.txHash) {
       throw new Error(approval.error || "Ward approval failed");
@@ -120,7 +121,7 @@ export async function orchestrateExecution(
     await persistPendingTx(deps, input, approval.txHash, "ward");
     return {
       txHash: approval.txHash,
-      route: "ward_guardian",
+      route: "ward_approval",
       decision,
       snapshot,
     };

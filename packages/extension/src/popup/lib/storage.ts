@@ -17,7 +17,7 @@ export interface TxMetadata {
   note?: string;
   privacyLevel: "public" | "friends" | "private";
   timestamp: number;
-  type: "send" | "receive" | "fund" | "withdraw" | "rollover";
+  type: "send" | "receive" | "fund" | "withdraw" | "rollover" | "erc20_transfer";
   token: string;
   amount?: string;
 }

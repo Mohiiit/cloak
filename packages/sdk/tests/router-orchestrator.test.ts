@@ -94,12 +94,47 @@ describe("orchestrateExecution", () => {
       executeWardApproval,
     });
 
-    expect(result.route).toBe("ward_guardian");
+    expect(result.route).toBe("ward_approval");
     expect(result.txHash).toBe("0xguarded");
     expect(executeWardApproval).toHaveBeenCalled();
     expect(deps.saveSpy).toHaveBeenCalledWith(
       expect.objectContaining({ account_type: "ward", tx_hash: "0xguarded" }),
     );
+  });
+
+  it("routes ward tx via approval when ward 2FA is required", async () => {
+    const deps = makeDeps({
+      evaluateWardExecutionPolicy: vi.fn().mockResolvedValue({
+        needsGuardian: false,
+        needsWard2fa: true,
+        needsGuardian2fa: false,
+        reasons: [],
+        evaluatedSpend: 50n,
+        projectedSpent24h: 50n,
+      }),
+    });
+    const executeWardApproval = vi
+      .fn()
+      .mockResolvedValue({ approved: true, txHash: "0xward2fa" });
+    const executeDirect = vi.fn();
+
+    const result = await orchestrateExecution(deps, {
+      walletAddress: "0xward",
+      wardAddress: "0xward",
+      calls: [],
+      meta: {
+        type: "transfer",
+        token: "STRK",
+        network: "sepolia",
+      },
+      executeDirect,
+      executeWardApproval,
+    });
+
+    expect(result.route).toBe("ward_approval");
+    expect(result.txHash).toBe("0xward2fa");
+    expect(executeWardApproval).toHaveBeenCalled();
+    expect(executeDirect).not.toHaveBeenCalled();
   });
 
   it("routes non-ward tx via 2FA when enabled", async () => {
