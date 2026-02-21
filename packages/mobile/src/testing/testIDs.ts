@@ -28,6 +28,7 @@ export const testIDs = {
     tabHome: "nav.tab.home.press",
     tabSend: "nav.tab.send.press",
     tabWallet: "nav.tab.wallet.press",
+    tabSwap: "nav.tab.swap.press",
     tabActivity: "nav.tab.activity.press",
     tabSettings: "nav.tab.settings.press",
   },
@@ -81,6 +82,7 @@ export const testIDs = {
     quickSend: "home.quick.send.press",
     quickShield: "home.quick.shield.press",
     quickUnshield: "home.quick.unshield.press",
+    quickSwap: "home.quick.swap.press",
     recentSeeAll: "home.recent.seeall.press",
   },
   deploy: {
@@ -116,6 +118,10 @@ export const testIDs = {
     successCopyTx: "wallet.success.tx.copy.press",
     successViewVoyager: "wallet.success.voyager.press",
     successDone: "wallet.success.done.press",
+  },
+  swap: {
+    pairInput: "swap.pair.input.press",
+    review: "swap.review.press",
   },
   settings: {
     keyBackupOpen: "settings.keys.open.press",
@@ -157,6 +163,7 @@ export const testIDs = {
     tabHome: "nav.tab.home.press",
     tabSend: "nav.tab.send.press",
     tabWallet: "nav.tab.wallet.press",
+    tabSwap: "nav.tab.swap.press",
     tabActivity: "nav.tab.activity.press",
     tabSettings: "nav.tab.settings.press",
   },

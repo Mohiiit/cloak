@@ -1,0 +1,22 @@
+appId: ${APP_ID}
+---
+- runFlow: ../shared/create-wallet.yaml
+- assertVisible:
+    id: deploy.account.deploy.press
+- tapOn:
+    id: deploy.account.deploy.press
+- extendedWaitUntil:
+    visible:
+      id: home.quick.send.press
+    timeout: 120000
+- tapOn:
+    id: nav.tab.swap.press
+- extendedWaitUntil:
+    visible:
+      id: swap.review.press
+    timeout: 120000
+- tapOn:
+    id: toast.alert.dismiss.press
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: parity-swap-phaseC
