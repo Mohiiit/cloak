@@ -15,6 +15,17 @@ export type {
   CloakRuntime,
 } from "./runtime";
 export {
+  parseSpendFromCalls,
+  evaluateWardExecutionPolicy,
+  fetchWardPolicySnapshot,
+} from "./router";
+export type {
+  WardPolicyReason,
+  WardPolicySnapshot,
+  RouterCall,
+  WardExecutionDecision,
+} from "./router";
+export {
   TransactionsRepository,
   ApprovalsRepository,
 } from "./repositories";

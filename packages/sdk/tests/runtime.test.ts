@@ -5,6 +5,7 @@ import { createCloakRuntime } from "../src/runtime/createRuntime";
 import * as twoFactor from "../src/two-factor";
 import * as ward from "../src/ward";
 import * as transactions from "../src/transactions";
+import * as router from "../src/router";
 
 describe("createCloakRuntime", () => {
   afterEach(() => {
@@ -95,6 +96,28 @@ describe("createCloakRuntime", () => {
       .spyOn(ward, "fetchWardApprovalNeeds")
       .mockResolvedValue(null);
     const wardInfoSpy = vi.spyOn(ward, "fetchWardInfo").mockResolvedValue(null);
+    const snapshotSpy = vi
+      .spyOn(router, "fetchWardPolicySnapshot")
+      .mockResolvedValue({
+        wardAddress: "0xward",
+        guardianAddress: "0xguardian",
+        wardHas2fa: false,
+        guardianHas2fa: false,
+        requireGuardianForAll: false,
+        maxPerTxn: 0n,
+        dailyLimit24h: 0n,
+        spent24h: 0n,
+      });
+    const evaluateSpy = vi
+      .spyOn(router, "evaluateWardExecutionPolicy")
+      .mockReturnValue({
+        needsGuardian: false,
+        needsWard2fa: false,
+        needsGuardian2fa: false,
+        reasons: [],
+        evaluatedSpend: 0n,
+        projectedSpent24h: 0n,
+      });
     const wardCheckSpy = vi
       .spyOn(ward, "checkIfWardAccount")
       .mockResolvedValue(true);
@@ -126,6 +149,8 @@ describe("createCloakRuntime", () => {
     await runtime.transactions.listByWallet("0x1", 10);
     await runtime.transactions.confirm("0xtx");
 
+    await runtime.policy.getWardPolicySnapshot("0xward");
+    await runtime.policy.evaluateWardExecutionPolicy("0xward", []);
     await runtime.policy.getWardApprovalNeeds("0xward");
     await runtime.policy.getWardInfo("0xward");
     await runtime.ward.checkIfWardAccount("0xward");
@@ -148,6 +173,11 @@ describe("createCloakRuntime", () => {
     expect(listSpy).toHaveBeenCalledWith("0x1", 10, sb);
     expect(confirmSpy).toHaveBeenCalledWith(provider, "0xtx", sb);
 
+    expect(snapshotSpy).toHaveBeenCalledWith(provider, "0xward");
+    expect(evaluateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ wardAddress: "0xward" }),
+      [],
+    );
     expect(wardNeedsSpy).toHaveBeenCalledWith(provider, "0xward");
     expect(wardInfoSpy).toHaveBeenCalledWith(provider, "0xward");
     expect(wardCheckSpy).toHaveBeenCalledWith(provider, "0xward");

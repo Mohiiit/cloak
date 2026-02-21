@@ -23,6 +23,11 @@ import type {
   TransactionsRepository,
   ApprovalsRepository,
 } from "../repositories";
+import type {
+  WardPolicySnapshot,
+  WardExecutionDecision,
+  RouterCall,
+} from "../router";
 
 export interface RuntimeLogger {
   debug?: (...args: unknown[]) => void;
@@ -55,6 +60,12 @@ export interface CloakRuntimeDeps {
 }
 
 export interface CloakRuntimePolicyModule {
+  getWardPolicySnapshot(wardAddress: string): Promise<WardPolicySnapshot | null>;
+  evaluateWardExecutionPolicy(
+    wardAddress: string,
+    calls: RouterCall[],
+  ): Promise<WardExecutionDecision | null>;
+  // Legacy-friendly reads while migration is in progress.
   getWardApprovalNeeds(wardAddress: string): Promise<WardApprovalNeeds | null>;
   getWardInfo(wardAddress: string): Promise<WardInfo | null>;
 }

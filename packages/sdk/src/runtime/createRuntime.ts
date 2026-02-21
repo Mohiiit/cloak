@@ -10,6 +10,10 @@ import {
   estimateWardInvokeFee,
 } from "../ward";
 import {
+  fetchWardPolicySnapshot,
+  evaluateWardExecutionPolicy,
+} from "../router";
+import {
   saveTransaction,
 } from "../transactions";
 import {
@@ -71,6 +75,14 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
       transactions: transactionsRepo,
     },
     policy: {
+      getWardPolicySnapshot(wardAddress: string) {
+        return fetchWardPolicySnapshot(deps.provider, wardAddress);
+      },
+      async evaluateWardExecutionPolicy(wardAddress, calls) {
+        const snapshot = await fetchWardPolicySnapshot(deps.provider, wardAddress);
+        if (!snapshot) return null;
+        return evaluateWardExecutionPolicy(snapshot, calls);
+      },
       getWardApprovalNeeds(wardAddress: string) {
         return fetchWardApprovalNeeds(deps.provider, wardAddress);
       },
