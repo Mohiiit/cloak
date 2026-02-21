@@ -72,7 +72,7 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     deps.provider,
   );
   const swapsRepo = new SwapsRepository(deps.supabase);
-  const avnuAdapter = createAvnuSwapAdapter();
+  const avnuAdapter = createAvnuSwapAdapter({ network });
   const runtimeSwapAdapter = config.swapsAdapter ?? {
     quote: avnuAdapter.quote,
     build: avnuAdapter.build,

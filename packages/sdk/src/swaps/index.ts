@@ -24,6 +24,7 @@ export type {
 } from "./storage";
 export {
   AVNU_BASE_URL,
+  AVNU_BASE_URL_BY_NETWORK,
   AvnuSwapApiError,
   AvnuSwapStaleQuoteError,
   createAvnuSwapAdapter,

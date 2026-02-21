@@ -8,8 +8,10 @@ describeIntegration("swaps integration (live AVNU)", () => {
   it("fetches quote and builds dex calls", async () => {
     const takerAddress = process.env.SWAP_INTEGRATION_TAKER || "0x1234";
     const sellAmountWei = process.env.SWAP_INTEGRATION_SELL_WEI || "1000000000000000000";
+    const network = (process.env.SWAP_INTEGRATION_NETWORK as "sepolia" | "mainnet" | undefined)
+      || "sepolia";
 
-    const adapter = createAvnuSwapAdapter();
+    const adapter = createAvnuSwapAdapter({ network });
     const quote = await adapter.quote({
       walletAddress: takerAddress,
       pair: {

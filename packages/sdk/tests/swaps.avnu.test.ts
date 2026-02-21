@@ -48,6 +48,24 @@ describe("swaps.avnu adapter", () => {
     expect(quote.minBuyAmountWei).toBe("41580000000000000");
   });
 
+  it("uses network-specific AVNU base URL", async () => {
+    const fetchMock = vi.fn(async () =>
+      ok([{ quoteId: "q_1", buyAmount: "100" }]));
+    const adapter = createAvnuSwapAdapter({
+      fetch: fetchMock,
+      network: "sepolia",
+    });
+
+    await adapter.quote({
+      walletAddress: "0xabc",
+      pair: { sellToken: "STRK", buyToken: "ETH" },
+      sellAmount: { value: "1", unit: "erc20_wei" },
+    });
+
+    const firstUrl = String(fetchMock.mock.calls[0][0]);
+    expect(firstUrl.startsWith("https://sepolia.api.avnu.fi/")).toBe(true);
+  });
+
   it("rejects stale quotes", async () => {
     const fetchMock = vi.fn(async () =>
       ok([

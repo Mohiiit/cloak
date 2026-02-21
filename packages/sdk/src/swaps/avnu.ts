@@ -1,6 +1,7 @@
 import { convertAmount } from "../token-convert";
 import { TOKENS } from "../tokens";
 import type { RouterCall } from "../router";
+import type { Network } from "../types";
 import type {
   ShieldedSwapPlan,
   SwapBuildRequest,
@@ -12,6 +13,10 @@ import type {
 import type { CloakSwapModuleAdapter } from "./module";
 
 export const AVNU_BASE_URL = "https://starknet.api.avnu.fi";
+export const AVNU_BASE_URL_BY_NETWORK: Record<Network, string> = {
+  mainnet: "https://starknet.api.avnu.fi",
+  sepolia: "https://sepolia.api.avnu.fi",
+};
 const DEFAULT_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 200;
 
@@ -54,6 +59,7 @@ type FetchLike = (
 
 export interface AvnuSwapApiConfig {
   baseUrl?: string;
+  network?: Network;
   fetch?: FetchLike;
   maxRetries?: number;
   retryDelayMs?: number;
@@ -197,7 +203,9 @@ function minOutFromSlippage(estimatedBuyWei: bigint, slippageBps: number): bigin
 
 export function createAvnuSwapAdapter(config: AvnuSwapApiConfig = {}): CloakSwapModuleAdapter {
   const fetchImpl = resolveFetch(config);
-  const baseUrl = (config.baseUrl || AVNU_BASE_URL).replace(/\/$/, "");
+  const selectedBaseUrl =
+    config.baseUrl || AVNU_BASE_URL_BY_NETWORK[config.network || "mainnet"] || AVNU_BASE_URL;
+  const baseUrl = selectedBaseUrl.replace(/\/$/, "");
   const retries = config.maxRetries ?? DEFAULT_RETRIES;
   const retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   const now = config.now ?? (() => Date.now());
