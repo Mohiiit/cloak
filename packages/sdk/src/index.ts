@@ -61,6 +61,43 @@ export type {
 // Supabase client
 export { SupabaseLite } from "./supabase";
 
+// Starknet ID helpers
+export {
+  StarknetIdClient,
+  normalizeStarkName,
+  isStarkName,
+} from "./starknet-id";
+export type { StarknetProfile, StarknetIdClientOptions } from "./starknet-id";
+
+// ERC-8004 registry helpers
+export {
+  ERC8004Client,
+  ERC8004_REGISTRIES,
+  getERC8004Registries,
+  getERC8004RegistryAddress,
+} from "./erc8004";
+export type {
+  ERC8004RegistryType,
+  ERC8004RegistrySet,
+  ERC8004ClientOptions,
+} from "./erc8004";
+
+// Compliance helpers
+export {
+  grantViewingAccess,
+  revokeViewingAccess,
+  listViewingGrantsForOwner,
+  listViewingGrantsForViewer,
+  submitInnocenceProof,
+  listInnocenceProofs,
+} from "./compliance";
+export type {
+  ViewingGrantStatus,
+  ViewingKeyGrant,
+  InnocenceProof,
+  ComplianceTables,
+} from "./compliance";
+
 // Ward utilities
 export {
   checkIfWardAccount,
