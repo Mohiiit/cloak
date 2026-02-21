@@ -21,6 +21,8 @@ export const testIDs = {
     importWardToggle: "onboarding.ward.import.toggle",
     importWardSubmit: "onboarding.ward.import.submit",
     importWardRoute: "onboarding.ward.import.route.press",
+    importWardBack: "onboarding.ward.import.back.press",
+    importWardJsonInput: "onboarding.ward.import.json.input",
     importWardPaste: "onboarding.ward.import.paste.press",
     importWardScan: "onboarding.ward.import.scan.press",
   },

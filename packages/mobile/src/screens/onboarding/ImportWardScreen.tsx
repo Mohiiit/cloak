@@ -54,6 +54,9 @@ type WardInvitePayload = {
   network?: string;
   pseudoName?: string;
   initialFundingAmountWei?: string;
+  dailyLimit?: string;
+  maxPerTx?: string;
+  isFrozen?: boolean;
 };
 
 type TabId = "scan" | "manual";
@@ -113,10 +116,13 @@ function buildWardInfoCacheFromInvite(invite: WardInvitePayload) {
     guardianPublicKey: "0x0",
     isGuardian2faEnabled: false,
     is2faEnabled: false,
-    isFrozen: false,
+    isFrozen: invite.isFrozen === true,
     pseudoName: invite.pseudoName?.trim() || "",
     initialFundingAmountWei: invite.initialFundingAmountWei || "",
-    spendingLimitPerTx: "0",
+    spendingLimitPerTx: invite.maxPerTx || "0",
+    dailyLimit: invite.dailyLimit || "0",
+    maxPerTx: invite.maxPerTx || "0",
+    dailySpent: "0",
     requireGuardianForAll: true,
     wardType: "imported",
   };
@@ -248,6 +254,7 @@ export default function ImportWardScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
+            {...testProps(testIDs.onboarding.importWardBack)}
             onPress={() => navigation.goBack()}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
@@ -575,6 +582,7 @@ function ManualTabContent({
 
         {/* Textarea — shorter when keyboard is up */}
         <TextInput
+          {...testProps(testIDs.onboarding.importWardJsonInput)}
           style={[styles.jsonTextarea, keyboardVisible && styles.jsonTextareaCompact]}
           placeholder='{"type":"cloak_ward_invite","wardAddress":"0x...","wardPrivateKey":"0x..."}'
           placeholderTextColor={colors.textMuted}

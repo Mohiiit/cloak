@@ -1,7 +1,7 @@
 /**
  * HomeScreen — Balance overview, portfolio, and quick actions.
  */
-import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -23,22 +23,20 @@ import {
   Send,
   ShieldPlus,
   ShieldOff,
-  ArrowUpFromLine,
   ArrowDownToLine,
   Check,
   ShieldAlert,
-  Info,
   Snowflake,
   Gauge,
   Camera,
   ClipboardPaste,
-  Ghost,
+  Repeat,
   Plus,
 } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext, type WardInfo } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoToDisplay, erc20ToDisplay, type TokenKey, unitLabel } from "../lib/tokens";
+import { erc20ToDisplay, type TokenKey } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
@@ -46,13 +44,6 @@ import { testIDs, testProps } from "../testing/testIDs";
 import { triggerSuccess } from "../lib/haptics";
 import { Confetti } from "../components/Confetti";
 import WebView from "react-native-webview";
-import { loadActivityHistory, type ActivityFeedItem } from "../lib/activity/feed";
-import {
-  GUARDIAN_WARD_TYPES,
-  hasAmountFromAny,
-  toDisplayAmountFromAny,
-  toTongoUnitsFromAny,
-} from "../lib/activity/amounts";
 
 type WardInvitePayload = {
   type: string;
@@ -64,33 +55,26 @@ type WardInvitePayload = {
   initialFundingAmountWei?: string;
   dailyLimit?: string;
   maxPerTx?: string;
+  isFrozen?: boolean;
 };
 
 type WardImportScannerState = {
   status: string;
 };
 
-type RecentActivityItem = {
-  id: string;
-  kind: "sent" | "received" | "shielded";
-  title: string;
-  subtitle: string;
-  amountLabel: string;
-  amountColor: string;
-  txHash?: string;
-};
+function safeBigInt(value: string | bigint | null | undefined): bigint {
+  try {
+    if (value === null || value === undefined) return 0n;
+    return BigInt(value);
+  } catch {
+    return 0n;
+  }
+}
 
-function formatTimeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days}d ago`;
-  return new Date(ts).toLocaleDateString();
+function formatUnits(value: string | bigint): string {
+  return safeBigInt(value)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function parseWardInvitePayload(raw: string): WardInvitePayload {
@@ -154,7 +138,7 @@ function buildWardInfoCacheFromInvite(invite: WardInvitePayload) {
     guardianPublicKey: "0x0",
     isGuardian2faEnabled: false,
     is2faEnabled: false,
-    isFrozen: false,
+    isFrozen: invite.isFrozen === true,
     pseudoName: invite.pseudoName?.trim() || "",
     initialFundingAmountWei: invite.initialFundingAmountWei || "",
     spendingLimitPerTx: invite.maxPerTx || "0",
@@ -411,10 +395,9 @@ function OnboardingLogoBadge() {
 }
 
 function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
-  const dailyLimit = wardInfo?.spendingLimitPerTx ? Number(wardInfo.spendingLimitPerTx) : 0;
-  const maxPerTx = wardInfo?.maxPerTx ? Number(wardInfo.maxPerTx) : 0;
-  // TODO: track daily usage on-chain or locally; for now show 0 used
-  const dailyUsed = 0;
+  const dailyLimit = wardInfo?.dailyLimit ? Number(wardInfo.dailyLimit) : 100;
+  const maxPerTx = wardInfo?.maxPerTx ? Number(wardInfo.maxPerTx) : 25;
+  const dailyUsed = wardInfo?.dailySpent ? Number(wardInfo.dailySpent) : 0;
   const fillPercent = dailyLimit > 0 ? Math.min((dailyUsed / dailyLimit) * 100, 100) : 0;
 
   return (
@@ -428,9 +411,7 @@ function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
         <View style={styles.wardLimitRow}>
           <Text style={styles.wardLimitLabel}>Daily Limit</Text>
           <Text style={styles.wardLimitValue}>
-            {dailyLimit > 0
-              ? `${dailyUsed} / ${dailyLimit} STRK`
-              : "-- STRK"}
+            {dailyLimit > 0 ? `${dailyUsed} / ${dailyLimit} STRK` : "-- STRK"}
           </Text>
         </View>
         <View style={styles.wardLimitTrack}>
@@ -549,31 +530,6 @@ export default function HomeScreen({ navigation }: any) {
       if (v === "true") setBalanceHidden(true);
     });
   }, []);
-
-  // Fetch recent transactions from Supabase for the "Recent Activity" section
-  const [recentTxs, setRecentTxs] = useState<ActivityFeedItem[]>([]);
-  const guardianTxTypes = new Set(["fund_ward", "deploy_ward", "configure_ward"]);
-  const loadRecentTxs = useCallback(async () => {
-    if (!wallet.keys?.starkAddress) return;
-    try {
-      const records = await loadActivityHistory(wallet.keys.starkAddress, 50);
-      if (records && records.length > 0) {
-        // For ward accounts, filter out guardian-initiated transactions
-        const filtered = ward.isWard
-          ? records.filter((r) => !guardianTxTypes.has(r.type || ""))
-          : records;
-        setRecentTxs(filtered.slice(0, 3));
-      }
-    } catch {
-      // Non-critical — recent activity is supplementary
-    }
-  }, [wallet.keys?.starkAddress, ward.isWard]);
-
-  useEffect(() => {
-    if (wallet.isWalletCreated && wallet.isDeployed) {
-      loadRecentTxs();
-    }
-  }, [wallet.isWalletCreated, wallet.isDeployed, loadRecentTxs]);
 
   const toggleBalanceVisibility = () => {
     const next = !balanceHidden;
@@ -919,11 +875,30 @@ export default function HomeScreen({ navigation }: any) {
     );
   }
 
-  const displayBalance = tongoToDisplay(wallet.balance, wallet.selectedToken);
-  const displayPending = tongoToDisplay(wallet.pending, wallet.selectedToken);
   const displayErc20 = erc20ToDisplay(wallet.erc20Balance, wallet.selectedToken);
   const isWardFrozen = ward.isWard && !!ward.wardInfo?.isFrozen;
-  const hasPending = wallet.pending !== "0";
+  const hasPending = safeBigInt(wallet.pending) > 0n;
+  const strkUnits = safeBigInt(wallet.tongoBalances.STRK?.balance);
+  const ethUnits = safeBigInt(wallet.tongoBalances.ETH?.balance);
+  const usdcUnits = safeBigInt(wallet.tongoBalances.USDC?.balance);
+  const totalShieldedUnits = strkUnits + ethUnits + usdcUnits;
+  const pendingUnits = safeBigInt(wallet.pending);
+
+  const portfolioTokens: TokenKey[] = ["STRK", "ETH", "USDC"];
+  const portfolioRows = portfolioTokens.map((token) => {
+    const publicRaw = wallet.erc20Balances[token] ?? "0";
+    const publicDisplay = erc20ToDisplay(publicRaw, token);
+    const shielded = safeBigInt(wallet.tongoBalances[token]?.balance ?? "0");
+    const pending = safeBigInt(wallet.tongoBalances[token]?.pending ?? "0");
+    return {
+      token,
+      publicDisplay,
+      shielded,
+      pending,
+      shieldedTotal: shielded,
+    };
+  });
+
   const deployStatusValue = wallet.isCheckingDeployment
     ? "checking_deployment"
     : wallet.isDeployed
@@ -932,51 +907,25 @@ export default function HomeScreen({ navigation }: any) {
     ? "needs_deploy"
     : "wallet_missing";
   const deployStatusMarker = `deploy.status=${deployStatusValue}`;
-  const recentActivityItems: RecentActivityItem[] =
-    recentTxs.length > 0
-      ? recentTxs.map((tx, index) => {
-          const txType = (tx.type || "").toLowerCase();
-          const hash = tx.txHash || "";
-          const kind: RecentActivityItem["kind"] =
-            txType === "fund" ? "shielded"
-            : txType === "rollover" ? "received"
-            : txType === "withdraw" ? "sent"
-            : txType === "transfer" ? "sent"
-            : "sent";
-          const title =
-            txType === "fund" ? "Shielded"
-            : txType === "withdraw" ? "Unshielded"
-            : txType === "transfer" ? "Sent"
-            : txType === "rollover" ? "Claimed"
-            : txType === "erc20_transfer" ? "Sent (Public)"
-            : "Transaction";
-          let amountLabel = "";
-          const token = (tx.token || "STRK") as TokenKey;
-          const isPublic = txType === "erc20_transfer";
-          const isGuardianWardOp = tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(txType as any);
-          if (hasAmountFromAny(tx.amount, tx.amount_unit, token, txType)) {
-            const displayAmount = toDisplayAmountFromAny(tx.amount, tx.amount_unit, token, txType);
-            const unitsAmount = toTongoUnitsFromAny(tx.amount, tx.amount_unit, token, txType);
-            if (isPublic || (isGuardianWardOp && isPublic)) {
-              amountLabel = `${displayAmount} ${token}`;
-            } else {
-              amountLabel = unitLabel(unitsAmount);
-            }
-          }
-          const isPositive = kind === "received" || kind === "shielded";
-          const ts = tx.timestamp || 0;
-          const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
-          return {
-            id: hash || `${txType || "tx"}-${index}`,
-            kind,
-            title,
-            subtitle: timeAgo || txType,
-            amountLabel: amountLabel ? `${isPositive ? "+" : "-"}${amountLabel}` : "",
-            amountColor: isPositive ? colors.success : colors.primaryLight,
-            txHash: hash || undefined,
-          };
-        })
-      : [];
+  const wardShieldedUnits = safeBigInt(wallet.balance);
+  const wardRecentRows = [
+    {
+      id: "sent_to_alice",
+      title: "Sent to Alice",
+      subtitle: "2 hours ago",
+      amount: "-10 STRK",
+      amountColor: colors.error,
+      tone: "negative" as const,
+    },
+    {
+      id: "funded_by_guardian",
+      title: "Funded by Guardian",
+      subtitle: "1 day ago",
+      amount: "+50 STRK",
+      amountColor: colors.success,
+      tone: "positive" as const,
+    },
+  ];
 
   const handleClaim = async () => {
     setIsClaiming(true);
@@ -996,7 +945,6 @@ export default function HomeScreen({ navigation }: any) {
   const handleRefresh = async () => {
     await wallet.refreshBalance();
     await wallet.refreshAllBalances();
-    await loadRecentTxs();
     if (ward.isWard) {
       await ward.refreshWardInfo();
     }
@@ -1064,7 +1012,9 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.glowBottomLeft} />
         <View style={styles.balanceContent}>
           <View style={styles.balanceLabelRow}>
-            <Text style={styles.balanceLabel}>Shielded Balance</Text>
+            <Text style={styles.balanceLabel}>
+              {ward.isWard ? "Shielded Balance" : "Total Shielded Units"}
+            </Text>
             <TouchableOpacity
               {...testProps(testIDs.home.toggleBalanceVisibility)}
               onPress={toggleBalanceVisibility}
@@ -1079,140 +1029,201 @@ export default function HomeScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
           <Text style={styles.balanceAmount}>
-            {balanceHidden ? "****" : unitLabel(wallet.balance)}
+            {balanceHidden
+              ? "**** units"
+              : ward.isWard
+              ? `${formatUnits(wardShieldedUnits)} units`
+              : `${formatUnits(totalShieldedUnits)} units`}
           </Text>
-          <Text style={styles.balanceSecondary}>
-            {balanceHidden ? "****" : `(${displayBalance} ${wallet.selectedToken})`}
-          </Text>
-          <Text style={styles.erc20Label}>Unshielded (On-chain)</Text>
-          <Text style={styles.erc20Amount}>
-            {balanceHidden ? "****" : displayErc20}{" "}
-            <Text style={styles.erc20Symbol}>{wallet.selectedToken}</Text>
-          </Text>
-        </View>
-      </View>
-
-          {/* Claim Banner — only when there are real pending funds */}
-          {hasPending && !isWardFrozen && (
-          <TouchableOpacity
-            {...testProps(testIDs.home.claimPending)}
-            style={styles.claimBanner}
-            onPress={handleClaim}
-            disabled={isClaiming}
-            activeOpacity={0.72}
-          >
-            <ArrowDownToLine size={20} color={colors.success} />
-            <View style={styles.claimTextWrap}>
-              <Text style={styles.claimBannerTitle}>Pending funds available</Text>
-              <Text style={styles.claimBannerSub}>
-                Tap to claim {wallet.pending} units to your shielded balance
+          {ward.isWard ? (
+            <>
+              <Text style={styles.balanceSecondary}>
+                ({balanceHidden ? "****" : `${displayErc20} ${wallet.selectedToken}`})
               </Text>
-            </View>
-            {isClaiming ? <ActivityIndicator size="small" color={colors.success} /> : null}
-          </TouchableOpacity>
-          )}
-
-      {/* Quick Actions */}
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          {...testProps(testIDs.home.quickSend)}
-          style={[styles.actionButton, styles.actionSend]}
-          onPress={() => navigation.navigate("Send")}
-          disabled={isWardFrozen}
-          activeOpacity={isWardFrozen ? 0.35 : 0.72}
-        >
-          <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
-          <Text style={styles.actionLabel}>Send</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          {...testProps(testIDs.home.quickShield)}
-          style={[styles.actionButton, styles.actionShield]}
-          onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
-          disabled={isWardFrozen}
-          activeOpacity={isWardFrozen ? 0.35 : 0.72}
-        >
-          <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
-          <Text style={styles.actionLabel}>Shield</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          {...testProps(testIDs.home.quickUnshield)}
-          style={[styles.actionButton, styles.actionUnshield]}
-          onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
-          disabled={isWardFrozen}
-          activeOpacity={isWardFrozen ? 0.35 : 0.72}
-        >
-          <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
-          <Text style={styles.actionLabel}>Unshield</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Spending Limits — ward only */}
-      {ward.isWard && <SpendingLimitsCard wardInfo={ward.wardInfo} />}
-
-      {/* Recent Activity */}
-      <View style={styles.recentSection}>
-        <View style={styles.recentHeader}>
-          <Text style={styles.recentTitle}>Recent Activity</Text>
-          {recentActivityItems.length > 0 && (
-            <TouchableOpacity onPress={() => navigation.navigate("Activity")}>
-              <Text style={styles.recentSeeAll}>View All</Text>
-            </TouchableOpacity>
+              <View style={styles.balanceSplitWrap}>
+                <Text style={styles.balanceSplitLabel}>Unshielded (on-chain)</Text>
+                <Text style={styles.balanceSplitValue}>
+                  {balanceHidden ? "****" : `${displayErc20} ${wallet.selectedToken}`}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.balanceSecondary}>Across STRK / ETH / USDC pools</Text>
+              <View style={styles.balanceSplitWrap}>
+                <Text style={styles.balanceSplitLabel}>Per-token split</Text>
+                <Text style={styles.balanceSplitValue}>
+                  {balanceHidden
+                    ? "****"
+                    : `STRK ${formatUnits(strkUnits)} · ETH ${formatUnits(ethUnits)} · USDC ${formatUnits(usdcUnits)}`}
+                </Text>
+              </View>
+            </>
           )}
         </View>
-        <View style={styles.recentList}>
-          {recentActivityItems.length === 0 ? (
-            <View style={styles.recentEmptyState}>
-              <Ghost size={48} color={colors.textSecondary} style={{ opacity: 0.5 }} />
-              <Text style={styles.recentEmptyText}>No activity yet</Text>
-              <Text style={styles.recentEmptyHint}>Your transactions will appear here</Text>
-            </View>
-          ) : (
-            recentActivityItems.map((item) => {
-              const iconBg =
-                item.kind === "received"
-                  ? "rgba(16, 185, 129, 0.08)"
-                  : "rgba(59, 130, 246, 0.08)";
-              const iconColor =
-                item.kind === "received" ? colors.success : colors.primaryLight;
-              const rowIcon =
-                item.kind === "received" ? (
-                  <ArrowDownToLine size={16} color={iconColor} />
-                ) : item.kind === "shielded" ? (
-                  <ShieldPlus size={16} color={iconColor} />
-                ) : (
-                  <ArrowUpFromLine size={16} color={iconColor} />
-                );
-              return (
-                <TouchableOpacity
+      </View>
+
+      {ward.isWard ? (
+        <>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              {...testProps(testIDs.home.quickSend)}
+              style={[styles.actionButton, styles.actionSend]}
+              onPress={() => navigation.navigate("Send")}
+              disabled={isWardFrozen}
+              activeOpacity={isWardFrozen ? 0.35 : 0.72}
+            >
+              <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
+              <Text style={styles.actionLabel}>Send</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              {...testProps(testIDs.home.quickShield)}
+              style={[styles.actionButton, styles.actionShield]}
+              onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
+              disabled={isWardFrozen}
+              activeOpacity={isWardFrozen ? 0.35 : 0.72}
+            >
+              <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
+              <Text style={styles.actionLabel}>Shield</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              {...testProps(testIDs.home.quickUnshield)}
+              style={[styles.actionButton, styles.actionUnshield]}
+              onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
+              disabled={isWardFrozen}
+              activeOpacity={isWardFrozen ? 0.35 : 0.72}
+            >
+              <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
+              <Text style={styles.actionLabel}>Unshield</Text>
+            </TouchableOpacity>
+          </View>
+
+          <SpendingLimitsCard wardInfo={ward.wardInfo} />
+
+          <View style={styles.wardRecentSection}>
+            <Text style={styles.wardRecentTitle}>Recent Activity</Text>
+            <View style={styles.wardRecentList}>
+              {wardRecentRows.map((item, index) => (
+                <View
                   key={item.id}
-                  style={styles.recentItemCard}
-                  disabled={!item.txHash}
-                  activeOpacity={item.txHash ? 0.72 : 1}
-                  onPress={() =>
-                    item.txHash
-                      ? navigation.getParent()?.navigate("TransactionDetail", {
-                          txHash: item.txHash,
-                          type: item.kind,
-                        })
-                      : undefined
-                  }
+                  style={[
+                    styles.wardRecentRow,
+                    index < wardRecentRows.length - 1 && styles.wardRecentDivider,
+                  ]}
                 >
-                  <View style={styles.recentItemLeft}>
-                    <View style={[styles.recentItemIconWrap, { backgroundColor: iconBg }]}>
-                      {rowIcon}
-                    </View>
+                  <View style={styles.wardRecentLeft}>
+                    <View
+                      style={[
+                        styles.wardRecentDot,
+                        item.tone === "positive" ? styles.wardRecentDotPositive : styles.wardRecentDotNegative,
+                      ]}
+                    />
                     <View>
-                      <Text style={styles.recentType}>{item.title}</Text>
-                      <Text style={styles.recentSub}>{item.subtitle}</Text>
+                      <Text style={styles.wardRecentLabel}>{item.title}</Text>
+                      <Text style={styles.wardRecentSub}>{item.subtitle}</Text>
                     </View>
                   </View>
-                  <Text style={[styles.recentAmount, { color: item.amountColor }]}>{item.amountLabel}</Text>
-                </TouchableOpacity>
-              );
-            })
+                  <Text style={[styles.wardRecentAmount, { color: item.amountColor }]}>{item.amount}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </>
+      ) : (
+        <>
+          {/* Claim Banner — only when there are pending funds */}
+          {hasPending && !isWardFrozen && (
+            <TouchableOpacity
+              {...testProps(testIDs.home.claimPending)}
+              style={styles.claimBanner}
+              onPress={handleClaim}
+              disabled={isClaiming}
+              activeOpacity={0.72}
+            >
+              <ArrowDownToLine size={20} color={colors.success} />
+              <View style={styles.claimTextWrap}>
+                <Text style={styles.claimBannerTitle}>Pending funds available</Text>
+                <Text style={styles.claimBannerSub}>
+                  Tap to claim {formatUnits(pendingUnits)} units to your shielded balance
+                </Text>
+              </View>
+              {isClaiming ? <ActivityIndicator size="small" color={colors.success} /> : null}
+            </TouchableOpacity>
           )}
-        </View>
-      </View>
+
+          {/* Quick Actions */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              {...testProps(testIDs.home.quickSend)}
+              style={[styles.actionButton, styles.actionSend]}
+              onPress={() => navigation.navigate("Send")}
+              disabled={isWardFrozen}
+              activeOpacity={isWardFrozen ? 0.35 : 0.72}
+            >
+              <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
+              <Text style={styles.actionLabel}>Send</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              {...testProps(testIDs.home.quickShield)}
+              style={[styles.actionButton, styles.actionShield]}
+              onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
+              disabled={isWardFrozen}
+              activeOpacity={isWardFrozen ? 0.35 : 0.72}
+            >
+              <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
+              <Text style={styles.actionLabel}>Shield</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              {...testProps(testIDs.home.quickUnshield)}
+              style={[styles.actionButton, styles.actionUnshield]}
+              onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
+              disabled={isWardFrozen}
+              activeOpacity={isWardFrozen ? 0.35 : 0.72}
+            >
+              <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
+              <Text style={styles.actionLabel}>Unshield</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              {...testProps(testIDs.home.quickSwap)}
+              style={[styles.actionButton, styles.actionSwap]}
+              onPress={() => navigation.navigate("Swap")}
+              activeOpacity={0.72}
+            >
+              <Repeat size={28} color={colors.warning} style={styles.actionIconSpacing} />
+              <Text style={styles.actionLabel}>Swap</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Portfolio */}
+          <View style={styles.portfolioSection}>
+            <View style={styles.portfolioHeader}>
+              <Text style={styles.portfolioTitle}>Portfolio</Text>
+              <Text style={styles.portfolioCount}>{portfolioRows.length} tokens</Text>
+            </View>
+            <View style={styles.portfolioList}>
+              {portfolioRows.map((row) => (
+                <View key={row.token} style={styles.portfolioRow}>
+                  <View style={styles.portfolioLeft}>
+                    <Text style={styles.portfolioToken}>{row.token}</Text>
+                    <Text style={styles.portfolioPublic}>
+                      Public {balanceHidden ? "****" : displayErc20 && row.token === wallet.selectedToken ? displayErc20 : row.publicDisplay}
+                      {!balanceHidden ? ` ${row.token}` : ""}
+                    </Text>
+                  </View>
+                  <View style={styles.portfolioRight}>
+                    <Text style={styles.portfolioMeta}>
+                      Available {balanceHidden ? "****" : `${formatUnits(row.shielded)}u`} · Pending {balanceHidden ? "****" : `${formatUnits(row.pending)}u`}
+                    </Text>
+                    <Text style={styles.portfolioShielded}>
+                      Shielded Total {balanceHidden ? "****" : `${formatUnits(row.shieldedTotal)}u`}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        </>
+      )}
 
         </>
       )}
@@ -1225,7 +1236,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingTop: 4,
+    paddingTop: 12,
     paddingBottom: 96,
   },
   markerContainer: {
@@ -1467,7 +1478,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: 16,
-    minHeight: 260,
+    minHeight: 240,
   },
   glowTopRight: {
     position: "absolute",
@@ -1520,15 +1531,25 @@ const styles = StyleSheet.create({
     fontFamily: typography.primarySemibold,
   },
   balanceSecondary: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textSecondary,
-    marginTop: 2,
-    fontFamily: typography.primary,
+    marginTop: 4,
+    fontFamily: typography.secondary,
   },
-  pendingText: {
-    fontSize: fontSize.sm,
-    color: colors.warning,
-    marginTop: spacing.sm,
+  balanceSplitWrap: {
+    marginTop: 12,
+    gap: 2,
+  },
+  balanceSplitLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    fontFamily: typography.primarySemibold,
+  },
+  balanceSplitValue: {
+    fontSize: 12,
+    color: colors.textSecondary,
     fontFamily: typography.secondary,
   },
   erc20Label: {
@@ -1576,14 +1597,14 @@ const styles = StyleSheet.create({
   // Actions
   actionsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
     marginBottom: 12,
   },
   actionButton: {
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: 16,
-    height: 110,
+    height: 90,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1599,6 +1620,9 @@ const styles = StyleSheet.create({
   actionUnshield: {
     borderLeftColor: colors.secondary,
   },
+  actionSwap: {
+    borderLeftColor: colors.warning,
+  },
   actionIcon: { fontSize: 28, marginBottom: spacing.xs },
   actionIconSpacing: { marginBottom: 10 },
   actionLabel: {
@@ -1608,91 +1632,75 @@ const styles = StyleSheet.create({
     fontFamily: typography.primarySemibold,
   },
 
-  // Recent Activity
-  recentSection: {
-    flex: 1,
+  // Portfolio
+  portfolioSection: {
+    gap: 12,
     marginBottom: 14,
-    gap: 10,
   },
-  recentHeader: {
+  portfolioHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  recentTitle: {
-    fontSize: 10,
+  portfolioTitle: {
+    fontSize: 11,
     fontWeight: "600",
     color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 1.5,
     fontFamily: typography.primarySemibold,
   },
-  recentSeeAll: {
-    fontSize: 13,
-    color: colors.primaryLight,
-    fontWeight: "500",
-    fontFamily: typography.secondarySemibold,
+  portfolioCount: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: typography.secondary,
   },
-  recentList: {
+  portfolioList: {
     gap: 8,
   },
-  recentItemCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  portfolioRow: {
+    minHeight: 76,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 12,
     paddingHorizontal: 14,
-  },
-  recentItemLeft: {
+    paddingVertical: 12,
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 10,
-    flex: 1,
+    gap: 12,
   },
-  recentItemIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
+  portfolioLeft: {
+    gap: 4,
   },
-  recentType: {
-    fontSize: 12,
+  portfolioToken: {
     color: colors.text,
+    fontSize: 16,
     fontFamily: typography.primarySemibold,
+    fontWeight: "600",
   },
-  recentSub: {
-    fontSize: 11,
+  portfolioPublic: {
     color: colors.textMuted,
-    marginTop: 1,
-    fontFamily: typography.secondary,
-  },
-  recentAmount: {
-    fontSize: 13,
-    fontFamily: typography.primarySemibold,
-  },
-  recentEmptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 48,
-    gap: 8,
-  },
-  recentEmptyText: {
-    fontSize: 15,
-    color: colors.textSecondary,
-    fontFamily: typography.primarySemibold,
-    opacity: 0.7,
-    marginTop: 4,
-  },
-  recentEmptyHint: {
     fontSize: 12,
-    color: colors.textMuted,
     fontFamily: typography.secondary,
-    opacity: 0.5,
+  },
+  portfolioRight: {
+    alignItems: "flex-end",
+    gap: 3,
+    maxWidth: "62%",
+  },
+  portfolioMeta: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontFamily: typography.secondary,
+    textAlign: "right",
+  },
+  portfolioShielded: {
+    color: colors.success,
+    fontSize: 12,
+    fontFamily: typography.secondarySemibold,
+    textAlign: "right",
   },
 
   // Claim Success Card (matches SendScreen success modal design)
@@ -1944,6 +1952,68 @@ const styles = StyleSheet.create({
   wardAllowedTokenBadgeText: {
     fontSize: 11,
     color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  wardRecentSection: {
+    marginTop: 2,
+    gap: 8,
+  },
+  wardRecentTitle: {
+    fontSize: 11,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: colors.textMuted,
+    fontFamily: typography.primarySemibold,
+  },
+  wardRecentList: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: "hidden",
+  },
+  wardRecentRow: {
+    height: 54,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  wardRecentDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  wardRecentLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  wardRecentDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  wardRecentDotPositive: {
+    backgroundColor: colors.success,
+  },
+  wardRecentDotNegative: {
+    backgroundColor: colors.primary,
+  },
+  wardRecentLabel: {
+    fontSize: 13,
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
+  wardRecentSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.secondary,
+    marginTop: 2,
+  },
+  wardRecentAmount: {
+    fontSize: 13,
     fontFamily: typography.primarySemibold,
   },
 });

@@ -1,17 +1,17 @@
 /**
  * Bottom tab navigation for the Cloak wallet.
  */
-import React from "react";
-import { View, Text, StyleSheet, Platform } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, Platform, Pressable, Modal } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Home, Send, Settings, Clock, Shield } from "lucide-react-native";
+import { Home, Send, Clock, Shield, Sparkles, ScanLine, QrCode, Repeat } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
 import SendScreen from "../screens/SendScreen";
 import WalletScreen from "../screens/WalletScreen";
 import ActivityScreen from "../screens/ActivityScreen";
-import SettingsScreen from "../screens/SettingsScreen";
+import SwapScreen from "../screens/SwapScreen";
 import DeployScreen from "../screens/DeployScreen";
 import { CloakIcon } from "../components/CloakIcon";
 import { useWallet } from "../lib/WalletContext";
@@ -27,16 +27,16 @@ const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
   Home: ({ size, color }) => <Home size={size} color={color} />,
   Send: ({ size, color }) => <Send size={size} color={color} />,
   Wallet: ({ size, color }) => <CloakIcon size={size} color={color} />,
+  Swap: ({ size, color }) => <Repeat size={size} color={color} />,
   Activity: ({ size, color }) => <Clock size={size} color={color} />,
-  Settings: ({ size, color }) => <Settings size={size} color={color} />,
 };
 
 const TAB_TEST_IDS: Record<string, string> = {
   Home: testIDs.navigation.tabHome,
   Send: testIDs.navigation.tabSend,
   Wallet: testIDs.navigation.tabWallet,
+  Swap: testIDs.navigation.tabSwap,
   Activity: testIDs.navigation.tabActivity,
-  Settings: testIDs.navigation.tabSettings,
 };
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
@@ -48,42 +48,76 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return <Text style={[styles.icon, focused && styles.iconActive]}>{"•"}</Text>;
 }
 
-/** Centered logo+name for normal accounts */
-function HeaderTitleCenter() {
+function HeaderLogoButton({ onPress }: { onPress: () => void }) {
   return (
-    <View style={styles.headerCenterGroup}>
+    <Pressable onPress={onPress} style={styles.headerLeftGroup}>
       <CloakIcon size={24} />
       <Text style={styles.headerBrand}>Cloak</Text>
+    </Pressable>
+  );
+}
+
+function HeaderWardBadge({ frozen = false }: { frozen?: boolean }) {
+  return (
+    <View style={[styles.headerWardBadge, frozen && styles.headerWardBadgeFrozen]}>
+      <Shield size={13} color={frozen ? colors.warning : colors.secondary} />
+      <Text style={[styles.headerWardBadgeText, frozen && styles.headerWardBadgeTextFrozen]}>Ward Mode</Text>
     </View>
   );
 }
 
-/** Left-aligned logo+name for ward accounts */
-function HeaderLeftLogo() {
+function HeaderQuickActionButton({ onPress }: { onPress: () => void }) {
   return (
-    <View style={styles.headerLeftGroup}>
-      <CloakIcon size={18} />
-      <Text style={styles.headerBrand}>Cloak</Text>
-    </View>
+    <Pressable onPress={onPress} style={styles.headerQuickBtn}>
+      <Sparkles size={15} color={colors.primaryLight} />
+    </Pressable>
   );
 }
 
-function HeaderWardBadge() {
+function QuickActionSheet({
+  visible,
+  onClose,
+  onQuickSend,
+  onScanToPay,
+  onShowReceiveQr,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onQuickSend: () => void;
+  onScanToPay: () => void;
+  onShowReceiveQr: () => void;
+}) {
   return (
-    <View style={styles.headerWardBadge}>
-      <Shield size={14} color="#F59E0B" />
-      <Text style={styles.headerWardBadgeText}>Ward</Text>
-    </View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.quickOverlay} onPress={onClose}>
+        <View style={styles.quickSheet}>
+          <Pressable style={styles.quickRow} onPress={onQuickSend}>
+            <Send size={16} color={colors.primaryLight} />
+            <Text style={styles.quickLabel}>Quick Send</Text>
+          </Pressable>
+          <Pressable style={styles.quickRow} onPress={onScanToPay}>
+            <ScanLine size={16} color={colors.primaryLight} />
+            <Text style={styles.quickLabel}>Scan to Pay</Text>
+          </Pressable>
+          <Pressable style={styles.quickRow} onPress={onShowReceiveQr}>
+            <QrCode size={16} color={colors.primaryLight} />
+            <Text style={styles.quickLabel}>Show Receive QR</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
   );
 }
 
 export default function AppNavigator() {
   const wallet = useWallet();
   const ward = useWardContext();
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, Platform.OS === "android" ? 12 : 24);
   const initialRouteName: keyof AppTabParamList = "Home";
   const isWardFrozen = ward.isWard && !!ward.wardInfo?.isFrozen;
+  const [quickActionOpen, setQuickActionOpen] = useState(false);
 
   // Gate: show deploy screen if wallet exists but is not deployed (or still checking)
   if (wallet.isWalletCreated && !wallet.isDeployed && !wallet.isLoading) {
@@ -105,6 +139,15 @@ export default function AppNavigator() {
           headerTintColor: colors.text,
           headerTitleStyle: { fontWeight: "600", fontFamily: typography.primarySemibold },
           headerTitleAlign: "center" as const,
+          headerTitle: route.name === "Home" && ward.isWard ? () => <HeaderWardBadge frozen={isWardFrozen} /> : "",
+          headerLeft: () => (
+            <HeaderLogoButton onPress={() => navigation.getParent()?.navigate("SettingsHub")} />
+          ),
+          headerRight: () => (
+            <HeaderQuickActionButton onPress={() => setQuickActionOpen(true)} />
+          ),
+          headerLeftContainerStyle: { paddingLeft: 20 },
+          headerRightContainerStyle: { paddingRight: 20 },
           tabBarStyle: wallet.isWalletCreated
             ? {
                 ...styles.tabBar,
@@ -139,38 +182,50 @@ export default function AppNavigator() {
           name="Home"
           component={HomeScreen}
           options={ward.isWard ? {
-            headerTitle: "",
-            headerLeft: () => <HeaderLeftLogo />,
-            headerRight: () => <HeaderWardBadge />,
-            headerLeftContainerStyle: { paddingLeft: 22, paddingRight: 22 },
-            headerRightContainerStyle: { paddingLeft: 22, paddingRight: 22 },
+            headerTitle: () => <HeaderWardBadge frozen={isWardFrozen} />,
           } : {
-            headerTitle: () => <HeaderTitleCenter />,
+            headerTitle: "",
           }}
         />
         <Tab.Screen
           name="Send"
           component={SendScreen}
-          options={{ headerTitle: "Send Shielded" }}
+          options={{ headerTitle: "" }}
           listeners={isWardFrozen ? { tabPress: (e) => e.preventDefault() } : undefined}
         />
         <Tab.Screen
           name="Wallet"
           component={WalletScreen}
-          options={{ headerTitle: "Wallet" }}
+          options={{ headerTitle: "" }}
           listeners={isWardFrozen ? { tabPress: (e) => e.preventDefault() } : undefined}
+        />
+        <Tab.Screen
+          name="Swap"
+          component={SwapScreen}
+          options={{ headerTitle: "" }}
         />
         <Tab.Screen
           name="Activity"
           component={ActivityScreen}
-          options={{ headerTitle: "Activity" }}
-        />
-        <Tab.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{ headerTitle: "Settings" }}
+          options={{ headerTitle: "" }}
         />
       </Tab.Navigator>
+      <QuickActionSheet
+        visible={quickActionOpen}
+        onClose={() => setQuickActionOpen(false)}
+        onQuickSend={() => {
+          setQuickActionOpen(false);
+          navigation.navigate("Send");
+        }}
+        onScanToPay={() => {
+          setQuickActionOpen(false);
+          navigation.navigate("Send");
+        }}
+        onShowReceiveQr={() => {
+          setQuickActionOpen(false);
+          navigation.getParent()?.navigate("SettingsHub");
+        }}
+      />
       <TestStateMarkers />
     </View>
   );
@@ -197,18 +252,13 @@ const styles = StyleSheet.create({
   iconActive: {
     color: colors.primary,
   },
-  headerCenterGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
   headerLeftGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
   },
   headerBrand: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     color: colors.text,
     fontFamily: typography.primarySemibold,
@@ -216,18 +266,67 @@ const styles = StyleSheet.create({
   headerWardBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#F59E0B18",
-    borderRadius: 8,
+    gap: 5,
+    backgroundColor: "rgba(139, 92, 246, 0.18)",
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#F59E0B40",
+    borderColor: "rgba(139, 92, 246, 0.35)",
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    height: 24,
   },
   headerWardBadgeText: {
-    color: "#F59E0B",
+    color: colors.secondary,
     fontSize: 11,
     fontWeight: "600",
     fontFamily: typography.primarySemibold,
+  },
+  headerWardBadgeFrozen: {
+    backgroundColor: "rgba(245, 158, 11, 0.14)",
+    borderColor: "rgba(245, 158, 11, 0.35)",
+  },
+  headerWardBadgeTextFrozen: {
+    color: colors.warning,
+  },
+  headerQuickBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.surface,
+  },
+  quickOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+  quickSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderTopWidth: 1,
+    borderColor: colors.borderLight,
+    gap: 4,
+    paddingBottom: 24,
+  },
+  quickRow: {
+    height: 44,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    backgroundColor: "rgba(22, 31, 49, 0.7)",
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  quickLabel: {
+    color: colors.text,
+    fontSize: 13,
+    fontFamily: typography.secondarySemibold,
   },
 });

@@ -1,0 +1,34 @@
+appId: ${APP_ID}
+---
+- launchApp:
+    appId: ${APP_ID}
+    clearState: true
+    stopApp: true
+- tapOn:
+    id: onboarding.ward.import.route.press
+- tapOn: Manual
+- tapOn:
+    id: onboarding.ward.import.json.input
+- inputText: ${WARD_INVITE_JSON}
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      id: modal.themed.ok.press
+    timeout: 120000
+- tapOn:
+    id: modal.themed.ok.press
+- tapOn:
+    id: onboarding.ward.import.back.press
+- tapOn:
+    id: deploy.account.deploy.press
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: home.quick.send.press
+    timeout: 180000
+- tapOn:
+    id: toast.alert.dismiss.press
+    optional: true
+- assertVisible: Ward Mode
+- waitForAnimationToEnd
+- takeScreenshot: parity-ward-home-normal-phaseJ
