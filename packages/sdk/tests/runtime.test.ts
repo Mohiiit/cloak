@@ -6,7 +6,6 @@ import * as twoFactor from "../src/two-factor";
 import * as ward from "../src/ward";
 import * as transactions from "../src/transactions";
 import * as router from "../src/router";
-import { SwapModuleNotConfiguredError } from "../src/swaps";
 
 describe("createCloakRuntime", () => {
   afterEach(() => {
@@ -272,14 +271,4 @@ describe("createCloakRuntime", () => {
     expect(executeResult.txHash).toBe("0xswap");
   });
 
-  it("throws when swap adapter is not configured", async () => {
-    const runtime = createCloakRuntime();
-    await expect(
-      runtime.swaps.quote({
-        walletAddress: "0xabc",
-        pair: { sellToken: "STRK", buyToken: "ETH" },
-        sellAmount: { value: "1", unit: "tongo_units" },
-      }),
-    ).rejects.toBeInstanceOf(SwapModuleNotConfiguredError);
-  });
 });

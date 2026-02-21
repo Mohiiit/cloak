@@ -66,6 +66,9 @@ export interface SwapExecutionInput {
   plan: ShieldedSwapPlan;
   wardAddress?: string;
   is2FAEnabled?: boolean;
+  network?: string;
+  platform?: string | null;
+  note?: string | null;
   onStatusChange?: (status: string) => void;
   confirmOnChain?: boolean;
   executeDirect: () => Promise<unknown>;

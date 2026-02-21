@@ -21,7 +21,11 @@ import {
   ApprovalsRepository,
   TransactionsRepository,
 } from "../repositories";
-import { createSwapModule } from "../swaps";
+import {
+  createAvnuSwapAdapter,
+  createSwapModule,
+  executeShieldedSwap,
+} from "../swaps";
 import type {
   CloakRuntime,
   CloakRuntimeConfig,
@@ -65,7 +69,24 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     deps.supabase,
     deps.provider,
   );
-  const swapsModule = createSwapModule(config.swapsAdapter);
+  const avnuAdapter = createAvnuSwapAdapter();
+  const runtimeSwapAdapter = config.swapsAdapter ?? {
+    quote: avnuAdapter.quote,
+    build: avnuAdapter.build,
+    execute: (input: Parameters<typeof executeShieldedSwap>[1]) =>
+      executeShieldedSwap(
+        {
+          getWardPolicySnapshot: (wardAddress) => policyModule.getWardPolicySnapshot(wardAddress),
+          evaluateWardExecutionPolicy: (wardAddress, calls) =>
+            policyModule.evaluateWardExecutionPolicy(wardAddress, calls),
+          saveTransaction: (record) => transactionsRepo.save(record),
+          confirmTransaction: (txHash) => transactionsRepo.confirm(txHash),
+          network,
+        },
+        input,
+      ),
+  };
+  const swapsModule = createSwapModule(runtimeSwapAdapter);
   const policyModule = {
     getWardPolicySnapshot(wardAddress: string) {
       return fetchWardPolicySnapshot(deps.provider, wardAddress);

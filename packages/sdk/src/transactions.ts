@@ -15,7 +15,7 @@ import type { AmountUnit } from "./token-convert";
 
 export type TransactionStatus = "pending" | "confirmed" | "failed";
 export type AccountType = "normal" | "ward" | "guardian";
-export type TransactionType = "fund" | "transfer" | "withdraw" | "rollover" | "erc20_transfer" | "deploy_ward" | "fund_ward" | "configure_ward";
+export type TransactionType = "fund" | "transfer" | "withdraw" | "rollover" | "erc20_transfer" | "deploy_ward" | "fund_ward" | "configure_ward" | "shielded_swap";
 
 export interface TransactionRecord {
   id?: string;

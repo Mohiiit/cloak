@@ -8,6 +8,12 @@ export type {
   ComposeShieldedSwapPlanInput,
 } from "./builder";
 export {
+  executeShieldedSwap,
+} from "./executor";
+export type {
+  ShieldedSwapExecutorDeps,
+} from "./executor";
+export {
   AVNU_BASE_URL,
   AvnuSwapApiError,
   AvnuSwapStaleQuoteError,
