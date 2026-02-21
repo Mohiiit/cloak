@@ -104,6 +104,32 @@ export { TOKENS, DEFAULT_TOKEN, getTokenBySymbol, formatTokenAmount, parseTokenA
 export { convertAmount, toDisplayString, toTongoUnits, toErc20Wei } from "./token-convert";
 export type { AmountUnit, TokenAmount } from "./token-convert";
 
+// Presentation helpers (frontend-ready typed objects)
+export {
+  SUPPORTED_TOKENS,
+  isTokenKey,
+  normalizeTokenKey,
+  isAmountUnit,
+  stripTokenSuffix,
+  sanitizeAmountValue,
+  resolveAmountUnit,
+  toTokenAmountView,
+  quantizeToShieldedUnits,
+  buildTokenBalanceView,
+  buildPortfolioBalanceView,
+  toActivityRecordView,
+  toActivityRecordViews,
+} from "./presentation";
+export type {
+  TokenAmountView,
+  ShieldedQuantizationView,
+  TokenBalanceInput,
+  TokenBalanceView,
+  PortfolioBalanceView,
+  ActivitySwapView,
+  ActivityRecordView,
+} from "./presentation";
+
 // Storage adapters
 export { MemoryStorage } from "./storage/memory";
 export { LocalStorageAdapter } from "./storage/localStorage";
