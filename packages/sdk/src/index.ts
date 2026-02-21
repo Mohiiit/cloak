@@ -1,6 +1,18 @@
 // Core classes
 export { CloakClient } from "./client";
 export { CloakAccount } from "./account";
+export { createCloakRuntime } from "./runtime";
+export type {
+  RuntimeLogger,
+  RuntimeNow,
+  CloakRuntimeConfig,
+  CloakRuntimeDeps,
+  CloakRuntimePolicyModule,
+  CloakRuntimeApprovalsModule,
+  CloakRuntimeTransactionsModule,
+  CloakRuntimeWardModule,
+  CloakRuntime,
+} from "./runtime";
 
 // Centralized config constants
 export {
