@@ -125,7 +125,7 @@ export async function getTransactions(
   const client = sb || getDefaultSb();
   const normalized = normalizeAddress(walletAddress);
 
-  // Fetch both: transactions where this address is the wallet, and where it's the ward
+  // Fetch direct rows for this wallet and linked ward rows
   const [byWallet, byWard] = await Promise.all([
     client.select<TransactionRecord>(
       "transactions",
@@ -139,10 +139,37 @@ export async function getTransactions(
     ),
   ]);
 
+  // Guardian activity should include transactions initiated directly by managed wards.
+  // We derive managed wards via ward_configs.guardian_address -> ward_address.
+  let byManagedWards: TransactionRecord[] = [];
+  try {
+    const wardRows = await client.select<{ ward_address: string }>(
+      "ward_configs",
+      `guardian_address=eq.${normalized}`,
+    );
+    const managedWards = Array.from(
+      new Set(
+        wardRows
+          .map((row) => normalizeAddress(row.ward_address))
+          .filter((addr) => addr !== "0x0"),
+      ),
+    );
+    if (managedWards.length > 0) {
+      const inClause = managedWards.join(",");
+      byManagedWards = await client.select<TransactionRecord>(
+        "transactions",
+        `wallet_address=in.(${inClause})`,
+        "created_at.desc",
+      );
+    }
+  } catch (err) {
+    console.warn("[transactions] managed ward lookup failed:", err);
+  }
+
   // Deduplicate by tx_hash — prefer byWallet (user's own record) over byWard (other user's record)
   const seen = new Set<string>();
   const all: TransactionRecord[] = [];
-  for (const tx of [...byWallet, ...byWard]) {
+  for (const tx of [...byWallet, ...byWard, ...byManagedWards]) {
     if (!seen.has(tx.tx_hash)) {
       seen.add(tx.tx_hash);
       all.push(tx);
