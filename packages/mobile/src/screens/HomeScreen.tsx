@@ -38,15 +38,21 @@ import {
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext, type WardInfo } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { tongoToDisplay, erc20ToDisplay, TOKENS, type TokenKey, unitLabel } from "../lib/tokens";
+import { tongoToDisplay, erc20ToDisplay, type TokenKey, unitLabel } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
 import { testIDs, testProps } from "../testing/testIDs";
 import { triggerSuccess } from "../lib/haptics";
 import { Confetti } from "../components/Confetti";
-import { getTransactions, type TransactionRecord } from "@cloak-wallet/sdk";
 import WebView from "react-native-webview";
+import { loadActivityHistory, type ActivityFeedItem } from "../lib/activity/feed";
+import {
+  GUARDIAN_WARD_TYPES,
+  hasAmountFromAny,
+  toDisplayAmountFromAny,
+  toTongoUnitsFromAny,
+} from "../lib/activity/amounts";
 
 type WardInvitePayload = {
   type: string;
@@ -545,12 +551,12 @@ export default function HomeScreen({ navigation }: any) {
   }, []);
 
   // Fetch recent transactions from Supabase for the "Recent Activity" section
-  const [recentTxs, setRecentTxs] = useState<TransactionRecord[]>([]);
+  const [recentTxs, setRecentTxs] = useState<ActivityFeedItem[]>([]);
   const guardianTxTypes = new Set(["fund_ward", "deploy_ward", "configure_ward"]);
   const loadRecentTxs = useCallback(async () => {
     if (!wallet.keys?.starkAddress) return;
     try {
-      const records = await getTransactions(wallet.keys.starkAddress);
+      const records = await loadActivityHistory(wallet.keys.starkAddress, 50);
       if (records && records.length > 0) {
         // For ward accounts, filter out guardian-initiated transactions
         const filtered = ward.isWard
@@ -930,7 +936,7 @@ export default function HomeScreen({ navigation }: any) {
     recentTxs.length > 0
       ? recentTxs.map((tx, index) => {
           const txType = (tx.type || "").toLowerCase();
-          const hash = tx.tx_hash || "";
+          const hash = tx.txHash || "";
           const kind: RecentActivityItem["kind"] =
             txType === "fund" ? "shielded"
             : txType === "rollover" ? "received"
@@ -947,38 +953,18 @@ export default function HomeScreen({ navigation }: any) {
           let amountLabel = "";
           const token = (tx.token || "STRK") as TokenKey;
           const isPublic = txType === "erc20_transfer";
-          // Guardian ward ops: amount stored as STRK display (from formatWardAmount)
-          const isGuardianWardOp = tx.account_type === "guardian";
-          // Detect if amount has a token suffix (e.g. "1 STRK") — means it's display format
-          const hasTokenSuffix = /\s*(STRK|ETH|USDC)\s*$/i.test(tx.amount || "");
-          if (tx.amount) {
-            const raw = tx.amount.trim().replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
-            if (isPublic && !isGuardianWardOp) {
-              amountLabel = `${raw} ${token}`;
-            } else if (isGuardianWardOp && isPublic) {
-              // Guardian ward public transfer: amount is ERC-20 display
-              amountLabel = `${raw} ${token}`;
-            } else if (isGuardianWardOp && (raw.includes(".") || hasTokenSuffix)) {
-              // Guardian ward shielded ops: reverse-convert STRK display → tongo units
-              const cfg = TOKENS[token];
-              try {
-                const parts = raw.split(".");
-                const whole = BigInt(parts[0] || "0");
-                const fracStr = (parts[1] || "").padEnd(cfg.decimals, "0").slice(0, cfg.decimals);
-                const frac = BigInt(fracStr);
-                const wei = whole * (10n ** BigInt(cfg.decimals)) + frac;
-                const units = wei / cfg.rate;
-                amountLabel = unitLabel(units.toString());
-              } catch {
-                amountLabel = unitLabel(raw);
-              }
+          const isGuardianWardOp = tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(txType as any);
+          if (hasAmountFromAny(tx.amount, tx.amount_unit, token, txType)) {
+            const displayAmount = toDisplayAmountFromAny(tx.amount, tx.amount_unit, token, txType);
+            const unitsAmount = toTongoUnitsFromAny(tx.amount, tx.amount_unit, token, txType);
+            if (isPublic || (isGuardianWardOp && isPublic)) {
+              amountLabel = `${displayAmount} ${token}`;
             } else {
-              // Shielded: raw is already tongo units
-              amountLabel = unitLabel(raw);
+              amountLabel = unitLabel(unitsAmount);
             }
           }
           const isPositive = kind === "received" || kind === "shielded";
-          const ts = tx.created_at ? new Date(tx.created_at).getTime() : 0;
+          const ts = tx.timestamp || 0;
           const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
           return {
             id: hash || `${txType || "tx"}-${index}`,

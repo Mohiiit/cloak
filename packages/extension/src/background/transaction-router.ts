@@ -179,14 +179,17 @@ export async function routeTransaction(
             ? null
             : await prepareLocalWardEnvelope(wallet.starkAddress, wallet.privateKey, calls);
         }
-
+        const requestAmount = rawAmount
+          ? formatWardAmount(rawAmount, token, action)
+          : null;
         const wardResult = await requestWardApproval(
           {
             wardAddress: wallet.starkAddress,
             guardianAddress: snapshot.guardianAddress,
             action,
             token,
-            amount: formatWardAmount(rawAmount, token, action),
+            amount: requestAmount,
+            amountUnit: requestAmount ? "erc20_display" : null,
             recipient: opts?.recipient || null,
             callsJson,
             wardSigJson: localWardEnvelope?.wardSigJson || "[]",
@@ -318,6 +321,7 @@ export async function routeRawCalls(
             action: wardAction,
             token: wardToken,
             amount: formattedAmount,
+            amountUnit: formattedAmount ? "erc20_display" : null,
             recipient: wardRecipient,
             callsJson,
             wardSigJson: localWardEnvelope?.wardSigJson || "[]",

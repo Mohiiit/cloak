@@ -1296,6 +1296,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           type: (request.action || "transfer") as any,
           token: request.token || "STRK",
           amount: request.amount || null,
+          amount_unit: request.amount_unit || null,
           recipient: request.recipient || null,
           recipient_name: wEntry?.pseudoName || null,
           status: "failed",
@@ -1333,6 +1334,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         type: (request.action || "transfer") as any,
         token: request.token || "STRK",
         amount: request.amount || null,
+        amount_unit: request.amount_unit || null,
         recipient: request.recipient || null,
         recipient_name: wardName,
         status: "confirmed",
@@ -1409,6 +1411,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       const needsWard2fa = !!secondaryPk;
       // Ward requests always start at ward-sign stage, independent of 2FA state.
       const status = "pending_ward_sig";
+      const requestAmount = params.amount
+        ? formatWardAmount(params.amount, params.token, params.action)
+        : null;
+      const requestAmountUnit: "erc20_display" | null = requestAmount
+        ? "erc20_display"
+        : null;
       const guardianAddress =
         wardInfoRef.current?.guardianAddress ||
         (await AsyncStorage.getItem(STORAGE_KEY_GUARDIAN_ADDR)) ||
@@ -1420,7 +1428,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         guardian_address: normalizeAddress(guardianAddress),
         action: params.action,
         token: params.token,
-        amount: params.amount || null,
+        amount: requestAmount,
+        amount_unit: requestAmountUnit,
         recipient: params.recipient || null,
         calls_json: serializeCalls(params.calls),
         nonce: "1",
@@ -1473,12 +1482,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     const { url, key } = await getSupabaseConfig();
     const sdkSb = new SdkSupabaseLite(url, key);
 
-    // Format amount for human-readable display on guardian side
-    const formattedAmount = formatWardAmount(
-      params.amount || null,
-      params.token,
-      params.action,
-    );
+    const requestAmount = params.amount
+      ? formatWardAmount(params.amount, params.token, params.action)
+      : null;
+    const requestAmountUnit: "erc20_display" | null = requestAmount
+      ? "erc20_display"
+      : null;
 
     // Set up abort controller for cancel support
     const abortController = new AbortController();
@@ -1492,7 +1501,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           guardianAddress: needs.guardianAddress,
           action: params.action,
           token: params.token,
-          amount: formattedAmount,
+          amount: requestAmount,
+          amountUnit: requestAmountUnit,
           recipient: params.recipient || null,
           callsJson,
           wardSigJson: "[]",

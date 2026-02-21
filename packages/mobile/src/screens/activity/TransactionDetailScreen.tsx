@@ -12,25 +12,30 @@ import Clipboard from "@react-native-clipboard/clipboard";
 import { ArrowLeft, ArrowUpRight, Check, Copy, ExternalLink } from "lucide-react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
-  SupabaseLite,
-  DEFAULT_SUPABASE_URL,
-  DEFAULT_SUPABASE_KEY,
-  normalizeAddress,
-  type TransactionRecord,
   type AmountUnit,
 } from "@cloak-wallet/sdk";
 import { colors, borderRadius, typography } from "../../lib/theme";
 import { useWallet } from "../../lib/WalletContext";
 import type { RootStackParamList } from "../../navigation/types";
-import { getTxNotes, type TxMetadata } from "../../lib/storage";
-import { TOKENS, type TokenKey, unitLabel } from "../../lib/tokens";
+import { type TxMetadata } from "../../lib/storage";
+import { type TokenKey, unitLabel } from "../../lib/tokens";
 import { testIDs, testProps } from "../../testing/testIDs";
+import { loadActivityByTxHash, type ActivityFeedItem } from "../../lib/activity/feed";
+import {
+  GUARDIAN_WARD_TYPES,
+  SHIELDED_TYPES,
+  WARD_ADMIN_TYPES,
+  toDisplayAmountFromAny,
+  toTongoUnitsFromAny,
+} from "../../lib/activity/amounts";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TransactionDetail">;
 
 /** Extended metadata including Supabase-sourced fields */
-interface TxMetadataExtended extends TxMetadata {
+interface TxMetadataExtended extends Omit<ActivityFeedItem, "type"> {
+  type: TxMetadata["type"] | string;
   status?: string;
+  statusDetail?: string;
   errorMessage?: string;
   accountType?: string;
   fee?: string;
@@ -56,50 +61,6 @@ function formatDateTime(timestamp?: string | number): string {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${month} ${day}, ${year} ${hh}:${mm}`;
-}
-
-/** Strip token suffix from amount if present (e.g. "0.05 STRK" → "0.05") */
-function stripTokenSuffix(raw: string): string {
-  return raw.replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
-}
-
-function formatTokenAmountFixed2(unitsStr: string, token: TokenKey): string {
-  const units = BigInt((unitsStr || "0").replace(/\D/g, "") || "0");
-  const cfg = TOKENS[token];
-  const wei = units * cfg.rate;
-  const divisor = 10n ** BigInt(cfg.decimals);
-  const scaled = (wei * 100n) / divisor; // token * 100 (truncated)
-  const whole = scaled / 100n;
-  const frac = scaled % 100n;
-  return `${whole.toString()}.${frac.toString().padStart(2, "0")}`;
-}
-
-/** Check if amount string is a STRK display value (has decimal point or token suffix) */
-function isDisplayAmount(raw: string): boolean {
-  return stripTokenSuffix(raw).includes(".") || /\s*(STRK|ETH|USDC)\s*$/i.test(raw);
-}
-
-/** Reverse-convert STRK display → tongo units (e.g. "0.05" STRK → "1") */
-function strkDisplayToUnits(strkAmount: string, token: TokenKey): string {
-  try {
-    const cfg = TOKENS[token];
-    const parts = strkAmount.split(".");
-    const whole = BigInt(parts[0] || "0");
-    const fracStr = (parts[1] || "").padEnd(cfg.decimals, "0").slice(0, cfg.decimals);
-    const frac = BigInt(fracStr);
-    const wei = whole * (10n ** BigInt(cfg.decimals)) + frac;
-    const units = wei / cfg.rate;
-    return units.toString();
-  } catch {
-    return "0";
-  }
-}
-
-/** Get tongo units from raw amount (auto-detects format) */
-function toTongoUnits(rawAmount: string, token: TokenKey): string {
-  const stripped = stripTokenSuffix(rawAmount);
-  if (isDisplayAmount(rawAmount)) return strkDisplayToUnits(stripped, token);
-  return stripped.replace(/\D/g, "") || "0";
 }
 
 function formatFeeDisplay(feeWei?: string): string {
@@ -167,6 +128,27 @@ function getStatusPill(status?: string): { label: string; dotColor: string; bgCo
         bgColor: "rgba(245, 158, 11, 0.14)",
         borderColor: "rgba(245, 158, 11, 0.22)",
       };
+    case "rejected":
+      return {
+        label: "Rejected",
+        dotColor: colors.error,
+        bgColor: "rgba(239, 68, 68, 0.14)",
+        borderColor: "rgba(239, 68, 68, 0.22)",
+      };
+    case "gas_error":
+      return {
+        label: "Gas Retry",
+        dotColor: "#F59E0B",
+        bgColor: "rgba(245, 158, 11, 0.14)",
+        borderColor: "rgba(245, 158, 11, 0.22)",
+      };
+    case "expired":
+      return {
+        label: "Expired",
+        dotColor: colors.textMuted,
+        bgColor: "rgba(148, 163, 184, 0.14)",
+        borderColor: "rgba(148, 163, 184, 0.22)",
+      };
     default:
       return {
         label: "Confirmed",
@@ -188,60 +170,17 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
     let isMounted = true;
 
     async function loadData() {
-      // 1. Try Supabase first
-      try {
-        const sb = new SupabaseLite(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY);
-        const records = await sb.select<TransactionRecord>(
-          "transactions",
-          `tx_hash=eq.${txHash}`,
-        );
-        if (isMounted && records && records.length > 0) {
-          // Prefer the record matching the current user's wallet address
-          const myAddr = wallet.keys?.starkAddress;
-          const myNormalized = myAddr ? normalizeAddress(myAddr) : "";
-          const r = (myNormalized && records.length > 1
-            ? records.find(rec => normalizeAddress(rec.wallet_address) === myNormalized)
-            : null) || records[0];
-          setMeta({
-            txHash: r.tx_hash,
-            recipient: r.recipient || undefined,
-            recipientName: r.recipient_name || undefined,
-            note: r.note || undefined,
-            privacyLevel: "private",
-            timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
-            type: r.type === "transfer" ? "send" : (r.type as any),
-            token: r.token || "STRK",
-            amount: r.amount || undefined,
-            amount_unit: (r as any).amount_unit || undefined,
-            status: r.status,
-            errorMessage: r.error_message || undefined,
-            accountType: r.account_type || undefined,
-            fee: r.fee || undefined,
-            wardAddress: r.ward_address || undefined,
-            walletAddress: r.wallet_address || undefined,
-          });
-          return;
-        }
-      } catch {
-        // Fall through to local
-      }
-
-      // 2. Fallback: local AsyncStorage
-      try {
-        const notes = await getTxNotes();
-        if (isMounted) {
-          setMeta(notes?.[txHash] || null);
-        }
-      } catch {
-        if (isMounted) setMeta(null);
-      }
+      const walletAddress = wallet.keys?.starkAddress;
+      if (!walletAddress) return;
+      const row = await loadActivityByTxHash(walletAddress, txHash);
+      if (isMounted) setMeta((row as TxMetadataExtended) || null);
     }
 
     loadData();
     return () => {
       isMounted = false;
     };
-  }, [txHash]);
+  }, [txHash, wallet.keys?.starkAddress]);
 
   const token = ((meta?.token as TokenKey) || "STRK") satisfies TokenKey;
   const amountRaw = meta?.amount || "0";
@@ -254,35 +193,29 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   // I'm viewing as the ward if my address matches the ward address (and I'm not the guardian who submitted it)
   const viewingAsWard = !!myNorm && !!wardNorm && myNorm === wardNorm && myNorm !== walletNorm;
 
-  // Guardian-submitted ward operations — only show guardian perspective if viewer IS the guardian
-  const SHIELDED_TYPES = ["fund", "transfer", "send", "withdraw", "rollover"];
-  const GUARDIAN_WARD_TYPES = [...SHIELDED_TYPES, "erc20_transfer"];
-  const isGuardianWardOp = !viewingAsWard && meta?.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(meta?.type || "");
-  const isWardAdmin = ["deploy_ward", "fund_ward", "configure_ward"].includes(meta?.type || "");
-  // Type determines shielded vs public — NOT amount_unit (old records may have wrong amount_unit)
-  const isShieldedOp = SHIELDED_TYPES.includes(meta?.type || "") && !isGuardianWardOp;
+  const isGuardianWardOp = !viewingAsWard && meta?.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(meta?.type as any);
+  const isWardAdmin = WARD_ADMIN_TYPES.includes(meta?.type as any);
+  const isShieldedOp = SHIELDED_TYPES.includes(meta?.type as any) && !isGuardianWardOp;
   const isPublicOp = (meta?.type === "erc20_transfer" && !isGuardianWardOp) || isWardAdmin || (viewingAsWard && meta?.accountType === "guardian");
   const prefix = isDebit(meta?.type) ? "-" : "+";
-  const cleanAmount = stripTokenSuffix(amountRaw);
+  const displayAmount = toDisplayAmountFromAny(amountRaw, meta?.amount_unit, token, meta?.type);
+  const unitsAmount = toTongoUnitsFromAny(amountRaw, meta?.amount_unit, token, meta?.type);
 
   // Compute hero amount display
   let signedAmount: string;
   let heroSecondary = "";
 
   if (isGuardianWardOp && meta?.type === "erc20_transfer") {
-    // Guardian ward public transfer: amount is ERC-20 display (e.g. "1 STRK")
-    signedAmount = `${cleanAmount} ${token}`;
+    signedAmount = `${displayAmount} ${token}`;
   } else if (isShieldedOp || isGuardianWardOp) {
-    // Both shielded user ops AND guardian ward shielded ops show units + STRK secondary
-    const units = toTongoUnits(amountRaw, token);
-    signedAmount = isGuardianWardOp ? unitLabel(units) : `${prefix}${unitLabel(units)}`;
-    if (units !== "0") {
-      heroSecondary = `(${formatTokenAmountFixed2(units, token)} ${token})`;
+    signedAmount = isGuardianWardOp ? unitLabel(unitsAmount) : `${prefix}${unitLabel(unitsAmount)}`;
+    if (unitsAmount !== "0") {
+      heroSecondary = `(${displayAmount} ${token})`;
     }
   } else if (isPublicOp) {
-    signedAmount = `${prefix}${cleanAmount} ${token}`;
+    signedAmount = `${prefix}${displayAmount} ${token}`;
   } else {
-    signedAmount = `${prefix}${cleanAmount} ${token}`;
+    signedAmount = `${prefix}${displayAmount} ${token}`;
   }
 
   const toValue = meta?.recipient
