@@ -8,5 +8,6 @@ export type {
   CloakRuntimeApprovalsModule,
   CloakRuntimeTransactionsModule,
   CloakRuntimeWardModule,
+  CloakRuntimeRepositories,
   CloakRuntime,
 } from "./types";

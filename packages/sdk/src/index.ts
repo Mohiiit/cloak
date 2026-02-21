@@ -11,8 +11,21 @@ export type {
   CloakRuntimeApprovalsModule,
   CloakRuntimeTransactionsModule,
   CloakRuntimeWardModule,
+  CloakRuntimeRepositories,
   CloakRuntime,
 } from "./runtime";
+export {
+  TransactionsRepository,
+  ApprovalsRepository,
+} from "./repositories";
+export type {
+  CanonicalAmount,
+  SaveTransactionInput,
+  TwoFactorRequestStatus,
+  WardRequestStatus,
+  ApprovalPollOptions,
+  WardApprovalPollOptions,
+} from "./repositories";
 
 // Centralized config constants
 export {

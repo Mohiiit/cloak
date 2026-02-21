@@ -2,21 +2,20 @@ import { RpcProvider } from "starknet";
 import { DEFAULT_RPC, DEFAULT_SUPABASE_KEY, DEFAULT_SUPABASE_URL } from "../config";
 import { MemoryStorage } from "../storage/memory";
 import { SupabaseLite } from "../supabase";
-import { request2FAApproval } from "../two-factor";
 import {
   checkIfWardAccount,
   fetchWardApprovalNeeds,
   fetchWardInfo,
   getBlockGasPrices,
   estimateWardInvokeFee,
-  requestWardApproval,
 } from "../ward";
 import {
   saveTransaction,
-  updateTransactionStatus,
-  getTransactions,
-  confirmTransaction,
 } from "../transactions";
+import {
+  ApprovalsRepository,
+  TransactionsRepository,
+} from "../repositories";
 import type {
   CloakRuntime,
   CloakRuntimeConfig,
@@ -55,6 +54,11 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     logger: config.logger ?? NOOP_LOGGER,
     now: config.now ?? (() => Date.now()),
   });
+  const approvalsRepo = new ApprovalsRepository(deps.supabase);
+  const transactionsRepo = new TransactionsRepository(
+    deps.supabase,
+    deps.provider,
+  );
 
   return {
     config: Object.freeze({
@@ -62,6 +66,10 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
       flags: Object.freeze({ ...(config.flags ?? {}) }),
     }),
     deps,
+    repositories: {
+      approvals: approvalsRepo,
+      transactions: transactionsRepo,
+    },
     policy: {
       getWardApprovalNeeds(wardAddress: string) {
         return fetchWardApprovalNeeds(deps.provider, wardAddress);
@@ -72,36 +80,34 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     },
     approvals: {
       request2FAApproval(params, onStatusChange, signal) {
-        return request2FAApproval(deps.supabase, params, onStatusChange, signal);
-      },
-      requestWardApproval(params, onStatusChange, signal, options) {
-        return requestWardApproval(
-          deps.supabase,
-          params,
+        return approvalsRepo.requestTwoFactor(params, {
           onStatusChange,
           signal,
-          options,
-        );
+        });
+      },
+      requestWardApproval(params, onStatusChange, signal, options) {
+        return approvalsRepo.requestWard(params, {
+          onStatusChange,
+          signal,
+          requestOptions: options,
+        });
       },
     },
     transactions: {
       save(record) {
+        return transactionsRepo.save(record);
+      },
+      saveLegacy(record) {
         return saveTransaction(record, deps.supabase);
       },
       updateStatus(txHash, status, errorMessage, fee) {
-        return updateTransactionStatus(
-          txHash,
-          status,
-          errorMessage,
-          fee,
-          deps.supabase,
-        );
+        return transactionsRepo.updateStatus(txHash, status, errorMessage, fee);
       },
       listByWallet(walletAddress, limit) {
-        return getTransactions(walletAddress, limit, deps.supabase);
+        return transactionsRepo.listByWallet(walletAddress, limit);
       },
       confirm(txHash) {
-        return confirmTransaction(deps.provider, txHash, deps.supabase);
+        return transactionsRepo.confirm(txHash);
       },
     },
     ward: {

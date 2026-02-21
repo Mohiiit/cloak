@@ -18,6 +18,11 @@ import type {
   TransactionRecord,
   TransactionStatus,
 } from "../transactions";
+import type {
+  SaveTransactionInput,
+  TransactionsRepository,
+  ApprovalsRepository,
+} from "../repositories";
 
 export interface RuntimeLogger {
   debug?: (...args: unknown[]) => void;
@@ -69,7 +74,8 @@ export interface CloakRuntimeApprovalsModule {
 }
 
 export interface CloakRuntimeTransactionsModule {
-  save(
+  save(record: SaveTransactionInput): Promise<TransactionRecord | null>;
+  saveLegacy(
     record: Omit<TransactionRecord, "id" | "created_at">,
   ): Promise<TransactionRecord | null>;
   updateStatus(
@@ -90,12 +96,18 @@ export interface CloakRuntimeWardModule {
   estimateInvokeFee(senderAddress: string, calls: any[]): Promise<FeeEstimate>;
 }
 
+export interface CloakRuntimeRepositories {
+  approvals: ApprovalsRepository;
+  transactions: TransactionsRepository;
+}
+
 export interface CloakRuntime {
   config: Readonly<{
     network: Network;
     flags: Readonly<Record<string, boolean>>;
   }>;
   deps: Readonly<CloakRuntimeDeps>;
+  repositories: CloakRuntimeRepositories;
   policy: CloakRuntimePolicyModule;
   approvals: CloakRuntimeApprovalsModule;
   transactions: CloakRuntimeTransactionsModule;

@@ -117,7 +117,7 @@ describe("createCloakRuntime", () => {
       tx_hash: "0xtx",
       type: "transfer",
       token: "STRK",
-      amount: "1",
+      amount: { value: "1", unit: "erc20_display", display: "1 STRK" },
       status: "pending",
       account_type: "normal",
       network: "sepolia",
