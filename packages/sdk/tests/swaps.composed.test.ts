@@ -41,11 +41,15 @@ describe("swaps.composed", () => {
 
     const quoteSpy = vi.fn(async () => quote);
     const buildSpy = vi.fn(async () => dexPlan);
-    const executeSpy = vi.fn(async (input: any) => ({
-      txHash: "0xswap",
-      route: "direct" as const,
-      plan: input.plan,
-    }));
+    const executeDirect = vi.fn(async () => ({ txHash: "0xswap" }));
+    const executeSpy = vi.fn(async (input: any) => {
+      const directResult = await input.executeDirect();
+      return {
+        txHash: directResult.txHash,
+        route: "direct" as const,
+        plan: input.plan,
+      };
+    });
     const prepareWithdraw = vi.fn(async () => ({
       calls: [{ contractAddress: "0xtongo_sell", entrypoint: "withdraw", calldata: ["0x2"] }],
     }));
@@ -69,7 +73,7 @@ describe("swaps.composed", () => {
         sellAmount: { value: "0.1", unit: "erc20_display" },
         sourceAccount: { prepareWithdraw },
         destinationAccount: { prepareFund },
-        executeDirect: async () => ({ txHash: "0xswap" }),
+        executeDirect,
       },
     );
 
@@ -94,6 +98,11 @@ describe("swaps.composed", () => {
           calls: expect.any(Array),
         }),
       }),
+    );
+    expect(executeDirect).toHaveBeenCalledTimes(1);
+    expect(executeDirect).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ quoteId: "q_1" }),
     );
     expect(result.sellAmountTongoUnits).toBe("2");
     expect(result.minBuyAmountTongoUnits).toBe("3");

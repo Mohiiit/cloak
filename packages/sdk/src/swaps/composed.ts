@@ -40,11 +40,16 @@ export interface ExecuteComposedShieldedSwapInput {
   note?: string | null;
   onStatusChange?: (status: string) => void;
   confirmOnChain?: boolean;
-  executeDirect: () => Promise<unknown>;
-  execute2FA?: () => Promise<{ approved: boolean; txHash?: string; error?: string }>;
+  executeDirect: (calls: RouterCall[], plan: ShieldedSwapPlan) => Promise<unknown>;
+  execute2FA?: (
+    calls: RouterCall[],
+    plan: ShieldedSwapPlan,
+  ) => Promise<{ approved: boolean; txHash?: string; error?: string }>;
   executeWardApproval?: (
     decision: WardExecutionDecision,
     snapshot: WardPolicySnapshot,
+    calls: RouterCall[],
+    plan: ShieldedSwapPlan,
   ) => Promise<{ approved: boolean; txHash?: string; error?: string }>;
 }
 
@@ -151,9 +156,14 @@ export async function executeComposedShieldedSwap(
     note: input.note,
     onStatusChange: input.onStatusChange,
     confirmOnChain: input.confirmOnChain,
-    executeDirect: input.executeDirect,
-    execute2FA: input.execute2FA,
-    executeWardApproval: input.executeWardApproval,
+    executeDirect: () => input.executeDirect(composedPlan.calls, composedPlan),
+    execute2FA: input.execute2FA
+      ? () => input.execute2FA!(composedPlan.calls, composedPlan)
+      : undefined,
+    executeWardApproval: input.executeWardApproval
+      ? (decision, snapshot) =>
+          input.executeWardApproval!(decision, snapshot, composedPlan.calls, composedPlan)
+      : undefined,
   });
 
   return {
