@@ -30,6 +30,15 @@ import type {
   RouteExecutionInput,
   RouteExecutionResult,
 } from "../router";
+import type {
+  CloakSwapModuleAdapter,
+  SwapBuildRequest,
+  SwapExecutionInput,
+  SwapExecutionResult,
+  SwapQuote,
+  SwapQuoteRequest,
+  ShieldedSwapPlan,
+} from "../swaps";
 
 export interface RuntimeLogger {
   debug?: (...args: unknown[]) => void;
@@ -47,6 +56,7 @@ export interface CloakRuntimeConfig {
   supabase?: SupabaseLite;
   supabaseUrl?: string;
   supabaseKey?: string;
+  swapsAdapter?: CloakSwapModuleAdapter;
   storage?: StorageAdapter;
   logger?: RuntimeLogger;
   now?: RuntimeNow;
@@ -109,6 +119,12 @@ export interface CloakRuntimeWardModule {
   estimateInvokeFee(senderAddress: string, calls: any[]): Promise<FeeEstimate>;
 }
 
+export interface CloakRuntimeSwapsModule {
+  quote(params: SwapQuoteRequest): Promise<SwapQuote>;
+  build(params: SwapBuildRequest): Promise<ShieldedSwapPlan>;
+  execute(params: SwapExecutionInput): Promise<SwapExecutionResult>;
+}
+
 export interface CloakRuntimeRepositories {
   approvals: ApprovalsRepository;
   transactions: TransactionsRepository;
@@ -130,4 +146,5 @@ export interface CloakRuntime {
   approvals: CloakRuntimeApprovalsModule;
   transactions: CloakRuntimeTransactionsModule;
   ward: CloakRuntimeWardModule;
+  swaps: CloakRuntimeSwapsModule;
 }

@@ -8,6 +8,7 @@ export type {
   CloakRuntimeApprovalsModule,
   CloakRuntimeTransactionsModule,
   CloakRuntimeWardModule,
+  CloakRuntimeSwapsModule,
   CloakRuntimeRepositories,
   CloakRuntimeRouterModule,
   CloakRuntime,

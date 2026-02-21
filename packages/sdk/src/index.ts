@@ -11,6 +11,7 @@ export type {
   CloakRuntimeApprovalsModule,
   CloakRuntimeTransactionsModule,
   CloakRuntimeWardModule,
+  CloakRuntimeSwapsModule,
   CloakRuntimeRepositories,
   CloakRuntimeRouterModule,
   CloakRuntime,
@@ -31,6 +32,31 @@ export type {
   RouteExecutionResult,
   OrchestratorDeps,
 } from "./router";
+export {
+  createSwapModule,
+  SwapModuleNotConfiguredError,
+  normalizeSwapMode,
+  assertValidSwapPair,
+  assertValidSwapAmount,
+  assertValidSlippageBps,
+  assertValidSwapQuoteRequest,
+  SwapValidationError,
+} from "./swaps";
+export type {
+  CloakSwapModule,
+  CloakSwapModuleAdapter,
+  SwapProvider,
+  SwapMode,
+  SwapPair,
+  SwapAmount,
+  SwapQuoteRequest,
+  SwapQuote,
+  SwapBuildRequest,
+  ShieldedSwapPlan,
+  SwapExecutionInput,
+  SwapExecutionResult,
+  SwapValidationErrorCode,
+} from "./swaps";
 export {
   TransactionsRepository,
   ApprovalsRepository,

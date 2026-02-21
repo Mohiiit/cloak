@@ -21,6 +21,7 @@ import {
   ApprovalsRepository,
   TransactionsRepository,
 } from "../repositories";
+import { createSwapModule } from "../swaps";
 import type {
   CloakRuntime,
   CloakRuntimeConfig,
@@ -64,6 +65,7 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
     deps.supabase,
     deps.provider,
   );
+  const swapsModule = createSwapModule(config.swapsAdapter);
   const policyModule = {
     getWardPolicySnapshot(wardAddress: string) {
       return fetchWardPolicySnapshot(deps.provider, wardAddress);
@@ -154,5 +156,6 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
         return estimateWardInvokeFee(deps.provider, senderAddress, calls);
       },
     },
+    swaps: swapsModule,
   };
 }
