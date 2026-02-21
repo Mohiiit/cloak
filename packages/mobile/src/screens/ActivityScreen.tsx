@@ -454,6 +454,10 @@ export default function ActivityScreen({ navigation }: any) {
                       style={[styles.row, idx < items.length - 1 && styles.rowDivider]}
                       onPress={() => {
                         if (!tx.txHash) return;
+                        if (tx.type === "swap" || tx.swap) {
+                          navigation.getParent()?.navigate("SwapDetail");
+                          return;
+                        }
                         navigation.getParent()?.navigate("TransactionDetail", {
                           txHash: tx.txHash,
                           type: tx.type,
