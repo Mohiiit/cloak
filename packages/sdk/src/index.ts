@@ -186,6 +186,16 @@ export type {
   AccountType,
 } from "./transactions";
 
+// Activity feed
+export {
+  getActivityRecords,
+} from "./activity";
+export type {
+  ActivityRecord,
+  ActivitySource,
+  ActivityStatus,
+} from "./activity";
+
 // Types
 export type {
   TokenKey,

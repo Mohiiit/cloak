@@ -10,6 +10,7 @@ import type { SupabaseLite } from "./supabase";
 import { TOKENS, formatTokenAmount } from "./tokens";
 import type { TokenKey } from "./types";
 import { DEFAULT_RPC } from "./config";
+import type { AmountUnit } from "./token-convert";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ export interface WardApprovalRequest {
   action: string;
   token: string;
   amount: string | null;
+  amount_unit?: AmountUnit | null;
   recipient: string | null;
   calls_json: string;
   nonce: string;
@@ -68,6 +70,7 @@ export interface WardApprovalParams {
   action: string;
   token: string;
   amount: string | null;
+  amountUnit?: AmountUnit | null;
   recipient: string | null;
   callsJson: string;
   wardSigJson: string;
@@ -683,6 +686,7 @@ export async function requestWardApproval(
       action: params.action,
       token: params.token,
       amount: params.amount,
+      amount_unit: params.amountUnit ?? null,
       recipient: params.recipient,
       calls_json: params.callsJson,
       nonce: params.nonce,
