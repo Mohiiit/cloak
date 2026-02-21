@@ -8,57 +8,55 @@ import {
   TouchableOpacity,
 } from "react-native";
 import {
-  ShieldPlus,
-  ShieldOff,
+  ArrowDownLeft,
   ArrowUpFromLine,
-  ArrowDownToLine,
   RefreshCw,
-  Shield,
-  Wallet,
-  Settings,
+  Repeat,
+  ShieldOff,
+  ShieldPlus,
 } from "lucide-react-native";
-import type { AmountUnit } from "@cloak-wallet/sdk";
+import { convertAmount, type AmountUnit } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { type TxMetadata } from "../lib/storage";
-import { type TokenKey, unitLabel } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
 import { loadActivityHistory, type ActivityFeedItem } from "../lib/activity/feed";
 import {
   GUARDIAN_WARD_TYPES,
-  SHIELDED_TYPES,
   WARD_ADMIN_TYPES,
   hasAmountFromAny,
   toDisplayAmountFromAny,
-  toTongoUnitsFromAny,
 } from "../lib/activity/amounts";
+import { type TokenKey } from "../lib/tokens";
 
-type FilterKey = "all" | "sent" | "received" | "shield";
+type FilterKey = "all" | "shielded" | "public" | "swap" | "approvals";
+type TxCategory = "shielded" | "public" | "swap" | "approvals";
 
-/** Local extension of TxMetadata with Supabase-sourced fields */
 interface TxMetadataExtended extends Omit<ActivityFeedItem, "type"> {
   type: TxMetadata["type"] | string;
-  status?: string;
-  statusDetail?: string;
-  errorMessage?: string;
-  accountType?: string;
-  fee?: string;
-  amount_unit?: AmountUnit | null;
-  wardAddress?: string;
-  walletAddress?: string;
+}
+
+interface IconMeta {
+  icon: React.ReactNode;
+  background: string;
+}
+
+interface AmountMeta {
+  primary: string;
+  secondary?: string;
+  color: string;
 }
 
 function sectionForDate(timestamp: number): "Today" | "Yesterday" | "Earlier" {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "Earlier";
-
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startYesterday = startToday - 24 * 60 * 60 * 1000;
-  const t = date.getTime();
-  if (t >= startToday) return "Today";
-  if (t >= startYesterday) return "Yesterday";
+  const ts = date.getTime();
+  if (ts >= startToday) return "Today";
+  if (ts >= startYesterday) return "Yesterday";
   return "Earlier";
 }
 
@@ -73,16 +71,73 @@ function formatRelativeTime(timestamp: number): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
-function matchesFilter(type: TxMetadata["type"] | string, filter: FilterKey): boolean {
-  if (filter === "all") return true;
-  if (filter === "sent") return ["send", "withdraw", "erc20_transfer", "fund_ward"].includes(type);
-  if (filter === "received") return ["receive", "rollover"].includes(type);
-  if (filter === "shield") return type === "fund";
-  return true;
+function normalizeToken(token?: string | null): TokenKey {
+  if (token === "ETH" || token === "USDC" || token === "STRK") return token;
+  return "STRK";
 }
 
-/** Resolve ward display name: saved recipientName > wardContext lookup > "Ward" */
-function resolveWardLabel(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => string | undefined): string {
+function isAmountUnit(unit: unknown): unit is AmountUnit {
+  return unit === "tongo_units" || unit === "erc20_wei" || unit === "erc20_display";
+}
+
+function formatFromWei(value: string | null | undefined, token: TokenKey): string {
+  if (!value) return "0";
+  try {
+    return convertAmount({ value, unit: "erc20_wei", token }, "erc20_display");
+  } catch {
+    return "0";
+  }
+}
+
+function literalDisplayAmount(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const stripped = value.replace(/\s*(STRK|ETH|USDC)\s*$/i, "").trim();
+  return stripped || null;
+}
+
+function isApprovalTx(tx: TxMetadataExtended): boolean {
+  if (tx.type === "approval") return true;
+  if (tx.source === "ward_request") return true;
+  if (WARD_ADMIN_TYPES.includes(tx.type as any)) return true;
+  if (tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(tx.type as any)) return true;
+  return false;
+}
+
+function categoryForTx(tx: TxMetadataExtended): TxCategory {
+  if (tx.type === "swap" || !!tx.swap) return "swap";
+  if (isApprovalTx(tx)) return "approvals";
+  if (tx.type === "erc20_transfer" || tx.type === "withdraw") return "public";
+  return "shielded";
+}
+
+function matchesFilter(tx: TxMetadataExtended, filter: FilterKey): boolean {
+  if (filter === "all") return true;
+  return categoryForTx(tx) === filter;
+}
+
+function statusLabel(status?: string): string {
+  switch (status) {
+    case "confirmed":
+      return "Confirmed";
+    case "pending":
+      return "Pending";
+    case "failed":
+      return "Failed";
+    case "rejected":
+      return "Rejected";
+    case "expired":
+      return "Expired";
+    case "gas_error":
+      return "Gas Retry";
+    default:
+      return "Pending";
+  }
+}
+
+function resolveWardLabel(
+  tx: TxMetadataExtended,
+  wardNameLookup?: (addr: string) => string | undefined,
+): string {
   if (tx.recipientName) return tx.recipientName;
   if (tx.wardAddress && wardNameLookup) {
     const name = wardNameLookup(tx.wardAddress);
@@ -91,9 +146,22 @@ function resolveWardLabel(tx: TxMetadataExtended, wardNameLookup?: (addr: string
   return "Ward";
 }
 
-/** For guardian-submitted ward ops, returns just the ward pseudoname as the title */
-function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => string | undefined, myAddress?: string): string {
-  // Ward viewing guardian-initiated tx: show from ward's perspective
+function getSwapTitle(tx: TxMetadataExtended): string {
+  if (tx.note && tx.note.toLowerCase().startsWith("swap")) return tx.note;
+  const sellToken = normalizeToken(tx.swap?.sell_token || tx.token);
+  const buyToken = normalizeToken(tx.swap?.buy_token || tx.token);
+  return `Swap ${sellToken} -> ${buyToken}`;
+}
+
+function getTxTitle(
+  tx: TxMetadataExtended,
+  wardNameLookup?: (addr: string) => string | undefined,
+  myAddress?: string,
+): string {
+  if (tx.type === "swap" || tx.swap) return getSwapTitle(tx);
+  if (tx.type === "approval") return tx.note || "Approval";
+  if (tx.type === "fund") return tx.note || `Shielded deposit (${normalizeToken(tx.token)})`;
+
   if (myAddress && tx.walletAddress && tx.wardAddress) {
     const myNorm = myAddress.toLowerCase().replace(/^0x0+/, "0x");
     const wardNorm = tx.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
@@ -104,34 +172,24 @@ function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => s
       if (tx.type === "deploy_ward") return "Account deployed by Guardian";
     }
   }
-  const isGuardianSubmittedWardOp =
-    tx.accountType === "guardian" &&
-    GUARDIAN_WARD_TYPES.includes(tx.type as any);
 
-  // Ward ops: title is just the ward name
+  const isGuardianSubmittedWardOp =
+    tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(tx.type as any);
   if (isGuardianSubmittedWardOp) {
     return resolveWardLabel(tx, wardNameLookup);
   }
 
-  const token = (tx.token || "STRK") as TokenKey;
-  const tokenAmount = `${toDisplayAmountFromAny(
-    tx.amount,
-    tx.amount_unit,
-    token,
-    tx.type,
-  )} ${token}`;
-
+  const token = normalizeToken(tx.token);
+  const tokenAmount = `${toDisplayAmountFromAny(tx.amount, tx.amount_unit, token, tx.type)} ${token}`;
   switch (tx.type) {
-    case "send":
-      return tx.recipientName ? `Sent to ${tx.recipientName}` : "Sent payment";
+    case "withdraw":
+      return tx.note || `Unshielded ${tokenAmount}`;
     case "erc20_transfer":
       return tx.recipientName ? `Sent to ${tx.recipientName} (Public)` : "Public send";
+    case "send":
+      return tx.recipientName ? `Sent to ${tx.recipientName}` : "Sent payment";
     case "receive":
       return "Received shielded";
-    case "fund":
-      return `Shielded ${tokenAmount}`;
-    case "withdraw":
-      return `Unshielded ${tokenAmount}`;
     case "rollover":
       return "Claimed pending funds";
     case "deploy_ward":
@@ -145,151 +203,130 @@ function getTxTitle(tx: TxMetadataExtended, wardNameLookup?: (addr: string) => s
   }
 }
 
-/** Short action label for guardian ward ops (shown as subtitle) */
-function getWardActionLabel(tx: TxMetadataExtended): string {
-  switch (tx.type) {
-    case "fund": return "Shielded";
-    case "transfer":
-    case "send": return "Sent";
-    case "erc20_transfer": return "Public Send";
-    case "withdraw": return "Unshielded";
-    case "rollover": return "Claimed";
-    default: return "Transaction";
+function getTxIconMeta(tx: TxMetadataExtended): IconMeta {
+  const category = categoryForTx(tx);
+  if (category === "swap") {
+    return {
+      icon: <Repeat size={18} color={colors.warning} />,
+      background: "rgba(245, 158, 11, 0.12)",
+    };
   }
+  if (category === "approvals") {
+    return {
+      icon: <ShieldPlus size={18} color={colors.success} />,
+      background: "rgba(16, 185, 129, 0.12)",
+    };
+  }
+  if (tx.type === "withdraw") {
+    return {
+      icon: <ShieldOff size={18} color={colors.secondary} />,
+      background: "rgba(139, 92, 246, 0.12)",
+    };
+  }
+  if (tx.type === "fund" || tx.type === "receive") {
+    return {
+      icon: <ArrowDownLeft size={18} color={colors.success} />,
+      background: "rgba(16, 185, 129, 0.12)",
+    };
+  }
+  if (tx.type === "erc20_transfer") {
+    return {
+      icon: <ArrowUpFromLine size={18} color="#F97316" />,
+      background: "rgba(249, 115, 22, 0.12)",
+    };
+  }
+  return {
+    icon: <ArrowUpFromLine size={18} color={colors.primary} />,
+    background: "rgba(59, 130, 246, 0.12)",
+  };
 }
 
-function getTxStatus(tx: TxMetadataExtended): string {
-  // Show Supabase status if available
-  if (tx.statusDetail === "pending_ward_sig") return "Awaiting Ward";
-  if (tx.statusDetail === "pending_guardian") return "Awaiting Guardian";
-  if (tx.status === "failed") return "Failed";
-  if (tx.status === "rejected") return "Rejected";
-  if (tx.status === "gas_error") return "Gas Retry";
-  if (tx.status === "expired") return "Expired";
-  if (tx.status === "pending") return "Pending";
-  // Guardian-submitted ward operations get a "Ward" badge
-  if (tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(tx.type as any)) {
-    return "Ward";
+function getTxLeftSubtitle(tx: TxMetadataExtended): string {
+  const category = categoryForTx(tx);
+  if (category === "swap") {
+    return tx.statusDetail || `${statusLabel(tx.status)} · Swap`;
   }
-  switch (tx.type) {
-    case "send":
-      return "Shielded";
-    case "erc20_transfer":
-      return "Public Send";
-    case "receive":
-    case "rollover":
-      return "Claimed";
-    case "fund":
-      return "Fund";
-    case "withdraw":
-      return "Withdraw";
-    case "deploy_ward":
-      return "Deployed";
-    case "fund_ward":
-      return "Funded";
-    case "configure_ward":
-      return "Configured";
-    default:
-      return "Pending";
-  }
-}
-
-function getStatusColor(tx: TxMetadataExtended): string | undefined {
-  if (tx.status === "failed") return colors.error;
-  if (tx.status === "rejected") return colors.error;
-  if (tx.status === "gas_error") return colors.warning;
-  if (tx.status === "expired") return colors.textMuted;
-  if (tx.status === "pending") return "#F59E0B";
-  return undefined;
-}
-
-function getTxPolarity(tx: TxMetadataExtended, myAddress?: string): "credit" | "debit" | "neutral" {
-  // Ward viewing guardian-initiated tx: flip perspective
-  if (myAddress && tx.walletAddress && tx.wardAddress) {
-    const myNorm = myAddress.toLowerCase().replace(/^0x0+/, "0x");
-    const wardNorm = tx.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
-    const walletNorm = tx.walletAddress.toLowerCase().replace(/^0x0+/, "0x");
-    // I'm the ward, but the tx was initiated by the guardian
-    if (myNorm === wardNorm && myNorm !== walletNorm) {
-      if (tx.type === "fund_ward") return "credit"; // Ward received funds
-      if (["configure_ward", "deploy_ward"].includes(tx.type)) return "neutral";
-      return "neutral";
+  if (category === "approvals") {
+    if (tx.type === "approval") {
+      return `${formatRelativeTime(tx.timestamp)} · Approvals`;
     }
+    if (tx.statusDetail === "pending_ward_sig") return "Waiting for ward signature";
+    if (tx.statusDetail === "pending_guardian") return "Waiting for guardian approval";
+    return `${formatRelativeTime(tx.timestamp)} · Approvals`;
   }
-  // Guardian-submitted ward ops: guardian didn't send or receive — just approved
-  if (tx.accountType === "guardian" && SHIELDED_TYPES.includes(tx.type as any)) {
-    return "neutral";
+  if (category === "public") {
+    if (tx.type === "withdraw") {
+      const section = sectionForDate(tx.timestamp);
+      const when = section === "Yesterday" ? "Yesterday" : formatRelativeTime(tx.timestamp);
+      return `${when} · Public`;
+    }
+    return `${formatRelativeTime(tx.timestamp)} · Public`;
   }
-  if (["receive", "fund", "rollover"].includes(tx.type)) return "credit";
-  return "debit"; // send, withdraw, erc20_transfer, deploy_ward, fund_ward, configure_ward
+  return `${formatRelativeTime(tx.timestamp)} · Shielded`;
 }
 
-function getTxColor(tx: TxMetadataExtended): string {
-  switch (tx.type) {
-    case "send":
-      return colors.primary;
-    case "erc20_transfer":
-      return "#F97316";
-    case "receive":
-    case "fund":
-      return colors.success;
-    case "withdraw":
-      return colors.secondary;
-    case "rollover":
-      return colors.warning;
-    case "deploy_ward":
-    case "fund_ward":
-    case "configure_ward":
-      return colors.secondary;
-    default:
-      return colors.textMuted;
-  }
-}
+function getTxAmountMeta(tx: TxMetadataExtended): AmountMeta {
+  const token = normalizeToken(tx.token);
+  const hasAmount = hasAmountFromAny(tx.amount, tx.amount_unit, token, tx.type);
+  const displayAmount = toDisplayAmountFromAny(tx.amount, tx.amount_unit, token, tx.type);
+  const category = categoryForTx(tx);
 
-function getTxIcon(tx: TxMetadataExtended): React.ReactNode {
-  switch (tx.type) {
-    case "fund":
-      return <ShieldPlus size={18} color={colors.success} />;
-    case "withdraw":
-      return <ShieldOff size={18} color={colors.secondary} />;
-    case "send":
-      return <ArrowUpFromLine size={18} color={colors.primary} />;
-    case "erc20_transfer":
-      return <ArrowUpFromLine size={18} color="#F97316" />;
-    case "receive":
-      return <ArrowDownToLine size={18} color={colors.success} />;
-    case "rollover":
-      return <RefreshCw size={18} color={colors.warning} />;
-    case "deploy_ward":
-      return <Shield size={18} color={colors.secondary} />;
-    case "fund_ward":
-      return <Wallet size={18} color={colors.secondary} />;
-    case "configure_ward":
-      return <Settings size={18} color={colors.secondary} />;
-    default:
-      return <RefreshCw size={18} color={colors.textMuted} />;
+  if (category === "swap") {
+    const sellToken = normalizeToken(tx.swap?.sell_token || tx.token);
+    const buyToken = normalizeToken(tx.swap?.buy_token || tx.token);
+    const literalSellAmount =
+      tx.amount_unit === "erc20_display" ? literalDisplayAmount(tx.amount) : null;
+    const sellAmount = literalSellAmount || (tx.swap?.sell_amount_wei
+      ? formatFromWei(tx.swap.sell_amount_wei, sellToken)
+      : displayAmount);
+    let secondary = tx.statusDetail || undefined;
+    if (tx.swap?.estimated_buy_amount_wei && tx.swap?.min_buy_amount_wei) {
+      const minBuy = formatFromWei(tx.swap.min_buy_amount_wei, buyToken);
+      if (tx.status === "confirmed" && tx.swap.buy_actual_amount_wei) {
+        const actual = formatFromWei(tx.swap.buy_actual_amount_wei, buyToken);
+        secondary = `Actual ${actual} ${buyToken} / Min ${minBuy} ${buyToken}`;
+      } else {
+        const estimate = formatFromWei(tx.swap.estimated_buy_amount_wei, buyToken);
+        secondary = `Est ${estimate} ${buyToken} / Min ${minBuy} ${buyToken}`;
+      }
+    }
+    return {
+      primary: `-${sellAmount} ${sellToken}`,
+      secondary,
+      color: colors.warning,
+    };
   }
-}
 
-function getTxIconBg(tx: TxMetadataExtended): string {
-  switch (tx.type) {
-    case "fund":
-    case "receive":
-      return "rgba(16, 185, 129, 0.14)";
-    case "withdraw":
-    case "deploy_ward":
-    case "fund_ward":
-    case "configure_ward":
-      return "rgba(139, 92, 246, 0.14)";
-    case "send":
-      return "rgba(59, 130, 246, 0.14)";
-    case "erc20_transfer":
-      return "rgba(249, 115, 22, 0.14)";
-    case "rollover":
-      return "rgba(245, 158, 11, 0.14)";
-    default:
-      return "rgba(148, 163, 184, 0.12)";
+  if (category === "approvals") {
+    const primary = hasAmount ? `Limit ${displayAmount} ${token}` : "Approval";
+    const secondary = tx.statusDetail || `Status: ${statusLabel(tx.status)}`;
+    return { primary, secondary, color: colors.success };
   }
+
+  if (!hasAmount) {
+    return {
+      primary: statusLabel(tx.status),
+      secondary: tx.statusDetail || undefined,
+      color: colors.textSecondary,
+    };
+  }
+
+  const isCredit = ["fund", "receive", "rollover"].includes(tx.type);
+  const prefix = isCredit ? "+" : "-";
+  const color =
+    tx.type === "withdraw"
+      ? colors.secondary
+      : tx.type === "erc20_transfer"
+      ? "#F97316"
+      : isCredit
+      ? colors.success
+      : colors.primary;
+
+  return {
+    primary: `${prefix}${displayAmount} ${token}`,
+    secondary: tx.statusDetail || undefined,
+    color,
+  };
 }
 
 export default function ActivityScreen({ navigation }: any) {
@@ -299,12 +336,11 @@ export default function ActivityScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
 
-  // Look up ward pseudoName by address (normalized comparison)
   const wardNameLookup = useCallback((addr: string): string | undefined => {
     const normalized = addr.toLowerCase().replace(/^0x0+/, "0x");
-    for (const w of wards) {
-      const wNorm = w.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
-      if (wNorm === normalized) return w.pseudoName;
+    for (const ward of wards) {
+      const wardNorm = ward.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
+      if (wardNorm === normalized) return ward.pseudoName;
     }
     return undefined;
   }, [wards]);
@@ -315,8 +351,12 @@ export default function ActivityScreen({ navigation }: any) {
       setHistory([]);
       return;
     }
-    const rows = await loadActivityHistory(walletAddress);
-    setHistory(rows as TxMetadataExtended[]);
+    try {
+      const rows = await loadActivityHistory(walletAddress);
+      setHistory(rows as TxMetadataExtended[]);
+    } catch {
+      setHistory([]);
+    }
   }, [wallet.keys?.starkAddress]);
 
   useEffect(() => {
@@ -325,7 +365,6 @@ export default function ActivityScreen({ navigation }: any) {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Best-effort: bridge tx history is flaky; stored notes are our current source.
     try {
       await wallet.refreshTxHistory();
     } finally {
@@ -335,7 +374,7 @@ export default function ActivityScreen({ navigation }: any) {
   };
 
   const filtered = useMemo(
-    () => history.filter((tx) => matchesFilter(tx.type, filter)),
+    () => history.filter((tx) => matchesFilter(tx, filter)),
     [history, filter],
   );
 
@@ -345,11 +384,19 @@ export default function ActivityScreen({ navigation }: any) {
       Yesterday: [],
       Earlier: [],
     };
-    filtered.forEach((tx) => {
+    for (const tx of filtered) {
       buckets[sectionForDate(tx.timestamp)].push(tx);
-    });
+    }
     return buckets;
   }, [filtered]);
+
+  const chips: { key: FilterKey; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "shielded", label: "Shielded" },
+    { key: "public", label: "Public" },
+    { key: "swap", label: "Swap" },
+    { key: "approvals", label: "Approvals" },
+  ];
 
   return (
     <ScrollView
@@ -360,21 +407,17 @@ export default function ActivityScreen({ navigation }: any) {
       }
     >
       <View style={styles.filterRow}>
-        {[
-          { key: "all", label: "All" },
-          { key: "sent", label: "Sent" },
-          { key: "received", label: "Received" },
-          { key: "shield", label: "Shield" },
-        ].map((item) => {
-          const active = filter === item.key;
+        {chips.map((chip) => {
+          const active = filter === chip.key;
           return (
             <TouchableOpacity
-              key={item.key}
+              key={chip.key}
               style={[styles.filterChip, active && styles.filterChipActive]}
-              onPress={() => setFilter(item.key as FilterKey)}
+              onPress={() => setFilter(chip.key)}
+              {...testProps(`${testIDs.activity.rowPrefix}.filter.${chip.key}`)}
             >
               <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                {item.label}
+                {chip.label}
               </Text>
             </TouchableOpacity>
           );
@@ -395,56 +438,20 @@ export default function ActivityScreen({ navigation }: any) {
             <View key={section} style={styles.section}>
               <Text style={styles.sectionTitle}>{section.toUpperCase()}</Text>
               <View style={styles.sectionCard}>
-                {items.map((tx, i) => {
-                  const amountRaw = tx.amount;
-                  const polarity = getTxPolarity(tx, wallet.keys?.starkAddress);
-                  const amountPrefix = polarity === "credit" ? "+" : polarity === "debit" ? "-" : "";
-                  const amountColor = getTxColor(tx);
-                  const token = (tx.token || "STRK") as TokenKey;
-                  const hasAmount = hasAmountFromAny(amountRaw, tx.amount_unit, token, tx.type);
-                  const displayAmount = toDisplayAmountFromAny(amountRaw, tx.amount_unit, token, tx.type);
-                  const unitsAmount = toTongoUnitsFromAny(amountRaw, tx.amount_unit, token, tx.type);
-                  const isGuardianWardOp = tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(tx.type as any);
-                  const isWardAdmin = WARD_ADMIN_TYPES.includes(tx.type as any);
-                  const isShielded = SHIELDED_TYPES.includes(tx.type as any) && !isGuardianWardOp;
-                  const isPublic = (tx.type === "erc20_transfer" && !isGuardianWardOp) || isWardAdmin;
-
+                {items.map((tx, idx) => {
+                  const iconMeta = getTxIconMeta(tx);
+                  const amountMeta = getTxAmountMeta(tx);
                   const title = getTxTitle(tx, wardNameLookup, wallet.keys?.starkAddress);
-                  const statusText = getTxStatus(tx);
-                  const statusColor = getStatusColor(tx);
-                  const showWardAction = isGuardianWardOp && tx.source !== "ward_request" && tx.status === "confirmed";
-                  const subtitle = `${formatRelativeTime(tx.timestamp)} \u00b7 ${showWardAction ? getWardActionLabel(tx) : statusText}`;
-
-                  // Compute display amounts
-                  let primaryAmount = "";
-                  let secondaryAmount = "";
-
-                  if (!hasAmount) {
-                    // No amount: show status label
-                    primaryAmount = tx.type === "rollover" ? "Claimed" : (isWardAdmin ? statusText : "");
-                  } else if (isGuardianWardOp && tx.type === "erc20_transfer") {
-                    primaryAmount = `${displayAmount} ${token}`;
-                  } else if (isGuardianWardOp) {
-                    primaryAmount = unitLabel(unitsAmount);
-                    secondaryAmount = `${displayAmount} ${token}`;
-                  } else if (isShielded) {
-                    primaryAmount = `${amountPrefix}${unitLabel(unitsAmount)}`;
-                    secondaryAmount = `${displayAmount} ${token}`;
-                  } else if (isPublic) {
-                    primaryAmount = `${amountPrefix}${displayAmount} ${token}`;
-                  } else {
-                    primaryAmount = `${amountPrefix}${displayAmount} ${token}`;
-                  }
-
+                  const subtitle = getTxLeftSubtitle(tx);
                   const rowTestID = tx.txHash
                     ? `${testIDs.activity.rowPrefix}.${tx.txHash}`
-                    : `${testIDs.activity.rowPrefix}.${i}`;
+                    : `${testIDs.activity.rowPrefix}.${idx}`;
 
                   return (
                     <TouchableOpacity
                       {...testProps(rowTestID)}
-                      key={tx.txHash || String(i)}
-                      style={[styles.row, i < items.length - 1 && styles.rowDivider]}
+                      key={tx.txHash || String(idx)}
+                      style={[styles.row, idx < items.length - 1 && styles.rowDivider]}
                       onPress={() => {
                         if (!tx.txHash) return;
                         navigation.getParent()?.navigate("TransactionDetail", {
@@ -454,39 +461,30 @@ export default function ActivityScreen({ navigation }: any) {
                           note: tx.note,
                           recipientName: tx.recipientName,
                           timestamp: tx.timestamp,
-                          amount_unit: tx.amount_unit || undefined,
+                          amount_unit: isAmountUnit(tx.amount_unit) ? tx.amount_unit : undefined,
                         });
                       }}
                     >
-                      <View style={[styles.iconCircle, { backgroundColor: getTxIconBg(tx) }]}>
-                        {getTxIcon(tx)}
+                      <View style={[styles.iconCircle, { backgroundColor: iconMeta.background }]}>
+                        {iconMeta.icon}
                       </View>
 
                       <View style={styles.leftText}>
                         <Text style={styles.titleText} numberOfLines={1}>
                           {title}
                         </Text>
-                        <Text
-                          style={[
-                            styles.subtitleText,
-                            statusColor ? { color: statusColor } : undefined,
-                          ]}
-                          numberOfLines={1}
-                        >
+                        <Text style={styles.subtitleText} numberOfLines={1}>
                           {subtitle}
                         </Text>
                       </View>
 
                       <View style={styles.rightText}>
-                        <Text
-                          style={[styles.amountText, { color: isGuardianWardOp ? colors.textSecondary : amountColor }]}
-                          numberOfLines={1}
-                        >
-                          {primaryAmount}
+                        <Text style={[styles.amountText, { color: amountMeta.color }]} numberOfLines={1}>
+                          {amountMeta.primary}
                         </Text>
-                        {secondaryAmount ? (
+                        {amountMeta.secondary ? (
                           <Text style={styles.tokenText} numberOfLines={1}>
-                            {secondaryAmount}
+                            {amountMeta.secondary}
                           </Text>
                         ) : null}
                       </View>
@@ -507,99 +505,95 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 100 },
   filterRow: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 18,
+    gap: 8,
+    marginBottom: 16,
   },
   filterChip: {
-    height: 30,
+    height: 32,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(30, 41, 59, 0.55)",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "rgba(45, 59, 77, 0.75)",
+    borderColor: colors.borderLight,
   },
   filterChipActive: {
-    backgroundColor: "rgba(59, 130, 246, 0.22)",
-    borderColor: "rgba(59, 130, 246, 0.55)",
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterChipText: {
     fontSize: 12,
     color: colors.textMuted,
-    fontFamily: typography.primarySemibold,
+    fontFamily: typography.primary,
   },
   filterChipTextActive: {
-    color: colors.primaryLight,
+    color: "#FFFFFF",
+    fontFamily: typography.primarySemibold,
   },
-
   section: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: 11,
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     marginBottom: 10,
     fontFamily: typography.primarySemibold,
   },
   sectionCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
     overflow: "hidden",
   },
-
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     gap: 12,
   },
   rowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(45, 59, 77, 0.7)",
+    borderBottomColor: colors.border,
   },
   iconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   leftText: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
   titleText: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.text,
-    fontFamily: typography.secondarySemibold,
+    fontFamily: typography.secondary,
   },
   subtitleText: {
     fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    fontFamily: typography.secondary,
+    color: colors.textMuted,
+    fontFamily: typography.primary,
   },
   rightText: {
     alignItems: "flex-end",
-    gap: 3,
-    minWidth: 92,
+    gap: 2,
+    minWidth: 96,
   },
   amountText: {
     fontSize: 13,
     fontFamily: typography.primarySemibold,
   },
   tokenText: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
+    fontSize: 10,
+    color: colors.textMuted,
     fontFamily: typography.primary,
   },
-
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
