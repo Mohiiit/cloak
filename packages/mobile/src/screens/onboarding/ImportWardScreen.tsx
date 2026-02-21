@@ -273,8 +273,7 @@ export default function ImportWardScreen() {
         >
           {/* Description */}
           <Text style={styles.description}>
-            Scan the QR code shown after ward creation, or enter the ward
-            details manually.
+            Paste the ward invite JSON you received from the ward creator.
           </Text>
 
           {/* Tab toggle */}
@@ -608,13 +607,15 @@ function ManualTabContent({
           <View style={styles.infoBullet}>
             <Text style={styles.bulletDot}>{"\u2022"}</Text>
             <Text style={styles.bulletText}>
-              Ask your guardian to create a ward and share the invite
+              Ask the ward creator to share the QR code or JSON from their Ward
+              Created screen
             </Text>
           </View>
           <View style={styles.infoBullet}>
             <Text style={styles.bulletDot}>{"\u2022"}</Text>
             <Text style={styles.bulletText}>
-              The code contains your ward address and private key
+              Copy the full JSON and paste it here — all fields are included
+              automatically
             </Text>
           </View>
         </View>

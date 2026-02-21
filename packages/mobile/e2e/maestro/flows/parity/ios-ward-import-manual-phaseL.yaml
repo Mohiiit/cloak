@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+---
+- launchApp:
+    appId: ${APP_ID}
+    clearState: true
+    stopApp: true
+- tapOn:
+    id: onboarding.ward.import.route.press
+- tapOn: Manual
+- waitForAnimationToEnd
+- takeScreenshot: parity-ward-import-manual-phaseL

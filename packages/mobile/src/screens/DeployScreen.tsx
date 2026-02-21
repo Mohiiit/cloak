@@ -128,7 +128,6 @@ export default function DeployScreen() {
         hitSlop={12}
       >
         <ArrowLeft size={20} color={colors.textSecondary} />
-        <Text style={styles.backButtonText}>Back</Text>
       </TouchableOpacity>
 
       {/* Header */}
@@ -256,15 +255,10 @@ const styles = StyleSheet.create({
     gap: 18,
   },
   backButton: {
-    flexDirection: "row",
+    height: 24,
     alignItems: "center",
-    gap: 6,
+    justifyContent: "center",
     alignSelf: "flex-start",
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontFamily: typography.secondary,
   },
   header: {
     alignItems: "center",
