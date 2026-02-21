@@ -13,8 +13,8 @@
 import { useCallback } from "react";
 import { Account, RpcProvider, CallData, uint256 } from "starknet";
 import {
-  saveTransaction,
-  confirmTransaction,
+  createCloakRuntime,
+  SupabaseLite,
   DEFAULT_RPC,
   TOKENS,
   parseTokenAmount,
@@ -24,6 +24,7 @@ import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useDualSigExecutor } from "./useDualSigExecutor";
 import { setTransactionRouterPath } from "../testing/transactionRouteTrace";
+import { getSupabaseConfig } from "../lib/twoFactor";
 
 type Action = "fund" | "transfer" | "withdraw" | "rollover" | "erc20_transfer";
 
@@ -34,6 +35,10 @@ interface ExecuteParams {
   recipient?: string;
   recipientName?: string;
   note?: string;
+}
+
+function getAmountUnit(action: Action): AmountUnit {
+  return action === "erc20_transfer" ? "erc20_display" : "tongo_units";
 }
 
 export function useTransactionRouter() {
@@ -70,110 +75,121 @@ export function useTransactionRouter() {
     [wallet],
   );
 
-  /** Fire-and-forget: save tx to Supabase + confirm in background */
-  const persistTransaction = useCallback(
-    (
-      txHash: string,
-      params: ExecuteParams,
-      accountType: "normal" | "ward" | "guardian",
-    ) => {
-      const walletAddress = wallet.keys?.starkAddress;
-      if (!walletAddress) return;
-
-      // Save the initial record as "pending"
-      const amountUnit: AmountUnit = params.action === "erc20_transfer" ? "erc20_display" : "tongo_units";
-      saveTransaction({
-        wallet_address: walletAddress,
-        tx_hash: txHash,
-        type: params.action as any,
-        token: params.token,
-        amount: params.amount || null,
-        amount_unit: amountUnit,
-        recipient: params.recipient || null,
-        recipient_name: params.recipientName || null,
-        note: params.note || null,
-        status: "pending",
-        account_type: accountType,
-        network: "sepolia",
-        platform: "mobile",
-      }).catch(() => {});
-
-      // Confirm in background (updates status to confirmed/failed + fee)
-      const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
-      confirmTransaction(provider as any, txHash).catch(() => {});
-    },
-    [wallet.keys?.starkAddress],
-  );
+  const buildRuntime = useCallback(async () => {
+    const { url, key } = await getSupabaseConfig();
+    return createCloakRuntime({
+      network: "sepolia",
+      provider: new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia }),
+      supabase: new SupabaseLite(url, key),
+    });
+  }, []);
 
   const execute = useCallback(
     async (params: ExecuteParams): Promise<{ txHash: string }> => {
       const { action, token, amount, recipient } = params;
+      const walletAddress = wallet.keys?.starkAddress;
+      if (!walletAddress) throw new Error("No wallet connected");
+      const { calls } = await prepareCalls(action, amount, recipient);
+      const runtime = await buildRuntime();
+
+      const directExecutor = async (): Promise<{ txHash: string }> => {
+        switch (action) {
+          case "fund":
+            return wallet.fund(amount!);
+          case "transfer":
+            return wallet.transfer(amount!, recipient!);
+          case "withdraw":
+            return wallet.withdraw(amount!);
+          case "rollover":
+            return wallet.rollover();
+          case "erc20_transfer": {
+            const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
+            const account = new Account({
+              provider,
+              address: wallet.keys!.starkAddress,
+              signer: wallet.keys!.starkPrivateKey,
+            } as any);
+            const nonce = await account.getNonce();
+            const feeEstimate = await account.estimateInvokeFee(calls, { nonce });
+            const tx = await account.execute(calls, {
+              nonce,
+              resourceBounds: feeEstimate.resourceBounds,
+            });
+            return { txHash: tx.transaction_hash };
+          }
+        }
+      };
 
       // 1. Ward path — insert Supabase request + poll for guardian approval
       if (ward.isWard) {
-        setTransactionRouterPath(is2FAEnabled ? "ward+2fa" : "ward");
-        const { calls } = await prepareCalls(action, amount, recipient);
-        const wardResult = await ward.initiateWardTransaction({
-          action,
-          token,
-          amount,
-          recipient,
+        const routed = await runtime.router.execute({
+          walletAddress,
+          wardAddress: walletAddress,
           calls,
+          meta: {
+            type: action as any,
+            token,
+            amount: amount ? { value: amount, unit: getAmountUnit(action) } : null,
+            recipient: recipient || null,
+            recipientName: params.recipientName || null,
+            note: params.note || null,
+            network: "sepolia",
+            platform: "mobile",
+          },
+          executeDirect: async () => {
+            setTransactionRouterPath("ward");
+            return directExecutor();
+          },
+          executeWardApproval: async (decision, snapshot) => {
+            setTransactionRouterPath(decision.needsWard2fa ? "ward+2fa" : "ward");
+            return ward.initiateWardTransaction({
+              action,
+              token,
+              amount,
+              recipient,
+              calls,
+              policyOverride: {
+                guardianAddress: snapshot.guardianAddress,
+                needsWard2fa: decision.needsWard2fa,
+                needsGuardian: decision.needsGuardian,
+                needsGuardian2fa: decision.needsGuardian2fa,
+              },
+            });
+          },
         });
-        if (wardResult.approved && wardResult.txHash) {
-          persistTransaction(wardResult.txHash, params, "ward");
-          return { txHash: wardResult.txHash };
-        }
-        throw new Error(wardResult.error || "Ward approval failed");
+        return { txHash: routed.txHash };
       }
 
       // 2. 2FA path — biometric gate + dual-key signing
-      if (is2FAEnabled) {
-        setTransactionRouterPath("2fa");
-        const { calls } = await prepareCalls(action, amount, recipient);
-        const result = await executeDualSig(calls);
-        persistTransaction(result.txHash, params, "normal");
-        return result;
-      }
+      const routed = await runtime.router.execute({
+        walletAddress,
+        calls,
+        is2FAEnabled,
+        meta: {
+          type: action as any,
+          token,
+          amount: amount ? { value: amount, unit: getAmountUnit(action) } : null,
+          recipient: recipient || null,
+          recipientName: params.recipientName || null,
+          note: params.note || null,
+          network: "sepolia",
+          platform: "mobile",
+          directAccountType: "normal",
+        },
+        executeDirect: async () => {
+          setTransactionRouterPath("direct");
+          return directExecutor();
+        },
+        execute2FA: async () => {
+          setTransactionRouterPath("2fa");
+          const result = await executeDualSig(calls);
+          return { approved: true, txHash: result.txHash };
+        },
+      });
 
-      // 3. Direct execution
-      setTransactionRouterPath("direct");
-      let result: { txHash: string };
-      switch (action) {
-        case "fund":
-          result = await wallet.fund(amount!);
-          break;
-        case "transfer":
-          result = await wallet.transfer(amount!, recipient!);
-          break;
-        case "withdraw":
-          result = await wallet.withdraw(amount!);
-          break;
-        case "rollover":
-          result = await wallet.rollover();
-          break;
-        case "erc20_transfer": {
-          const { calls } = await prepareCalls(action, amount, recipient);
-          const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
-          const account = new Account({
-            provider,
-            address: wallet.keys!.starkAddress,
-            signer: wallet.keys!.starkPrivateKey,
-          } as any);
-          const nonce = await account.getNonce();
-          const feeEstimate = await account.estimateInvokeFee(calls, { nonce });
-          const tx = await account.execute(calls, {
-            nonce,
-            resourceBounds: feeEstimate.resourceBounds,
-          });
-          result = { txHash: tx.transaction_hash };
-          break;
-        }
-      }
-      persistTransaction(result.txHash, params, "normal");
-      return result;
+      return { txHash: routed.txHash };
     },
-    [wallet, ward, prepareCalls, executeDualSig, is2FAEnabled, persistTransaction],
+    [wallet, ward, prepareCalls, buildRuntime, executeDualSig, is2FAEnabled],
   );
 
   return { execute };

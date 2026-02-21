@@ -219,6 +219,12 @@ type WardContextState = {
     amount?: string;
     recipient?: string;
     calls: any[];
+    policyOverride?: {
+      guardianAddress: string;
+      needsWard2fa: boolean;
+      needsGuardian: boolean;
+      needsGuardian2fa: boolean;
+    };
   }) => Promise<WardApprovalResult>;
 };
 
@@ -1384,6 +1390,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     amount?: string;
     recipient?: string;
     calls: any[];
+    policyOverride?: {
+      guardianAddress: string;
+      needsWard2fa: boolean;
+      needsGuardian: boolean;
+      needsGuardian2fa: boolean;
+    };
   }): Promise<WardApprovalResult> => {
     if (!wallet.keys?.starkAddress) {
       throw new Error("No wallet connected");
@@ -1443,8 +1455,15 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
     const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
 
-    // Read ward on-chain config
-    const needs = await sdkFetchWardApprovalNeeds(provider as any, wallet.keys.starkAddress);
+    // Read ward on-chain config unless the caller provided explicit policy values.
+    const needs = params.policyOverride
+      ? {
+          guardianAddress: params.policyOverride.guardianAddress,
+          wardHas2fa: params.policyOverride.needsWard2fa,
+          needsGuardian: params.policyOverride.needsGuardian,
+          guardianHas2fa: params.policyOverride.needsGuardian2fa,
+        }
+      : await sdkFetchWardApprovalNeeds(provider as any, wallet.keys.starkAddress);
     if (!needs) throw new Error("Failed to read ward config from chain");
 
     // Serialize calls for Supabase

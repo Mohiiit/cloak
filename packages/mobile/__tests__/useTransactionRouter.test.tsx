@@ -4,6 +4,29 @@ import { useTransactionRouter } from '../src/hooks/useTransactionRouter';
 const mockUseWallet = jest.fn();
 const mockUseWardContext = jest.fn();
 const mockUseDualSigExecutor = jest.fn();
+const mockRuntimeExecute = jest.fn();
+const mockCreateCloakRuntime = jest.fn(() => ({
+  router: { execute: mockRuntimeExecute },
+}));
+
+jest.mock('@cloak-wallet/sdk', () => ({
+  createCloakRuntime: (...args: any[]) => mockCreateCloakRuntime(...args),
+  SupabaseLite: class MockSupabaseLite {},
+  DEFAULT_RPC: { sepolia: 'http://localhost:5050' },
+  TOKENS: {
+    STRK: {
+      decimals: 18,
+      erc20Address: '0x1',
+      rate: 1n,
+      symbol: 'STRK',
+    },
+  },
+  parseTokenAmount: (value: string) => BigInt(value || '0'),
+}));
+
+jest.mock('../src/lib/twoFactor', () => ({
+  getSupabaseConfig: jest.fn(async () => ({ url: 'https://example.supabase.co', key: 'anon-key' })),
+}));
 
 jest.mock('../src/lib/WalletContext', () => ({
   useWallet: () => mockUseWallet(),
@@ -26,6 +49,11 @@ describe('useTransactionRouter', () => {
     const wardResult = { approved: true, txHash: '0xward' };
 
     mockUseWallet.mockReturnValue({
+      keys: {
+        starkAddress: '0xward',
+        starkPrivateKey: '0x1',
+      },
+      selectedToken: 'STRK',
       prepareTransfer: jest.fn(async () => ({ calls: [{ id: 'c1' }] })),
       prepareFund: jest.fn(),
       prepareWithdraw: jest.fn(),
@@ -45,6 +73,19 @@ describe('useTransactionRouter', () => {
     mockUseDualSigExecutor.mockReturnValue({
       executeDualSig: jest.fn(),
       is2FAEnabled: true,
+    });
+    mockRuntimeExecute.mockImplementation(async (input: any) => {
+      const approval = await input.executeWardApproval(
+        {
+          needsGuardian: true,
+          needsWard2fa: false,
+          needsGuardian2fa: false,
+        },
+        {
+          guardianAddress: '0xguardian',
+        },
+      );
+      return { txHash: approval.txHash, route: 'ward_approval' };
     });
 
     const { result } = renderHook(() => useTransactionRouter());
@@ -67,6 +108,11 @@ describe('useTransactionRouter', () => {
     const executeDualSig = jest.fn(async () => ({ txHash: '0x2fa' }));
 
     mockUseWallet.mockReturnValue({
+      keys: {
+        starkAddress: '0xnormal',
+        starkPrivateKey: '0x1',
+      },
+      selectedToken: 'STRK',
       prepareTransfer: jest.fn(),
       prepareFund: jest.fn(async () => ({ calls: [{ id: 'f1' }] })),
       prepareWithdraw: jest.fn(),
@@ -85,6 +131,10 @@ describe('useTransactionRouter', () => {
     mockUseDualSigExecutor.mockReturnValue({
       executeDualSig,
       is2FAEnabled: true,
+    });
+    mockRuntimeExecute.mockImplementation(async (input: any) => {
+      const result = await input.execute2FA();
+      return { txHash: result.txHash, route: '2fa' };
     });
 
     const { result } = renderHook(() => useTransactionRouter());
@@ -106,8 +156,13 @@ describe('useTransactionRouter', () => {
     const fund = jest.fn(async () => ({ txHash: '0xdirect' }));
 
     mockUseWallet.mockReturnValue({
+      keys: {
+        starkAddress: '0xnormal',
+        starkPrivateKey: '0x1',
+      },
+      selectedToken: 'STRK',
       prepareTransfer: jest.fn(),
-      prepareFund: jest.fn(),
+      prepareFund: jest.fn(async () => ({ calls: [{ id: 'f1' }] })),
       prepareWithdraw: jest.fn(),
       prepareRollover: jest.fn(),
       fund,
@@ -124,6 +179,10 @@ describe('useTransactionRouter', () => {
     mockUseDualSigExecutor.mockReturnValue({
       executeDualSig: jest.fn(),
       is2FAEnabled: false,
+    });
+    mockRuntimeExecute.mockImplementation(async (input: any) => {
+      const direct = await input.executeDirect();
+      return { txHash: direct.txHash, route: 'direct' };
     });
 
     const { result } = renderHook(() => useTransactionRouter());

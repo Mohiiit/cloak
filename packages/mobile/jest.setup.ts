@@ -1,14 +1,31 @@
 import '@testing-library/jest-native/extend-expect';
 
-jest.mock('react-native-reanimated', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Reanimated = require('react-native-reanimated/mock');
-
-  // The mock for `call` invokes the callback immediately which can break tests.
-  Reanimated.default.call = () => {};
-
-  return Reanimated;
-});
+jest.mock(
+  'react-native-reanimated',
+  () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const Reanimated = require('react-native-reanimated/mock');
+      // The mock for `call` invokes the callback immediately which can break tests.
+      Reanimated.default.call = () => {};
+      return Reanimated;
+    } catch {
+      const noop = () => undefined;
+      return {
+        __esModule: true,
+        default: { call: noop },
+        Easing: {},
+        useSharedValue: (value: any) => ({ value }),
+        useAnimatedStyle: (fn: any) => fn(),
+        withTiming: (value: any) => value,
+        withSpring: (value: any) => value,
+        runOnJS: (fn: any) => fn,
+        runOnUI: (fn: any) => fn,
+      };
+    }
+  },
+  { virtual: true },
+);
 
 jest.mock('react-native-webview', () => {
   const React = require('react');
@@ -16,6 +33,17 @@ jest.mock('react-native-webview', () => {
   return {
     __esModule: true,
     default: React.forwardRef((props: any, _ref: any) => React.createElement(View, props)),
+  };
+});
+
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  return {
+    SafeAreaProvider: ({ children }: any) => React.createElement(React.Fragment, null, children),
+    SafeAreaConsumer: ({ children }: any) =>
+      children({ top: 0, bottom: 0, left: 0, right: 0 }),
+    useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+    useSafeAreaFrame: () => ({ x: 0, y: 0, width: 320, height: 640 }),
   };
 });
 
