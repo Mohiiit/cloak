@@ -2,6 +2,12 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, ShieldPlus, ShieldOff, ArrowUpFromLine, RefreshCw, ExternalLink, Shield, Wallet, Settings, Smartphone } from "lucide-react";
 
 import { useTxHistory, type TxEvent } from "../hooks/useTxHistory";
+import {
+  GUARDIAN_WARD_TYPES,
+  statusLabel,
+  toDisplayAmount,
+  toUnitAmount,
+} from "../lib/activity";
 
 interface Props {
   onBack: () => void;
@@ -10,7 +16,7 @@ interface Props {
 
 /** Check if this is a guardian-submitted ward operation (not the guardian's own tx) */
 function isGuardianWardOp(tx: TxEvent): boolean {
-  return tx.accountType === "guardian" && ["fund", "transfer", "withdraw", "rollover"].includes(tx.type);
+  return tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(tx.type as any);
 }
 
 /** Public ops show token amount, everything else shows units */
@@ -130,16 +136,19 @@ export function ActivityScreen({ onBack, walletAddress }: Props) {
         <div className="flex flex-col gap-2">
           {events.map((tx, i) => {
             const token = (tx.token || "STRK") as any;
-            const hasAmount = !!tx.amount && tx.amount !== "0";
+            const hasAmount = !!tx.amount;
             const pubOp = isPublicOp(tx);
             let amountDisplay = "";
             if (hasAmount && tx.amount) {
+              const display = toDisplayAmount(tx, token);
+              const units = toUnitAmount(tx, token);
               if (pubOp) {
-                amountDisplay = `${tx.amount} ${token}`;
+                amountDisplay = `${display} ${token}`;
               } else {
-                amountDisplay = unitLabel(tx.amount);
+                amountDisplay = unitLabel(units);
               }
             }
+            const status = statusLabel(tx);
             return (
               <div
                 key={tx.txHash || i}
@@ -170,6 +179,9 @@ export function ActivityScreen({ onBack, walletAddress }: Props) {
                   )}
                   {tx.recipientName && (
                     <p className="text-[11px] text-cloak-text-dim mt-0.5">to {tx.recipientName}</p>
+                  )}
+                  {status && (
+                    <p className="text-[10px] text-cloak-muted mt-0.5">{status}</p>
                   )}
                 </div>
                 {tx.txHash && (

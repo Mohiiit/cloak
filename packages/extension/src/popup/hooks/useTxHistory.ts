@@ -1,9 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
-import { getTransactions, type TransactionRecord } from "@cloak-wallet/sdk";
+import { getActivityRecords, type ActivityRecord } from "@cloak-wallet/sdk";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
+import { getSupabaseLite } from "@/shared/supabase-config";
 
 export interface TxEvent {
   txHash: string;
+  source?: "transaction" | "ward_request" | "local";
   type: string;
   amount?: string;
   amount_unit?: string;
@@ -14,14 +16,18 @@ export interface TxEvent {
   timestamp?: number;
   token?: string;
   status?: string;
+  statusDetail?: string;
   errorMessage?: string;
   accountType?: string;
+  wardAddress?: string;
+  walletAddress?: string;
   fee?: string;
 }
 
-function recordToEvent(r: TransactionRecord): TxEvent {
+function recordToEvent(r: ActivityRecord): TxEvent {
   return {
     txHash: r.tx_hash,
+    source: r.source,
     type: r.type === "transfer" ? "send" : r.type,
     amount: r.amount || undefined,
     amount_unit: r.amount_unit || undefined,
@@ -31,8 +37,11 @@ function recordToEvent(r: TransactionRecord): TxEvent {
     timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
     token: r.token || "STRK",
     status: r.status,
+    statusDetail: r.status_detail || undefined,
     errorMessage: r.error_message || undefined,
     accountType: r.account_type || undefined,
+    wardAddress: r.ward_address || undefined,
+    walletAddress: r.wallet_address || undefined,
     fee: r.fee || undefined,
   };
 }
@@ -47,8 +56,9 @@ export function useTxHistory(walletAddress?: string) {
     setIsLoading(true);
     setError(null);
     try {
-      // Primary: Supabase
-      const records = await getTransactions(walletAddress);
+      // Primary: Supabase unified activity feed
+      const sb = await getSupabaseLite();
+      const records = await getActivityRecords(walletAddress, 200, sb);
       if (records.length > 0) {
         setEvents(records.map(recordToEvent));
         setIsLoading(false);
