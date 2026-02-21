@@ -12,6 +12,8 @@ import WardDetailScreen from "../screens/settings/WardDetailScreen";
 import ImportAccountScreen from "../screens/onboarding/ImportAccountScreen";
 import ImportWardScreen from "../screens/onboarding/ImportWardScreen";
 import SplashScreen from "../screens/SplashScreen";
+import SettingsScreen from "../screens/SettingsScreen";
+import SwapDetailScreen from "../screens/swap/SwapDetailScreen";
 import { useWallet } from "../lib/WalletContext";
 import { colors } from "../lib/theme";
 import { isE2E } from "../testing/runtimeConfig";
@@ -41,8 +43,18 @@ export default function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name="SettingsHub"
+            component={SettingsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="TransactionDetail"
             component={TransactionDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SwapDetail"
+            component={SwapDetailScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

@@ -4,12 +4,13 @@ export type AppTabParamList = {
   Home: undefined;
   Send: undefined;
   Wallet: { mode?: "shield" | "unshield" } | undefined;
+  Swap: undefined;
   Activity: undefined;
-  Settings: undefined;
 };
 
 export type RootStackParamList = {
   AppTabs: NavigatorScreenParams<AppTabParamList>;
+  SettingsHub: undefined;
   ImportAccount: undefined;
   ImportWard: undefined;
   KeyBackup: undefined;
@@ -31,6 +32,7 @@ export type RootStackParamList = {
     qrPayload?: string;
     maxPerTx?: string;
   };
+  SwapDetail: undefined;
   TransactionDetail: {
     txHash: string;
     type?: string;

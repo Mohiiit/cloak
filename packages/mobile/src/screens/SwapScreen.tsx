@@ -1,5 +1,6 @@
-import React from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import React, { useMemo, useState } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, Modal } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { AlertTriangle, ChevronsUpDown, Repeat } from "lucide-react-native";
 import { colors, borderRadius, typography } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
@@ -37,6 +38,44 @@ function QuoteRow({
 }
 
 export default function SwapScreen() {
+  const navigation = useNavigation<any>();
+  const [stage, setStage] = useState<"configure" | "confirm" | "pending">("configure");
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+
+  const stageMeta = useMemo(() => {
+    if (stage === "confirm") {
+      return {
+        statusText: "Status: Waiting for final confirmation",
+        ctaLabel: "Confirm Private Swap",
+        ctaTestID: testIDs.swap.confirm,
+      };
+    }
+    if (stage === "pending") {
+      return {
+        statusText: "Status: Private swap pending",
+        routeText: "Execution Route          shielded in -> shielded out",
+      };
+    }
+
+    return {
+      statusText: "Status: Ready to build swap proof",
+      ctaLabel: "Review Private Swap",
+      ctaTestID: testIDs.swap.review,
+    };
+  }, [stage]);
+
+  const onPrimaryAction = () => {
+    if (stage === "configure") {
+      setStage("confirm");
+      return;
+    }
+
+    if (stage === "confirm") {
+      setStage("pending");
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -81,21 +120,156 @@ export default function SwapScreen() {
 
           <View style={styles.noticeBar}>
             <AlertTriangle size={13} color={colors.warning} />
-            <Text style={styles.noticeText}>All amounts are quantized to tongo units</Text>
+            <Text style={styles.noticeText}>
+              {stage === "pending" ? "Swap quantized into tongo units" : "All amounts are quantized to tongo units"}
+            </Text>
           </View>
 
           <View style={styles.statusPill}>
-            <Text style={styles.statusText}>Status: Ready to build swap proof</Text>
+            <Text style={styles.statusText}>{stageMeta.statusText}</Text>
           </View>
+          {stageMeta.routeText ? (
+            <Pressable
+              {...testProps(testIDs.swap.pendingRoute)}
+              onPress={() => setShowProgressModal(true)}
+              style={styles.routePill}
+            >
+              <Text style={styles.routeText}>{stageMeta.routeText}</Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <Pressable {...testProps(testIDs.swap.review)} style={styles.ctaButton}>
-          <Repeat size={16} color="#FFFFFF" />
-          <Text style={styles.ctaText}>Review Private Swap</Text>
-        </Pressable>
-      </View>
+      {stageMeta.ctaLabel ? (
+        <View style={styles.footer}>
+          <Pressable
+            {...testProps(stageMeta.ctaTestID as string)}
+            style={styles.ctaButton}
+            onPress={onPrimaryAction}
+          >
+            <Repeat size={16} color="#FFFFFF" />
+            <Text style={styles.ctaText}>{stageMeta.ctaLabel}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <Modal
+        visible={showProgressModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProgressModal(false)}
+      >
+        <View style={styles.progressOverlay}>
+          <Pressable
+            style={styles.progressCard}
+            {...testProps(testIDs.swap.progressModal)}
+            onPress={() => {
+              setShowProgressModal(false);
+              setShowCompleteModal(true);
+            }}
+          >
+            <View style={styles.progressIconWrap}>
+              <Repeat size={18} color={colors.primaryLight} />
+            </View>
+            <Text style={styles.progressTitle}>Processing Private Swap...</Text>
+
+            <View style={styles.progressList}>
+              <View style={styles.progressRow}>
+                <View style={[styles.progressDot, styles.progressDotDone]}>
+                  <Text style={styles.progressDotCheck}>✓</Text>
+                </View>
+                <Text style={styles.progressRowDone}>Building swap proof</Text>
+              </View>
+              <View style={styles.progressRow}>
+                <View style={[styles.progressDot, styles.progressDotDone]}>
+                  <Text style={styles.progressDotCheck}>✓</Text>
+                </View>
+                <Text style={styles.progressRowDone}>Executing private route</Text>
+              </View>
+              <View style={styles.progressRow}>
+                <View style={[styles.progressDot, styles.progressDotActive]} />
+                <Text style={styles.progressRowActive}>Settling shielded receive</Text>
+              </View>
+              <View style={styles.progressRow}>
+                <View style={styles.progressDot} />
+                <Text style={styles.progressRowPending}>Finalizing</Text>
+              </View>
+              <View style={styles.progressRow}>
+                <View style={styles.progressDot} />
+                <Text style={styles.progressRowPending}>Complete</Text>
+              </View>
+            </View>
+
+            <View style={styles.progressTrack}>
+              <View style={styles.progressFill} />
+            </View>
+            <Text style={styles.progressFootnote}>Submitting private settlement...</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCompleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCompleteModal(false)}
+      >
+        <View style={styles.progressOverlay}>
+          <View style={styles.completeCard} {...testProps(testIDs.swap.completeModal)}>
+            <View style={styles.confettiRow}>
+              <View style={[styles.confettiDot, { backgroundColor: "#38BDF8" }]} />
+              <View style={[styles.confettiDot, { backgroundColor: "#22C55E" }]} />
+              <View style={[styles.confettiDot, { backgroundColor: "#F59E0B" }]} />
+              <View style={[styles.confettiDot, { backgroundColor: "#8B5CF6" }]} />
+            </View>
+            <View style={styles.completeIconWrap}>
+              <Text style={styles.completeIconCheck}>✓</Text>
+            </View>
+            <Text style={styles.completeTitle}>Swap Complete!</Text>
+            <Text style={styles.completeSubtitle}>Your private swap settled successfully.</Text>
+
+            <View style={styles.completeSummary}>
+              <View style={styles.completeSummaryRow}>
+                <Text style={styles.completeKey}>Pair</Text>
+                <Text style={styles.completeValue}>STRK → ETH</Text>
+              </View>
+              <View style={styles.completeSummaryRow}>
+                <Text style={styles.completeKey}>Sent</Text>
+                <Text style={styles.completeValue}>12.00 tongo units</Text>
+              </View>
+              <View style={styles.completeSummaryRow}>
+                <Text style={styles.completeKey}>Received</Text>
+                <Text style={styles.completeValueSuccess}>31 tongo units</Text>
+              </View>
+              <View style={styles.completeSummaryRow}>
+                <Text style={styles.completeKey}>Tx Hash</Text>
+                <Text style={styles.completeValueLink}>0x9a4c...7ef1</Text>
+              </View>
+            </View>
+
+            <Pressable
+              {...testProps(testIDs.swap.completeDone)}
+              style={styles.completeDoneButton}
+              onPress={() => {
+                setShowCompleteModal(false);
+                setStage("configure");
+              }}
+            >
+              <Text style={styles.completeDoneText}>✓ Done</Text>
+            </Pressable>
+
+            <Pressable
+              {...testProps(testIDs.swap.completeViewDetails)}
+              onPress={() => {
+                setShowCompleteModal(false);
+                navigation.getParent()?.navigate("SwapDetail");
+              }}
+            >
+              <Text style={styles.completeViewDetails}>View swap details</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -262,6 +436,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: typography.primarySemibold,
   },
+  routePill: {
+    height: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.25)",
+    backgroundColor: "rgba(16, 185, 129, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  routeText: {
+    color: colors.success,
+    fontSize: 10,
+    fontFamily: typography.secondarySemibold,
+    letterSpacing: 0.2,
+  },
   footer: {
     paddingHorizontal: 24,
     paddingTop: 6,
@@ -280,5 +470,212 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontFamily: typography.primarySemibold,
+  },
+  progressOverlay: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  progressCard: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  progressIconWrap: {
+    alignSelf: "center",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(59, 130, 246, 0.5)",
+    backgroundColor: "rgba(59, 130, 246, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  progressTitle: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 20,
+    textAlign: "center",
+    fontFamily: typography.primarySemibold,
+    marginBottom: 14,
+  },
+  progressList: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  progressDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: colors.textMuted,
+    backgroundColor: "transparent",
+  },
+  progressDotDone: {
+    borderColor: colors.success,
+    backgroundColor: colors.success,
+  },
+  progressDotActive: {
+    borderColor: colors.primary,
+  },
+  progressRowDone: {
+    color: colors.text,
+    fontSize: 12,
+    fontFamily: typography.secondarySemibold,
+  },
+  progressRowActive: {
+    color: colors.text,
+    fontSize: 12,
+    fontFamily: typography.secondarySemibold,
+  },
+  progressRowPending: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontFamily: typography.secondary,
+  },
+  progressDotCheck: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    lineHeight: 12,
+    fontFamily: typography.primarySemibold,
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    overflow: "hidden",
+    marginBottom: 10,
+  },
+  progressFill: {
+    width: "58%",
+    height: "100%",
+    backgroundColor: colors.primary,
+  },
+  progressFootnote: {
+    color: colors.textMuted,
+    fontSize: 10,
+    textAlign: "center",
+    fontFamily: typography.secondary,
+  },
+  completeCard: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  confettiRow: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    marginBottom: 8,
+  },
+  confettiDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  completeIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: colors.success,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  completeIconCheck: {
+    color: colors.success,
+    fontSize: 28,
+    lineHeight: 30,
+    fontFamily: typography.primarySemibold,
+  },
+  completeTitle: {
+    color: colors.success,
+    fontSize: 28,
+    lineHeight: 32,
+    fontFamily: typography.primarySemibold,
+    marginBottom: 4,
+  },
+  completeSubtitle: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontFamily: typography.secondary,
+    marginBottom: 10,
+  },
+  completeSummary: {
+    width: "100%",
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: 10,
+    backgroundColor: colors.bg,
+    marginBottom: 12,
+  },
+  completeSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  completeKey: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.secondary,
+  },
+  completeValue: {
+    color: colors.text,
+    fontSize: 11,
+    fontFamily: typography.secondarySemibold,
+  },
+  completeValueSuccess: {
+    color: colors.success,
+    fontSize: 11,
+    fontFamily: typography.secondarySemibold,
+  },
+  completeValueLink: {
+    color: colors.primaryLight,
+    fontSize: 11,
+    fontFamily: typography.secondarySemibold,
+  },
+  completeDoneButton: {
+    width: "100%",
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.success,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  completeDoneText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: typography.primarySemibold,
+  },
+  completeViewDetails: {
+    color: colors.primaryLight,
+    fontSize: 11,
+    fontFamily: typography.secondarySemibold,
   },
 });

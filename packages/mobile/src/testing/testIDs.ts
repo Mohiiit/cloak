@@ -122,6 +122,12 @@ export const testIDs = {
   swap: {
     pairInput: "swap.pair.input.press",
     review: "swap.review.press",
+    confirm: "swap.confirm.press",
+    pendingRoute: "swap.pending.route.press",
+    progressModal: "swap.progress.modal",
+    completeModal: "swap.complete.modal",
+    completeDone: "swap.complete.done.press",
+    completeViewDetails: "swap.complete.viewdetails.press",
   },
   settings: {
     keyBackupOpen: "settings.keys.open.press",
