@@ -1,6 +1,13 @@
 export { createSwapModule, SwapModuleNotConfiguredError } from "./module";
 export type { CloakSwapModule, CloakSwapModuleAdapter } from "./module";
 export {
+  composeShieldedSwapPlan,
+  SwapPlanComposeError,
+} from "./builder";
+export type {
+  ComposeShieldedSwapPlanInput,
+} from "./builder";
+export {
   AVNU_BASE_URL,
   AvnuSwapApiError,
   AvnuSwapStaleQuoteError,
