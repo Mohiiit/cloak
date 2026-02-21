@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+---
+- runFlow: ../shared/create-wallet.yaml
+- assertVisible:
+    id: deploy.account.deploy.press
+- tapOn:
+    id: deploy.account.deploy.press
+- extendedWaitUntil:
+    visible:
+      id: home.quick.send.press
+    timeout: 120000
+- waitForAnimationToEnd
+- takeScreenshot: parity-home-shell-phaseA

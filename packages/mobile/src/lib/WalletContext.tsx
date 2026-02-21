@@ -6,7 +6,7 @@ import { hash, CallData, Account, RpcProvider } from "starknet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTongoBridge } from "../bridge/useTongoBridge";
 import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet, clearWallet } from "./keys";
-import { TokenKey, TOKENS } from "./tokens";
+import { TokenKey } from "./tokens";
 import { useToast } from "../components/Toast";
 import { DEFAULT_RPC, CLOAK_ACCOUNT_CLASS_HASH } from "@cloak-wallet/sdk";
 import { isMockMode } from "../testing/runtimeConfig";
@@ -219,14 +219,31 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       });
       setErc20Balances(newErc20);
 
-      // For Tongo balances, we need to switch token to query each.
-      // Only the currently selected token's Tongo state is available without switching.
-      // Just set the current token's tongo balance from the existing state.
-      const state = await bridge.getState();
-      setTongoBalances((prev) => ({
-        ...prev,
-        [selectedToken]: { balance: state.balance, pending: state.pending },
-      }));
+      // Fetch Tongo balances for all supported tokens by temporarily switching pools.
+      const newTongo: Record<TokenKey, { balance: string; pending: string }> = { ...EMPTY_TONGO };
+      const originalToken = selectedToken;
+
+      for (const token of ALL_TOKENS) {
+        try {
+          await bridge.switchToken(keys.tongoPrivateKey, token);
+          const tokenState = await bridge.getState();
+          newTongo[token] = { balance: tokenState.balance, pending: tokenState.pending };
+        } catch {
+          // Keep defaults for tokens we could not fetch.
+        }
+      }
+
+      try {
+        await bridge.switchToken(keys.tongoPrivateKey, originalToken);
+        const currentState = await bridge.getState();
+        setBalance(currentState.balance);
+        setPending(currentState.pending);
+        setNonce(currentState.nonce);
+      } catch {
+        // Keep previous selected-token balance values if restore fails.
+      }
+
+      setTongoBalances(newTongo);
     } catch (e) {
       console.warn("[WalletContext] refreshAllBalances error:", e);
       showToast("Could not refresh all balances", "warning");
