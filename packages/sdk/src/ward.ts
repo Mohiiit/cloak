@@ -389,6 +389,14 @@ export async function estimateWardInvokeFee(
     {
       ...invokeBase,
       signature: [] as string[],
+    },
+    {
+      ...invokeBase,
+      signature: ["0x0"],
+    },
+    {
+      ...invokeBase,
+      signature: [] as string[],
       nonce_data_availability_mode: "L1",
       fee_data_availability_mode: "L1",
     },
@@ -413,6 +421,28 @@ export async function estimateWardInvokeFee(
   ];
 
   let lastError: Error | null = null;
+
+  const makeDetailedError = (
+    message: string,
+    context: {
+      blockId: string;
+      rpcUrl: string;
+      params: unknown;
+      httpStatus: number;
+      rawResponse: string;
+    },
+  ): Error => {
+    const err = new Error(message) as Error & { details?: string };
+    err.details = [
+      message,
+      `blockId=${context.blockId}`,
+      `httpStatus=${context.httpStatus}`,
+      `rpcUrl=${context.rpcUrl}`,
+      `params=${JSON.stringify(context.params)}`,
+      `rawResponse=${context.rawResponse}`,
+    ].join("\n");
+    return err;
+  };
 
   for (const request of requestVariants) {
     const blockIds = ["pre_confirmed", "latest"];
@@ -450,8 +480,15 @@ export async function estimateWardInvokeFee(
           try {
             json = JSON.parse(rawText);
           } catch {
-            lastError = new Error(
+            lastError = makeDetailedError(
               `Fee estimation failed: invalid JSON response (HTTP ${response.status})`,
+              {
+                blockId,
+                rpcUrl,
+                params,
+                httpStatus: response.status,
+                rawResponse: rawText,
+              },
             );
             continue;
           }
@@ -459,14 +496,41 @@ export async function estimateWardInvokeFee(
 
         if (json?.error) {
           const rpcErrMsg = json.error.message || JSON.stringify(json.error);
-          lastError = new Error(`Fee estimation failed: ${rpcErrMsg}`);
+          const rpcCode = Number(json.error.code ?? NaN);
+          const lowerMsg = String(rpcErrMsg).toLowerCase();
+          const lowerReason = String(json.error?.data?.reason ?? "").toLowerCase();
+          const isInvalidParams = rpcCode === -32602
+            || lowerMsg.includes("invalid params")
+            || lowerReason.includes("expected array")
+            || lowerReason.includes("expected string");
+
+          const detailed = makeDetailedError(`Fee estimation failed: ${rpcErrMsg}`, {
+            blockId,
+            rpcUrl,
+            params,
+            httpStatus: response.status,
+            rawResponse: rawText,
+          });
+
+          if (!isInvalidParams) {
+            throw detailed;
+          }
+
+          lastError = detailed;
           continue;
         }
 
         if (!response.ok) {
           const bodySnippet = rawText.slice(0, 240);
-          lastError = new Error(
+          lastError = makeDetailedError(
             `Fee estimation failed: HTTP ${response.status} ${response.statusText}${bodySnippet ? ` - ${bodySnippet}` : ""}`,
+            {
+              blockId,
+              rpcUrl,
+              params,
+              httpStatus: response.status,
+              rawResponse: rawText,
+            },
           );
           continue;
         }

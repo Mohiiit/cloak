@@ -286,7 +286,9 @@ export function createAvnuSwapAdapter(config: AvnuSwapApiConfig = {}): CloakSwap
       quoteId: params.quote.id,
       takerAddress: params.walletAddress,
       receiverAddress: params.receiverAddress || params.walletAddress,
-      includeApprove: false,
+      // Always include sell-token approval in the built route so composed execution
+      // works for fresh wallets that do not have prior allowance configured.
+      includeApprove: true,
       slippage: slippagePct,
     };
 

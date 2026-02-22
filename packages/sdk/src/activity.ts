@@ -8,7 +8,12 @@ import {
 } from "./transactions";
 import { normalizeAddress } from "./ward";
 import type { AmountUnit } from "./token-convert";
-import { getSwapExecutions, type SwapExecutionRecord } from "./swaps";
+import {
+  getSwapExecutionSteps,
+  getSwapExecutions,
+  type SwapExecutionRecord,
+  type SwapExecutionStepRecord,
+} from "./swaps";
 
 export type ActivitySource = "transaction" | "ward_request";
 
@@ -60,6 +65,7 @@ export interface ActivityRecord {
   created_at?: string;
   responded_at?: string | null;
   swap?: {
+    execution_id?: string;
     provider: string;
     sell_token: string;
     buy_token: string;
@@ -67,6 +73,20 @@ export interface ActivityRecord {
     estimated_buy_amount_wei: string;
     min_buy_amount_wei: string;
     buy_actual_amount_wei?: string | null;
+    tx_hashes?: string[] | null;
+    primary_tx_hash?: string | null;
+    status?: string;
+    failure_step_key?: string | null;
+    failure_reason?: string | null;
+    steps?: Array<{
+      step_key: string;
+      step_order: number;
+      status: string;
+      tx_hash?: string | null;
+      message?: string | null;
+      started_at?: string | null;
+      finished_at?: string | null;
+    }>;
   } | null;
 }
 
@@ -133,6 +153,7 @@ function statusNoteForWardRequest(status: string): string | null {
 function mapTransactionToActivity(
   tx: TransactionRecord,
   swap?: SwapExecutionRecord | null,
+  steps?: SwapExecutionStepRecord[],
 ): ActivityRecord {
   return {
     id: tx.tx_hash,
@@ -156,6 +177,7 @@ function mapTransactionToActivity(
     created_at: tx.created_at,
     swap: swap
       ? {
+          execution_id: swap.execution_id,
           provider: swap.provider,
           sell_token: swap.sell_token,
           buy_token: swap.buy_token,
@@ -163,6 +185,23 @@ function mapTransactionToActivity(
           estimated_buy_amount_wei: swap.estimated_buy_amount_wei,
           min_buy_amount_wei: swap.min_buy_amount_wei,
           buy_actual_amount_wei: swap.buy_actual_amount_wei ?? null,
+          tx_hashes: swap.tx_hashes ?? null,
+          primary_tx_hash: swap.primary_tx_hash ?? swap.tx_hash ?? null,
+          status: swap.status,
+          failure_step_key: swap.failure_step_key ?? null,
+          failure_reason: swap.failure_reason ?? null,
+          steps: (steps || [])
+            .slice()
+            .sort((a, b) => a.step_order - b.step_order)
+            .map((step) => ({
+              step_key: step.step_key,
+              step_order: step.step_order,
+              status: step.status,
+              tx_hash: step.tx_hash ?? null,
+              message: step.message ?? null,
+              started_at: step.started_at ?? null,
+              finished_at: step.finished_at ?? null,
+            })),
         }
       : null,
   };
@@ -257,11 +296,33 @@ export async function getActivityRecords(
   const normalized = normalizeAddress(walletAddress);
   const txRows = await getTransactions(normalized, Math.max(limit * 2, 200), client);
   const swapRows = await getSwapExecutions(normalized, Math.max(limit * 2, 200), client);
-  const swapsByTxHash = new Map<string, SwapExecutionRecord>(
-    swapRows
-      .filter((row) => !!row.tx_hash)
-      .map((row) => [row.tx_hash, row]),
+  const executionIds = Array.from(
+    new Set(
+      swapRows
+        .map((row) => row.execution_id)
+        .filter((id): id is string => !!id),
+    ),
   );
+  const swapStepRows = await getSwapExecutionSteps(executionIds, client);
+  const swapStepsByExecutionId = new Map<string, SwapExecutionStepRecord[]>();
+  for (const step of swapStepRows) {
+    const rows = swapStepsByExecutionId.get(step.execution_id) || [];
+    rows.push(step);
+    swapStepsByExecutionId.set(step.execution_id, rows);
+  }
+
+  const swapsByTxHash = new Map<string, SwapExecutionRecord>();
+  for (const swap of swapRows) {
+    const hashes = new Set<string>();
+    if (swap.tx_hash) hashes.add(swap.tx_hash);
+    if (swap.primary_tx_hash) hashes.add(swap.primary_tx_hash);
+    for (const hash of swap.tx_hashes || []) {
+      if (hash) hashes.add(hash);
+    }
+    for (const hash of hashes) {
+      swapsByTxHash.set(hash, swap);
+    }
+  }
   const seenTxHashes = new Set(
     txRows.map((row) => row.tx_hash).filter((hash): hash is string => !!hash),
   );
@@ -272,7 +333,11 @@ export async function getActivityRecords(
     .map((row) => mapWardRequestToActivity(row, normalized));
 
   const combined = [
-    ...txRows.map((tx) => mapTransactionToActivity(tx, swapsByTxHash.get(tx.tx_hash) || null)),
+    ...txRows.map((tx) => {
+      const swap = swapsByTxHash.get(tx.tx_hash) || null;
+      const steps = swap?.execution_id ? swapStepsByExecutionId.get(swap.execution_id) || [] : [];
+      return mapTransactionToActivity(tx, swap, steps);
+    }),
     ...requestActivities,
   ];
 

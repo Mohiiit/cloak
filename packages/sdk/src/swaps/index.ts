@@ -27,11 +27,17 @@ export type {
 export {
   saveSwapExecution,
   updateSwapExecution,
+  updateSwapExecutionByExecutionId,
   getSwapExecutions,
+  getSwapExecutionSteps,
+  upsertSwapExecutionStep,
 } from "./storage";
 export type {
   SwapExecutionStatus,
+  SwapExecutionStepStatus,
+  SwapExecutionStepKey,
   SwapExecutionRecord,
+  SwapExecutionStepRecord,
 } from "./storage";
 export {
   AVNU_BASE_URL,

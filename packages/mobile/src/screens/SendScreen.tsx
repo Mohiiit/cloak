@@ -665,7 +665,7 @@ const scannerStyles = StyleSheet.create({
 
 /* ─── Main screen ─────────────────────────────────────────────────────── */
 
-export default function SendScreen({ navigation }: any) {
+export default function SendScreen({ navigation, route }: any) {
   const wallet = useWallet();
   const { contacts } = useContacts();
   const { execute } = useTransactionRouter();
@@ -692,6 +692,15 @@ export default function SendScreen({ navigation }: any) {
   const [failedModalVisible, setFailedModalVisible] = useState(false);
   const [failedError, setFailedError] = useState("");
   const [scannerVisible, setScannerVisible] = useState(false);
+
+  // Auto-open scanner when navigated with openScanner param
+  useEffect(() => {
+    if (route?.params?.openScanner) {
+      setScannerVisible(true);
+      // Clear the param so it doesn't re-trigger on re-render
+      navigation.setParams({ openScanner: undefined });
+    }
+  }, [route?.params?.openScanner, navigation]);
 
   useEffect(() => {
     wallet.refreshTxHistory();

@@ -99,9 +99,12 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
           "erc20_wei",
         );
         await swapsRepo.save({
+          execution_id: `swap_${Date.now()}_${String(result.txHash).slice(0, 12)}`,
           wallet_address: input.walletAddress,
           ward_address: input.wardAddress || null,
           tx_hash: result.txHash,
+          primary_tx_hash: result.txHash,
+          tx_hashes: [result.txHash],
           provider: input.plan.provider,
           sell_token: input.plan.pair.sellToken,
           buy_token: input.plan.pair.buyToken,

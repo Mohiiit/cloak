@@ -36,7 +36,7 @@ import {
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext, type WardInfo } from "../lib/wardContext";
 import { useTransactionRouter } from "../hooks/useTransactionRouter";
-import { erc20ToDisplay, type TokenKey } from "../lib/tokens";
+import { erc20ToDisplay, tongoToDisplay, type TokenKey } from "../lib/tokens";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { useThemedModal } from "../components/ThemedModal";
 import { CloakIcon } from "../components/CloakIcon";
@@ -76,6 +76,23 @@ function formatUnits(value: string | bigint): string {
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
+
+function tokenToUnitApprox(token: TokenKey): string {
+  const cfg = walletTokenConfig[token];
+  const scale = 10n ** BigInt(cfg.decimals);
+  const rate = cfg.rate;
+  const whole = scale / rate;
+  const rem = scale % rate;
+  if (rem === 0n) return formatUnits(whole);
+  const frac = ((rem * 100n) / rate).toString().padStart(2, "0").replace(/0+$/, "");
+  return frac ? `${formatUnits(whole)}.${frac}` : formatUnits(whole);
+}
+
+const walletTokenConfig: Record<TokenKey, { decimals: number; rate: bigint }> = {
+  STRK: { decimals: 18, rate: 50000000000000000n },
+  ETH: { decimals: 18, rate: 3000000000000n },
+  USDC: { decimals: 6, rate: 10000n },
+};
 
 function parseWardInvitePayload(raw: string): WardInvitePayload {
   const trimmed = raw.trim();
@@ -896,6 +913,7 @@ export default function HomeScreen({ navigation }: any) {
       shielded,
       pending,
       shieldedTotal: shielded,
+      tokenToUnits: `1 ${token} ≈ ${tokenToUnitApprox(token)}u`,
     };
   });
 
@@ -1203,21 +1221,26 @@ export default function HomeScreen({ navigation }: any) {
             <View style={styles.portfolioList}>
               {portfolioRows.map((row) => (
                 <View key={row.token} style={styles.portfolioRow}>
-                  <View style={styles.portfolioLeft}>
+                  <View style={styles.portfolioTopRow}>
                     <Text style={styles.portfolioToken}>{row.token}</Text>
+                    <Text style={styles.portfolioShielded}>
+                      {balanceHidden ? "****" : `${formatUnits(row.shieldedTotal)}u`}
+                    </Text>
+                  </View>
+                  <View style={styles.portfolioBottomRow}>
                     <Text style={styles.portfolioPublic}>
                       Public {balanceHidden ? "****" : displayErc20 && row.token === wallet.selectedToken ? displayErc20 : row.publicDisplay}
                       {!balanceHidden ? ` ${row.token}` : ""}
                     </Text>
-                  </View>
-                  <View style={styles.portfolioRight}>
                     <Text style={styles.portfolioMeta}>
-                      Available {balanceHidden ? "****" : `${formatUnits(row.shielded)}u`} · Pending {balanceHidden ? "****" : `${formatUnits(row.pending)}u`}
-                    </Text>
-                    <Text style={styles.portfolioShielded}>
-                      Shielded Total {balanceHidden ? "****" : `${formatUnits(row.shieldedTotal)}u`}
+                      {balanceHidden ? "****" : row.tokenToUnits}
                     </Text>
                   </View>
+                  {row.pending > 0n ? (
+                    <Text style={styles.portfolioPending}>
+                      Pending {balanceHidden ? "****" : `${formatUnits(row.pending)}u`}
+                    </Text>
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -1634,7 +1657,7 @@ const styles = StyleSheet.create({
 
   // Portfolio
   portfolioSection: {
-    gap: 12,
+    gap: 8,
     marginBottom: 14,
   },
   portfolioHeader: {
@@ -1656,23 +1679,26 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondary,
   },
   portfolioList: {
-    gap: 8,
+    gap: 6,
   },
   portfolioRow: {
-    minHeight: 76,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  portfolioTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
   },
-  portfolioLeft: {
-    gap: 4,
+  portfolioBottomRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   portfolioToken: {
     color: colors.text,
@@ -1685,22 +1711,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: typography.secondary,
   },
-  portfolioRight: {
-    alignItems: "flex-end",
-    gap: 3,
-    maxWidth: "62%",
-  },
   portfolioMeta: {
     color: colors.textSecondary,
     fontSize: 10,
     fontFamily: typography.secondary,
-    textAlign: "right",
   },
   portfolioShielded: {
     color: colors.success,
     fontSize: 12,
     fontFamily: typography.secondarySemibold,
+  },
+  portfolioPending: {
+    marginTop: 2,
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontFamily: typography.secondary,
     textAlign: "right",
+    width: "100%",
   },
 
   // Claim Success Card (matches SendScreen success modal design)

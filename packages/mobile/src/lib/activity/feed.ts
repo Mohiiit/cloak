@@ -27,6 +27,7 @@ export interface ActivityFeedItem {
   fee?: string;
   wardAddress?: string;
   walletAddress?: string;
+  executionId?: string;
   swap?: ActivityRecord["swap"] | null;
 }
 
@@ -56,6 +57,7 @@ function activityToFeedItem(row: ActivityRecord): ActivityFeedItem {
     fee: row.fee || undefined,
     wardAddress: row.ward_address || undefined,
     walletAddress: row.wallet_address || undefined,
+    executionId: row.swap?.execution_id || undefined,
     swap: row.swap ?? null,
   };
 }

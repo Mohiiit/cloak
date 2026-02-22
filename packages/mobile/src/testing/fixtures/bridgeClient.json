@@ -6,8 +6,8 @@
     "USDC": "1.0000"
   },
   "stateByToken": {
-    "STRK": { "balance": "1420", "pending": "500", "nonce": "12" },
-    "ETH": { "balance": "514", "pending": "24", "nonce": "7" },
+    "STRK": { "balance": "1420", "pending": "0", "nonce": "12" },
+    "ETH": { "balance": "514", "pending": "0", "nonce": "7" },
     "USDC": { "balance": "250", "pending": "0", "nonce": "3" }
   },
   "erc20BalancesByToken": {

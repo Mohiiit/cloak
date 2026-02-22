@@ -19,6 +19,7 @@ describe("swaps.storage", () => {
 
     await saveSwapExecution(
       {
+        execution_id: "swap_exec_1",
         wallet_address: "0x000abc",
         ward_address: "0x000def",
         tx_hash: "0xtx",

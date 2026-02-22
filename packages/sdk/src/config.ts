@@ -26,8 +26,23 @@ export const STRK_ADDRESS =
 
 // ─── Supabase Defaults ───────────────────────────────────────────────────────
 
-export const DEFAULT_SUPABASE_URL =
-  "https://inrrwwpzglyywrrumxfr.supabase.co";
+function decodeBase64(value: string): string {
+  if (typeof globalThis.atob === "function") {
+    return globalThis.atob(value);
+  }
+  const maybeBuffer = (globalThis as { Buffer?: { from: (v: string, e: string) => { toString: (enc: string) => string } } }).Buffer;
+  if (maybeBuffer) {
+    return maybeBuffer.from(value, "base64").toString("utf8");
+  }
+  throw new Error("No base64 decoder available in this runtime");
+}
 
-export const DEFAULT_SUPABASE_KEY =
-  "sb_publishable_TPLbWlk9ucpb6zLduRShvg_pq4K4cad";
+const DEFAULT_SUPABASE_URL_B64 =
+  "aHR0cHM6Ly9pbnJyd3dwemdseXl3cnJ1bXhmci5zdXBhYmFzZS5jbw==";
+
+const DEFAULT_SUPABASE_KEY_B64 =
+  "c2JfcHVibGlzaGFibGVfVFBMYldsazl1Y3BiNnpMZHVSU2h2Z19wcTRLNGNhZA==";
+
+export const DEFAULT_SUPABASE_URL = decodeBase64(DEFAULT_SUPABASE_URL_B64);
+
+export const DEFAULT_SUPABASE_KEY = decodeBase64(DEFAULT_SUPABASE_KEY_B64);

@@ -28,7 +28,7 @@ import {
   hasAmountFromAny,
   toDisplayAmountFromAny,
 } from "../lib/activity/amounts";
-import { type TokenKey } from "../lib/tokens";
+import { TOKENS, type TokenKey } from "../lib/tokens";
 
 type FilterKey = "all" | "shielded" | "public" | "swap" | "approvals";
 type TxCategory = "shielded" | "public" | "swap" | "approvals";
@@ -84,6 +84,26 @@ function formatFromWei(value: string | null | undefined, token: TokenKey): strin
   if (!value) return "0";
   try {
     return convertAmount({ value, unit: "erc20_wei", token }, "erc20_display");
+  } catch {
+    return "0";
+  }
+}
+
+function weiToTongoUnits(value: string | null | undefined, token: TokenKey): string {
+  if (!value) return "0";
+  try {
+    return (BigInt(value) / TOKENS[token].rate).toString();
+  } catch {
+    return "0";
+  }
+}
+
+function displayToTongoUnits(value: string | null | undefined, token: TokenKey): string {
+  if (!value) return "0";
+  const literal = literalDisplayAmount(value) || value;
+  if (!/^\d+(\.\d+)?$/.test(literal.trim())) return "0";
+  try {
+    return convertAmount({ value: literal.trim(), unit: "erc20_display", token }, "tongo_units");
   } catch {
     return "0";
   }
@@ -151,6 +171,35 @@ function getSwapTitle(tx: TxMetadataExtended): string {
   const sellToken = normalizeToken(tx.swap?.sell_token || tx.token);
   const buyToken = normalizeToken(tx.swap?.buy_token || tx.token);
   return `Swap ${sellToken} -> ${buyToken}`;
+}
+
+function prettyStepKey(stepKey: string): string {
+  return stepKey
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function asSwapStepStatus(
+  status: string,
+): "pending" | "running" | "success" | "failed" | "skipped" {
+  if (status === "running") return status;
+  if (status === "success") return status;
+  if (status === "failed") return status;
+  if (status === "skipped") return status;
+  return "pending";
+}
+
+function getSwapProgressLabel(tx: TxMetadataExtended): string | null {
+  const steps = tx.swap?.steps || [];
+  if (steps.length === 0) return null;
+  const completed = steps.filter((step) => step.status === "success").length;
+  const running = steps.find((step) => step.status === "running");
+  const failed = steps.find((step) => step.status === "failed");
+  if (failed) return `Failed at ${prettyStepKey(failed.step_key)}`;
+  if (running) return `${prettyStepKey(running.step_key)} in progress`;
+  if (tx.status === "confirmed") return `${completed}/${steps.length} steps complete`;
+  return `${completed}/${steps.length} steps`;
 }
 
 function getTxTitle(
@@ -244,6 +293,8 @@ function getTxIconMeta(tx: TxMetadataExtended): IconMeta {
 function getTxLeftSubtitle(tx: TxMetadataExtended): string {
   const category = categoryForTx(tx);
   if (category === "swap") {
+    const progress = getSwapProgressLabel(tx);
+    if (progress) return progress;
     return tx.statusDetail || `${statusLabel(tx.status)} · Swap`;
   }
   if (category === "approvals") {
@@ -455,7 +506,64 @@ export default function ActivityScreen({ navigation }: any) {
                       onPress={() => {
                         if (!tx.txHash) return;
                         if (tx.type === "swap" || tx.swap) {
-                          navigation.getParent()?.navigate("SwapDetail");
+                          const sellToken = normalizeToken(tx.swap?.sell_token || tx.token);
+                          const buyToken = normalizeToken(tx.swap?.buy_token || tx.token);
+                          const sentDisplay = tx.swap?.sell_amount_wei
+                            ? formatFromWei(tx.swap.sell_amount_wei, sellToken)
+                            : toDisplayAmountFromAny(tx.amount, tx.amount_unit, sellToken, tx.type);
+                          let sentUnits = tx.swap?.sell_amount_wei
+                            ? weiToTongoUnits(tx.swap.sell_amount_wei, sellToken)
+                            : tx.amount || "0";
+                          if (sentUnits === "0") {
+                            const fallbackUnits = displayToTongoUnits(sentDisplay, sellToken);
+                            if (fallbackUnits !== "0") sentUnits = fallbackUnits;
+                          }
+                          const receivedWei = tx.swap?.buy_actual_amount_wei
+                            || tx.swap?.min_buy_amount_wei
+                            || null;
+                          const receivedDisplay = receivedWei
+                            ? formatFromWei(receivedWei, buyToken)
+                            : "0";
+                          let receivedUnits = receivedWei
+                            ? weiToTongoUnits(receivedWei, buyToken)
+                            : "0";
+                          if (receivedUnits === "0") {
+                            const fallbackUnits = displayToTongoUnits(receivedDisplay, buyToken);
+                            if (fallbackUnits !== "0") receivedUnits = fallbackUnits;
+                          }
+                          let rateDisplay = "-";
+                          if (sentDisplay && receivedDisplay && parseFloat(sentDisplay) > 0) {
+                            const rate = parseFloat(receivedDisplay) / parseFloat(sentDisplay);
+                            if (Number.isFinite(rate) && rate > 0) {
+                              rateDisplay = `1 ${sellToken} ≈ ${rate.toPrecision(3)} ${buyToken}`;
+                            }
+                          }
+                          navigation.getParent()?.navigate("SwapDetail", {
+                            pair: `${sellToken} → ${buyToken}`,
+                            sentUnits,
+                            receivedUnits,
+                            sentDisplay,
+                            receivedDisplay,
+                            fromToken: sellToken,
+                            toToken: buyToken,
+                            rateDisplay,
+                            routeDisplay: tx.note || `${sellToken} pool → ${buyToken} pool`,
+                            txHash: tx.swap?.primary_tx_hash || tx.txHash,
+                            txHashes: tx.swap?.tx_hashes || undefined,
+                            status: tx.status === "confirmed" ? "Settled" : "Failed",
+                            executionId: tx.swap?.execution_id,
+                            sellAmountErc20: sentDisplay ? `${sentDisplay} ${sellToken}` : undefined,
+                            estimatedBuyErc20: tx.swap?.estimated_buy_amount_wei
+                              ? `${formatFromWei(tx.swap.estimated_buy_amount_wei, buyToken)} ${buyToken}`
+                              : undefined,
+                            minBuyErc20: tx.swap?.min_buy_amount_wei
+                              ? `${formatFromWei(tx.swap.min_buy_amount_wei, buyToken)} ${buyToken}`
+                              : undefined,
+                            actualBuyErc20: tx.swap?.buy_actual_amount_wei
+                              ? `${formatFromWei(tx.swap.buy_actual_amount_wei, buyToken)} ${buyToken}`
+                              : undefined,
+                            gasFee: tx.fee ? `${tx.fee} ETH` : undefined,
+                          });
                           return;
                         }
                         navigation.getParent()?.navigate("TransactionDetail", {
