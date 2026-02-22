@@ -1,6 +1,6 @@
 <!-- markdownlint-disable -->
 <div align="center">
-  <img src="packages/shared/CloakIcon.svg" width="120" alt="Cloak logo" />
+  <img src="packages/nextjs/public/logo.svg" width="120" alt="Cloak logo" />
 </div>
 
 [![Workflow - CI](https://github.com/Mohiiit/cloak/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohiiit/cloak/actions/workflows/ci.yml)
