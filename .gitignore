@@ -13,6 +13,7 @@ package-lock.json
 .eslintcache
 .DS_Store
 .vercel
+*.log
 
 **/.env*
 !**/.env.example

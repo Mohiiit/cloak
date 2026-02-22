@@ -1,62 +1,22 @@
-# Cloak
+<!-- markdownlint-disable -->
+<div align="center">
+  <img src="packages/shared/CloakIcon.svg" width="120" alt="Cloak logo" />
+</div>
 
-**Private payments on Starknet. Social by design, cryptographically hidden.**
+[![Workflow - CI](https://github.com/Mohiiit/cloak/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohiiit/cloak/actions/workflows/ci.yml)
+[![Project License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Mohiiit/cloak/pulls)
+[![GitHub Stars](https://img.shields.io/github/stars/Mohiiit/cloak?style=social)](https://github.com/Mohiiit/cloak/stargazers)
 
-Cloak is a privacy wallet that works like Venmo — send payments to friends with notes, see a social feed of who paid whom — but amounts are **always encrypted on-chain** using ElGamal encryption and zero-knowledge proofs via [Tongo](https://www.npmjs.com/package/@fatsolutions/tongo-sdk).
+# Cloak: Private Payments on Starknet
 
-Available as a **web app**, **Chrome extension**, and **mobile app** (Android + iOS), all with a unified UI.
+Private transfers with social UX. Amounts stay cryptographically hidden.
 
----
+Cloak is a privacy wallet that works like Venmo: send payments to friends with notes and a social feed of who paid whom, while amounts remain encrypted on-chain using ElGamal encryption and zero-knowledge proofs via [Tongo](https://www.npmjs.com/package/@fatsolutions/tongo-sdk).
 
-## Screenshots
+Available as a web app, Chrome extension, and mobile app (Android + iOS), with one shared SDK.
 
-<table>
-  <tr>
-    <td align="center"><strong>Android</strong></td>
-    <td align="center"><strong>iOS</strong></td>
-    <td align="center"><strong>Chrome Extension</strong></td>
-    <td align="center"><strong>Web App</strong></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/mobile/android-home.png" width="200" /></td>
-    <td><img src="docs/screenshots/mobile/ios-home.png" width="200" /></td>
-    <td><img src="docs/screenshots/extension/dashboard.png" width="200" /></td>
-    <td><img src="docs/screenshots/web/home.png" width="200" /></td>
-  </tr>
-</table>
-
-<details>
-<summary>More screenshots</summary>
-
-**Wallet**
-<table>
-  <tr>
-    <td align="center">Android</td>
-    <td align="center">iOS</td>
-    <td align="center">Web</td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/mobile/android-wallet.png" width="220" /></td>
-    <td><img src="docs/screenshots/mobile/ios-wallet.png" width="220" /></td>
-    <td><img src="docs/screenshots/web/wallet.png" width="220" /></td>
-  </tr>
-</table>
-
-**Settings**
-<table>
-  <tr>
-    <td align="center">Android</td>
-    <td align="center">iOS</td>
-    <td align="center">Web</td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/mobile/android-settings.png" width="220" /></td>
-    <td><img src="docs/screenshots/mobile/ios-settings.png" width="220" /></td>
-    <td><img src="docs/screenshots/web/settings.png" width="220" /></td>
-  </tr>
-</table>
-
-</details>
+**Quick links:** [How It Works](#how-it-works) • [Platforms](#platforms) • [Getting Started](#getting-started) • [License](#license)
 
 ---
 
@@ -161,6 +121,4 @@ Privacy Track. Core insight: Venmo already hides amounts from the social feed �
 
 ## License
 
-Source Available — free for personal, educational, and non-commercial use. Commercial use requires a separate license. See [LICENSE](LICENSE) for details.
-
-Copyright (c) 2026 Mohit Dhattarwal
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

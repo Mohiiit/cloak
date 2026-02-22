@@ -19,7 +19,7 @@ cloak/
 │   ├── research.md    Technical research notes
 │   └── screenshots/   App screenshots (mobile, extension, web)
 ├── package.json       Root workspace config (npm workspaces)
-├── LICENSE            Source Available License
+├── LICENSE            Apache License 2.0
 └── README.md          Project overview
 ```
 
@@ -170,4 +170,4 @@ Supabase PostgreSQL tables coordinate cross-device signing:
 
 ## License
 
-Source Available License — free for personal/educational use, commercial licensing required.
+Apache License 2.0.

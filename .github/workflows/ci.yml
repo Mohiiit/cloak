@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-sdk-extension:
+    name: web-sdk-extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Format check
+        run: yarn format:check
+
+      - name: Next.js lint
+        run: yarn next:lint
+
+      - name: Next.js typecheck
+        run: yarn next:check-types
+
+      - name: Next.js tests
+        run: yarn test:nextjs
+
+      - name: SDK build
+        run: yarn sdk:build
+
+      - name: SDK tests
+        run: yarn sdk:test
+
+      - name: Extension build
+        run: yarn extension:build
+
+  mobile-unit:
+    name: mobile-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Mobile lint
+        run: yarn workspace CloakMobile lint
+
+      - name: Mobile unit tests
+        run: yarn mobile:test:unit
