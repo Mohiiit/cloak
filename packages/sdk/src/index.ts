@@ -280,6 +280,43 @@ export type {
   ActivityStatus,
 } from "./activity";
 
+// Voice module
+export {
+  createVoiceModule,
+  VoiceError,
+  createSarvamAdapter,
+  createWhisperAdapter,
+  toBlob,
+  base64ToUint8Array,
+  uint8ArrayToBase64,
+  validateAudioDuration,
+  MIN_AUDIO_DURATION_MS,
+  MAX_AUDIO_DURATION_MS,
+  CODEC_MIME,
+  CODEC_EXT,
+  BCP47_TO_SARVAM,
+  BCP47_TO_WHISPER,
+  WHISPER_TO_BCP47,
+  sarvamLangToBcp47,
+  whisperLangToBcp47,
+} from "./voice";
+export type {
+  CloakVoiceModule,
+  VoiceModuleConfig,
+  VoiceProviderAdapter,
+  VoiceProviderCapabilities,
+  TranscribeRequest,
+  TranscribeResult,
+  SynthesizeRequest,
+  SynthesizeResult,
+  AudioBlob,
+  AudioCodec,
+  VoiceLanguageCode,
+  VoiceErrorCode,
+  SarvamConfig,
+  WhisperConfig,
+} from "./voice";
+
 // Types
 export type {
   TokenKey,
@@ -291,3 +328,44 @@ export type {
   CloakClientConfig,
   StorageAdapter,
 } from "./types";
+
+// API Client & Types
+export { CloakApiClient, CloakApiError } from "./api-client";
+export type {
+  AuthRegisterRequest,
+  AuthRegisterResponse,
+  AuthVerifyResponse,
+  TwoFactorStatusResponse,
+  TwoFactorEnableRequest,
+  CreateApprovalRequest,
+  ApprovalResponse,
+  UpdateApprovalRequest,
+  ApprovalStatus as ApiApprovalStatus,
+  CreateWardConfigRequest,
+  WardConfigResponse,
+  UpdateWardConfigRequest,
+  WardStatus,
+  CreateWardApprovalRequest as ApiCreateWardApprovalRequest,
+  WardApprovalResponse as ApiWardApprovalResponse,
+  UpdateWardApprovalRequest as ApiUpdateWardApprovalRequest,
+  WardApprovalStatus as ApiWardApprovalStatus,
+  SaveTransactionRequest,
+  TransactionResponse,
+  UpdateTransactionRequest,
+  SaveSwapRequest,
+  SwapResponse,
+  UpdateSwapRequest,
+  UpsertSwapStepRequest,
+  SwapStepResponse,
+  ActivityListResponse,
+  ActivityRecordResponse,
+  PushRegisterRequest,
+  PushPlatform,
+  CreateViewingGrantRequest,
+  ViewingGrantResponse,
+  CreateInnocenceProofRequest,
+  InnocenceProofResponse,
+  ApiError,
+  ApiSuccess,
+  PaginationParams,
+} from "./types/api";
