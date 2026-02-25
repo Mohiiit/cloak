@@ -124,9 +124,10 @@ describe("POST /auth/register", () => {
     );
   });
 
-  it("returns 409 when wallet already registered", async () => {
-    mockSupabase({
+  it("returns 200 and rotates key when wallet already registered", async () => {
+    const sb = mockSupabase({
       select: vi.fn().mockResolvedValue([{ id: "existing-key" }]),
+      update: vi.fn().mockResolvedValue([{ id: "existing-key" }]),
     });
 
     const req = makeReq("http://localhost/api/v1/auth/register", {
@@ -135,10 +136,20 @@ describe("POST /auth/register", () => {
     });
 
     const res = await POST(req);
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
 
     const data = await json(res);
-    expect(data.error).toContain("already registered");
+    expect(typeof data.api_key).toBe("string");
+    expect(data.api_key.length).toBeGreaterThan(0);
+    expect(sb.update).toHaveBeenCalledWith(
+      "api_keys",
+      "id=eq.existing-key",
+      expect.objectContaining({
+        key_hash: "hashed_key_abc123",
+        public_key: "0xDEF",
+        revoked_at: null,
+      }),
+    );
   });
 
   it("returns 400 for missing wallet_address", async () => {

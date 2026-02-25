@@ -1,9 +1,9 @@
 import {
   getActivityRecords,
-  CloakApiClient,
   type ActivityRecord,
   type AmountUnit,
 } from "@cloak-wallet/sdk";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getTxNotes, type TxMetadata } from "../storage";
 import { getApiClient } from "../apiClient";
 import { isMockMode } from "../../testing/runtimeConfig";
@@ -29,6 +29,85 @@ export interface ActivityFeedItem {
   walletAddress?: string;
   executionId?: string;
   swap?: ActivityRecord["swap"] | null;
+}
+
+const ACTIVITY_CACHE_PREFIX = "cloak_activity_history_v1:";
+const ACTIVITY_CACHE_TTL_MS = 60_000;
+
+type ActivityCachePayload = {
+  updatedAt: number;
+  items: ActivityFeedItem[];
+};
+
+function activityCacheKey(walletAddress: string): string {
+  return `${ACTIVITY_CACHE_PREFIX}${walletAddress.trim().toLowerCase()}`;
+}
+
+function sortByTimestampDesc(items: ActivityFeedItem[]): ActivityFeedItem[] {
+  return [...items].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+}
+
+async function saveActivityCache(
+  walletAddress: string,
+  items: ActivityFeedItem[],
+): Promise<void> {
+  try {
+    const payload: ActivityCachePayload = {
+      updatedAt: Date.now(),
+      items: sortByTimestampDesc(items),
+    };
+    await AsyncStorage.setItem(
+      activityCacheKey(walletAddress),
+      JSON.stringify(payload),
+    );
+  } catch {
+    // best-effort cache write
+  }
+}
+
+async function readActivityCache(
+  walletAddress: string,
+): Promise<ActivityCachePayload | null> {
+  try {
+    const raw = await AsyncStorage.getItem(activityCacheKey(walletAddress));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as
+      | ActivityCachePayload
+      | ActivityFeedItem[]
+      | null;
+
+    // Backward compatibility: older cache shape may be a plain array.
+    if (Array.isArray(parsed)) {
+      return { updatedAt: 0, items: sortByTimestampDesc(parsed) };
+    }
+
+    if (!parsed || !Array.isArray(parsed.items)) return null;
+    return {
+      updatedAt: Number(parsed.updatedAt || 0),
+      items: sortByTimestampDesc(parsed.items),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function loadCachedActivityHistory(
+  walletAddress: string,
+  limit = 200,
+): Promise<ActivityFeedItem[]> {
+  const cache = await readActivityCache(walletAddress);
+  if (!cache) return [];
+  return cache.items.slice(0, Math.max(1, limit));
+}
+
+export async function isActivityCacheFresh(
+  walletAddress: string,
+  maxAgeMs = ACTIVITY_CACHE_TTL_MS,
+): Promise<boolean> {
+  const cache = await readActivityCache(walletAddress);
+  if (!cache) return false;
+  if (!cache.updatedAt) return false;
+  return Date.now() - cache.updatedAt <= Math.max(1_000, maxAgeMs);
 }
 
 function toTimestamp(value?: string): number {
@@ -190,18 +269,24 @@ function buildMockActivityFeed(now = Date.now()): ActivityFeedItem[] {
 export async function loadActivityHistory(
   walletAddress: string,
   limit = 200,
+  publicKey?: string,
 ): Promise<ActivityFeedItem[]> {
   try {
-    const client = await getApiClient();
+    const client = await getApiClient({ walletAddress, publicKey });
     const records = await getActivityRecords(walletAddress, limit, client);
     if (records.length > 0) {
-      return records
+      const items = records
         .map(activityToFeedItem)
         .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      await saveActivityCache(walletAddress, items);
+      return items;
     }
   } catch {
     // fall through to local notes
   }
+
+  const cached = await loadCachedActivityHistory(walletAddress, limit);
+  if (cached.length > 0) return cached;
 
   const notes = await getTxNotes();
   const localItems = Object.values(notes || {})
@@ -225,6 +310,7 @@ export async function loadActivityHistory(
 export async function loadActivityByTxHash(
   walletAddress: string,
   txHash: string,
+  publicKey?: string,
 ): Promise<ActivityFeedItem | null> {
   // 1. Check local notes first (instant, no network)
   try {
@@ -235,9 +321,18 @@ export async function loadActivityByTxHash(
     // fall through
   }
 
-  // 2. Query API for recent activity and find by tx_hash
+  // 2. Check cached activity history
   try {
-    const client = await getApiClient();
+    const cached = await loadCachedActivityHistory(walletAddress, 500);
+    const match = cached.find((r) => r.txHash === txHash);
+    if (match) return match;
+  } catch {
+    // fall through
+  }
+
+  // 3. Query API for recent activity and find by tx_hash
+  try {
+    const client = await getApiClient({ walletAddress, publicKey });
     const records = await getActivityRecords(walletAddress, 200, client);
     const match = records.find((r) => r.tx_hash === txHash);
     if (match) return activityToFeedItem(match);
@@ -245,7 +340,7 @@ export async function loadActivityByTxHash(
     // fall through
   }
 
-  // 3. Fallback: search mock data
+  // 4. Fallback: search mock data
   if (isMockMode()) {
     const mock = buildMockActivityFeed();
     return mock.find((row) => row.txHash === txHash) || null;

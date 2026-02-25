@@ -22,7 +22,12 @@ import { useWardContext } from "../lib/wardContext";
 import { type TxMetadata } from "../lib/storage";
 import { colors, spacing, fontSize, borderRadius, typography } from "../lib/theme";
 import { testIDs, testProps } from "../testing/testIDs";
-import { loadActivityHistory, type ActivityFeedItem } from "../lib/activity/feed";
+import {
+  isActivityCacheFresh,
+  loadActivityHistory,
+  loadCachedActivityHistory,
+  type ActivityFeedItem,
+} from "../lib/activity/feed";
 import {
   GUARDIAN_WARD_TYPES,
   WARD_ADMIN_TYPES,
@@ -33,6 +38,7 @@ import { TOKENS, type TokenKey } from "../lib/tokens";
 
 type FilterKey = "all" | "shielded" | "public" | "swap" | "approvals";
 type TxCategory = "shielded" | "public" | "swap" | "approvals";
+const ACTIVITY_CACHE_REFRESH_INTERVAL_MS = 60_000;
 
 interface TxMetadataExtended extends Omit<ActivityFeedItem, "type"> {
   type: TxMetadata["type"] | string;
@@ -179,16 +185,6 @@ function prettyStepKey(stepKey: string): string {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function asSwapStepStatus(
-  status: string,
-): "pending" | "running" | "success" | "failed" | "skipped" {
-  if (status === "running") return status;
-  if (status === "success") return status;
-  if (status === "failed") return status;
-  if (status === "skipped") return status;
-  return "pending";
 }
 
 function getSwapProgressLabel(tx: TxMetadataExtended): string | null {
@@ -405,15 +401,38 @@ export default function ActivityScreen({ navigation }: any) {
       setIsLoading(false);
       return;
     }
+
+    let hadCachedRows = false;
     try {
-      const rows = await loadActivityHistory(walletAddress);
+      const cachedRows = await loadCachedActivityHistory(walletAddress, 200);
+      if (cachedRows.length > 0) {
+        hadCachedRows = true;
+        setHistory(cachedRows as TxMetadataExtended[]);
+        setIsLoading(false);
+      }
+
+      const cacheIsFresh = await isActivityCacheFresh(
+        walletAddress,
+        ACTIVITY_CACHE_REFRESH_INTERVAL_MS,
+      );
+      if (hadCachedRows && cacheIsFresh) {
+        return;
+      }
+
+      const rows = await loadActivityHistory(
+        walletAddress,
+        200,
+        wallet.keys?.starkPublicKey,
+      );
       setHistory(rows as TxMetadataExtended[]);
     } catch {
-      setHistory([]);
+      if (!hadCachedRows) {
+        setHistory([]);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [wallet.keys?.starkAddress]);
+  }, [wallet.keys?.starkAddress, wallet.keys?.starkPublicKey]);
 
   useEffect(() => {
     loadNotes();
@@ -423,8 +442,19 @@ export default function ActivityScreen({ navigation }: any) {
     setRefreshing(true);
     try {
       await wallet.refreshTxHistory();
+      const walletAddress = wallet.keys?.starkAddress;
+      if (!walletAddress) {
+        setHistory([]);
+        return;
+      }
+      const rows = await loadActivityHistory(
+        walletAddress,
+        200,
+        wallet.keys?.starkPublicKey,
+      );
+      setHistory(rows as TxMetadataExtended[]);
     } finally {
-      await loadNotes();
+      setIsLoading(false);
       setRefreshing(false);
     }
   };

@@ -75,13 +75,16 @@ export function useTransactionRouter() {
   );
 
   const buildRuntime = useCallback(async () => {
-    const apiClient = await getApiClient();
+    const apiClient = await getApiClient({
+      walletAddress: wallet.keys?.starkAddress,
+      publicKey: wallet.keys?.starkPublicKey,
+    });
     return createCloakRuntime({
       network: "sepolia",
       provider: new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia }) as any,
       apiClient,
     });
-  }, []);
+  }, [wallet.keys?.starkAddress, wallet.keys?.starkPublicKey]);
 
   const execute = useCallback(
     async (params: ExecuteParams): Promise<{ txHash: string }> => {

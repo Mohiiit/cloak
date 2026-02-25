@@ -347,7 +347,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
         // maxPerTx has no on-chain entrypoint — fetch from API
         try {
-          const client = await getApiClient();
+          const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
           const normalizedAddr = normalizeAddress(wallet.keys.starkAddress);
           const wardConfig = await client.getWard(normalizedAddr);
           if (wardConfig) {
@@ -378,7 +378,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     if (!wallet.keys?.starkAddress) return;
     setIsLoadingWards(true);
     try {
-      const client = await getApiClient();
+      const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const normalizedAddr = normalizeAddress(wallet.keys.starkAddress);
       const data = await client.listWards(normalizedAddr);
       const entries: WardEntry[] = (data || []).map((r: any) => ({
@@ -459,7 +459,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         await provider.waitForTransaction(fundTx.transaction_hash);
 
         // Track fund transaction
-        getApiClient().then(txClient =>
+        getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey }).then(txClient =>
           saveTransaction({
             wallet_address: guardianAccount.address,
             tx_hash: fundTx.transaction_hash,
@@ -525,7 +525,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         await provider.waitForTransaction(addTokenTx.transaction_hash);
 
         // Track configure transaction
-        getApiClient().then(txClient =>
+        getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey }).then(txClient =>
           saveTransaction({
             wallet_address: guardianAccount.address,
             tx_hash: addTokenTx.transaction_hash,
@@ -569,7 +569,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     if (startFromStep <= 6) {
       onProgress?.(6, WARD_CREATION_TOTAL_STEPS, "Registering ward in database...");
       try {
-        const client = await getApiClient();
+        const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
         await client.createWardConfig({
           ward_address: normalizeAddress(paddedWardAddress),
           guardian_address: normalizeAddress(wallet.keys!.starkAddress),
@@ -675,7 +675,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         onProgress?.(step, WARD_CREATION_TOTAL_STEPS, stepMessage);
       }
 
-      const client = await getApiClient();
+      const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       await client.createWardConfig({
         ward_address: normalizeAddress(wardAddress),
         guardian_address: normalizeAddress(wallet.keys.starkAddress),
@@ -746,7 +746,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     await provider.waitForTransaction(deployResult.transaction_hash);
 
     // Track deploy transaction
-    getApiClient().then(txClient =>
+    getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey }).then(txClient =>
       saveTransaction({
         wallet_address: wallet.keys!.starkAddress,
         tx_hash: deployResult.transaction_hash,
@@ -848,7 +848,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       await executeGuardianAction(wardAddress, "freeze", []);
       // Keep API status in sync so guardian UI can reliably show Unfreeze.
       try {
-        const client = await getApiClient();
+        const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
         await client.updateWard(normalizeAddress(wardAddress), { status: "frozen" });
       } catch (err) {
         console.warn("[WardContext] Failed to update ward status=frozen:", err);
@@ -873,7 +873,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       await executeGuardianAction(wardAddress, "unfreeze", []);
       // Keep API status in sync so guardian UI can reliably show Freeze/Unfreeze.
       try {
-        const client = await getApiClient();
+        const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
         await client.updateWard(normalizeAddress(wardAddress), { status: "active" });
       } catch (err) {
         console.warn("[WardContext] Failed to update ward status=active:", err);
@@ -900,7 +900,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       ]);
       // Update API
       try {
-        const client = await getApiClient();
+        const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
         await client.updateWard(normalizeAddress(wardAddress), { spending_limit_per_tx: limitPerTx } as any);
       } catch {
         // Non-critical
@@ -919,7 +919,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       );
       // Update API
       try {
-        const client = await getApiClient();
+        const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
         await client.updateWard(normalizeAddress(wardAddress), { require_guardian_for_all: required } as any);
       } catch {
         // Non-critical
@@ -942,7 +942,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const fetchWardSignRequests = useCallback(async () => {
     if (!wallet.keys?.starkAddress || !isWard) return;
     try {
-      const client = await getApiClient();
+      const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const myAddr = normalizeAddress(wallet.keys.starkAddress);
       const data = await client.getPendingWardApprovals({ ward: myAddr });
       if (data) {
@@ -964,7 +964,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const fetchGuardianRequests = useCallback(async () => {
     if (!wallet.keys?.starkAddress || isWard || wards.length === 0) return;
     try {
-      const client = await getApiClient();
+      const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const myAddr = normalizeAddress(wallet.keys.starkAddress);
       const data = await client.getPendingWardApprovals({ guardian: myAddr });
       if (data) {
@@ -1050,7 +1050,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const approveAsWard = useCallback(async (request: WardApprovalRequest) => {
     if (!wallet.keys) throw new Error("No wallet keys");
     if (isMockMode()) {
-      const client = await getApiClient();
+      const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const txHash = createDeterministicHex(`ward_tx_${Date.now()}`);
       const updateBody: Record<string, any> = {
         nonce: "1",
@@ -1091,7 +1091,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       if (!secondaryPk) throw new Error("Ward 2FA key not found");
     }
 
-    const client = await getApiClient();
+    const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
     const chainId = await provider.getChainId();
     let safetyMultiplier = 1.5;
 
@@ -1212,7 +1212,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const approveAsGuardian = useCallback(async (request: WardApprovalRequest) => {
     if (!wallet.keys) throw new Error("No wallet keys");
     if (isMockMode()) {
-      const client = await getApiClient();
+      const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const txHash = createDeterministicHex(`guardian_tx_${Date.now()}`);
       await client.updateWardApproval(request.id, {
         guardian_sig_json: JSON.stringify(["0x5", "0x6"]),
@@ -1251,7 +1251,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     // Parse resource bounds via SDK (hex strings → BigInt)
     const resourceBounds = deserializeResourceBounds(request.resource_bounds_json);
 
-    const client = await getApiClient();
+    const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
 
     try {
       const txResponse = await account.execute(calls, {
@@ -1389,7 +1389,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       throw new Error("No wallet connected");
     }
     if (isMockMode()) {
-      const mockClient = await getApiClient();
+      const mockClient = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const now = new Date();
       const txHash = createDeterministicHex(`mock_ward_request_${now.getTime()}`);
       const requestId = `mock-ward-${now.getTime()}`;
@@ -1462,7 +1462,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     const callsJson = serializeCalls(params.calls);
 
     // Get API client for SDK ward approval flow
-    const sdkClient = await getApiClient();
+    const sdkClient = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
 
     const requestAmount = params.amount
       ? formatWardAmount(params.amount, params.token, params.action)
@@ -1541,7 +1541,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const rejectWardRequest = useCallback(async (requestId: string) => {
-    const client = await getApiClient();
+    const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
     await client.updateWardApproval(requestId, {
       status: "rejected",
       responded_at: new Date().toISOString(),

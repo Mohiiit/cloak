@@ -172,7 +172,11 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
     async function loadData() {
       const walletAddress = wallet.keys?.starkAddress;
       if (!walletAddress) return;
-      const row = await loadActivityByTxHash(walletAddress, txHash);
+      const row = await loadActivityByTxHash(
+        walletAddress,
+        txHash,
+        wallet.keys?.starkPublicKey,
+      );
       if (isMounted) setMeta((row as TxMetadataExtended) || null);
     }
 
@@ -180,7 +184,7 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
     return () => {
       isMounted = false;
     };
-  }, [txHash, wallet.keys?.starkAddress]);
+  }, [txHash, wallet.keys?.starkAddress, wallet.keys?.starkPublicKey]);
 
   const token = ((meta?.token as TokenKey) || "STRK") satisfies TokenKey;
   const amountRaw = meta?.amount || "0";

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeAddress } from "@cloak-wallet/sdk";
 import { getSupabase } from "../../_lib/supabase";
 import { hashApiKey } from "../../_lib/auth";
-import { conflict, serverError } from "../../_lib/errors";
+import { serverError } from "../../_lib/errors";
 import { AuthRegisterSchema, validate, ValidationError } from "../../_lib/validation";
 
 export const runtime = "nodejs";
@@ -21,13 +21,23 @@ export async function POST(req: NextRequest) {
       { limit: 1 },
     );
 
-    if (existing.length > 0) {
-      return conflict("Wallet already registered. Use your existing API key.");
-    }
-
     // Generate new API key
     const apiKey = crypto.randomUUID();
     const keyHash = await hashApiKey(apiKey);
+
+    if (existing.length > 0) {
+      // Rotate key for existing wallet so reinstalls/new devices can recover.
+      await sb.update(
+        "api_keys",
+        `id=eq.${existing[0].id}`,
+        {
+          key_hash: keyHash,
+          public_key: public_key ?? null,
+          revoked_at: null,
+        },
+      );
+      return NextResponse.json({ api_key: apiKey }, { status: 200 });
+    }
 
     await sb.insert("api_keys", {
       wallet_address: normalized,

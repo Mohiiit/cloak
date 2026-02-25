@@ -95,6 +95,7 @@ export interface AgentChatResponse {
 }
 
 const STORAGE_KEY = "cloak_agent_server_url";
+const DEFAULT_AGENT_SERVER_URL = "https://cloak-backend-vert.vercel.app";
 
 export function normalizeAgentServerUrl(raw: string): string {
   const trimmed = (raw || "").trim().replace(/\/+$/, "");
@@ -112,8 +113,12 @@ function defaultAgentServerUrl(): string {
     if (normalized) return normalized;
   }
 
-  // iOS simulator can hit localhost directly; Android emulator uses 10.0.2.2.
-  return Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://127.0.0.1:3000";
+  if (__DEV__) {
+    // Keep localhost ergonomics for local debug/dev sessions.
+    return Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://127.0.0.1:3000";
+  }
+
+  return DEFAULT_AGENT_SERVER_URL;
 }
 
 export async function getAgentServerUrl(): Promise<string> {

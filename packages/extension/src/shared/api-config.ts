@@ -4,7 +4,7 @@ const STORAGE_KEY_URL = "cloak_api_url";
 const STORAGE_KEY_KEY = "cloak_api_key";
 
 // Default to the web app's origin (CloakApiClient appends /api/v1 internally)
-const DEFAULT_API_URL = "http://localhost:3000";
+const DEFAULT_API_URL = "https://cloak-backend-vert.vercel.app";
 
 export async function getApiConfig(): Promise<{ url: string; key: string }> {
   const result = await chrome.storage.local.get([STORAGE_KEY_URL, STORAGE_KEY_KEY]);

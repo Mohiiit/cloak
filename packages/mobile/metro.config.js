@@ -22,8 +22,6 @@ const config = {
       /packages\/nextjs\/.*/,
       /packages\/extension\/.*/,
       /packages\/snfoundry\/.*/,
-      // Block SDK TypeScript source (use compiled dist/ only)
-      /packages\/sdk\/src\/.*/,
     ],
     // Handle .js → .ts resolution for tongo-sdk source files
     resolveRequest: (context, moduleName, platform) => {

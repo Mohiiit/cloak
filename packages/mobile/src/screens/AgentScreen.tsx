@@ -486,7 +486,7 @@ export default function AgentScreen() {
               style={styles.modalInput}
               value={serverDraft}
               onChangeText={setServerDraft}
-              placeholder="http://10.0.2.2:3000"
+              placeholder="https://cloak-backend-vert.vercel.app"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}

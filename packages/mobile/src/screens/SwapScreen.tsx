@@ -285,7 +285,10 @@ export default function SwapScreen() {
     let cancelled = false;
     const timeout = setTimeout(async () => {
       try {
-        const apiClient = await getApiClient();
+        const apiClient = await getApiClient({
+          walletAddress: walletAddress,
+          publicKey: wallet.keys?.starkPublicKey,
+        });
         const breakdown = await bringRateAndQuote({
           walletAddress,
           fromToken,
@@ -480,7 +483,10 @@ export default function SwapScreen() {
     try {
       const walletAddress = padAddress(wallet.keys.starkAddress);
       const sentUnits = (quoteBreakdown?.sentUnits ?? 0n).toString();
-      const swapApiClient = await getApiClient();
+      const swapApiClient = await getApiClient({
+        walletAddress,
+        publicKey: wallet.keys?.starkPublicKey,
+      });
       const runtime = createCloakRuntime({
         network: "sepolia",
         provider: new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia }) as any,

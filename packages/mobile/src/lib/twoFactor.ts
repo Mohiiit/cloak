@@ -233,14 +233,14 @@ export async function getSecondaryPublicKey(): Promise<string | null> {
 class LiveApprovalBackend implements ApprovalBackend {
   readonly mode = getRuntimeMode();
 
-  private async getClient(): Promise<CloakApiClient> {
-    return getApiClient();
+  private async getClient(walletAddress?: string): Promise<CloakApiClient> {
+    return getApiClient({ walletAddress });
   }
 
   async fetchPendingRequests(
     walletAddress: string,
   ): Promise<ApprovalRequestRecord[]> {
-    const client = await this.getClient();
+    const client = await this.getClient(walletAddress);
     const approvals = await client.getPendingApprovals(walletAddress);
     return approvals as unknown as ApprovalRequestRecord[];
   }
@@ -266,7 +266,7 @@ class LiveApprovalBackend implements ApprovalBackend {
     walletAddress: string,
     secondaryPubKey: string,
   ): Promise<any> {
-    const client = await this.getClient();
+    const client = await this.getClient(walletAddress);
     await client.enableTwoFactor({
       wallet_address: walletAddress,
       secondary_public_key: secondaryPubKey,
@@ -275,7 +275,7 @@ class LiveApprovalBackend implements ApprovalBackend {
   }
 
   async disableTwoFactorConfig(walletAddress: string): Promise<any> {
-    const client = await this.getClient();
+    const client = await this.getClient(walletAddress);
     await client.disableTwoFactor(walletAddress);
     return null;
   }
@@ -283,7 +283,7 @@ class LiveApprovalBackend implements ApprovalBackend {
   async isTwoFactorConfigured(
     walletAddress: string,
   ): Promise<TwoFactorConfigRecord | null> {
-    const client = await this.getClient();
+    const client = await this.getClient(walletAddress);
     try {
       const status = await client.getTwoFactorStatus(walletAddress);
       if (!status || !status.enabled) return null;
