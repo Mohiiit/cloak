@@ -17,6 +17,7 @@ import {
   upsertAgentProfile,
 } from "~~/lib/marketplace/agents-store";
 import { verifyEndpointProofSet } from "~~/lib/marketplace/endpoint-proof";
+import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
 
 export const runtime = "nodejs";
 
@@ -27,10 +28,11 @@ export async function GET(req: NextRequest) {
       DiscoverAgentsQuerySchema,
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     );
+    const refreshOnchain = req.nextUrl.searchParams.get("refresh_onchain") === "true";
     const limit = query.limit ?? 50;
     const offset = query.offset ?? 0;
 
-    const agents = listAgentProfiles()
+    let agents = listAgentProfiles()
       .filter((agent) => {
         if (query.agent_type && agent.agent_type !== query.agent_type) return false;
         if (query.verified_only && !agent.verified) return false;
@@ -45,6 +47,18 @@ export async function GET(req: NextRequest) {
         return true;
       })
       .slice(offset, offset + limit);
+
+    if (refreshOnchain) {
+      agents = await Promise.all(
+        agents.map(async (agent) => {
+          try {
+            return await adaptAgentProfileWithRegistry(agent);
+          } catch {
+            return agent;
+          }
+        }),
+      );
+    }
 
     return NextResponse.json({
       agents,

@@ -16,6 +16,7 @@ import {
   getAgentProfile,
   updateAgentProfile,
 } from "~~/lib/marketplace/agents-store";
+import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,14 @@ export async function GET(
     const { agentId } = await context.params;
     const profile = getAgentProfile(agentId);
     if (!profile) return notFound("Agent not found");
-    return NextResponse.json(profile);
+    const refreshOnchain = req.nextUrl.searchParams.get("refresh_onchain") === "true";
+    if (!refreshOnchain) return NextResponse.json(profile);
+    try {
+      const adapted = await adaptAgentProfileWithRegistry(profile);
+      return NextResponse.json(adapted);
+    } catch {
+      return NextResponse.json(profile);
+    }
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
     console.error("[GET /api/v1/marketplace/agents/[agentId]]", err);
@@ -66,4 +74,3 @@ export async function PATCH(
     return serverError("Failed to update agent profile");
   }
 }
-

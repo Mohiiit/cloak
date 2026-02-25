@@ -9,6 +9,7 @@ import {
 import { getAgentProfile } from "~~/lib/marketplace/agents-store";
 import { selectDiscoveryAgentIds } from "~~/lib/marketplace/discovery-index";
 import { rankDiscoveredAgents } from "~~/lib/marketplace/discovery-ranking";
+import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
       DiscoverAgentsQuerySchema,
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     );
+    const refreshOnchain = req.nextUrl.searchParams.get("refresh_onchain") === "true";
 
     const limit = query.limit ?? 25;
     const offset = query.offset ?? 0;
@@ -35,7 +37,19 @@ export async function GET(req: NextRequest) {
         return true;
       });
 
-    const ranked = rankDiscoveredAgents(candidates, {
+    const enriched = refreshOnchain
+      ? await Promise.all(
+          candidates.map(async (candidate) => {
+            try {
+              return await adaptAgentProfileWithRegistry(candidate);
+            } catch {
+              return candidate;
+            }
+          }),
+        )
+      : candidates;
+
+    const ranked = rankDiscoveredAgents(enriched, {
       capability: query.capability,
     });
 
@@ -56,4 +70,3 @@ export async function GET(req: NextRequest) {
     return serverError("Failed to discover agents");
   }
 }
-
