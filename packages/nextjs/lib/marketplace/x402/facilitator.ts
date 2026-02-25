@@ -40,6 +40,21 @@ export class X402Facilitator {
     if (req.payment.contextHash !== req.challenge.contextHash) {
       return reject("CONTEXT_MISMATCH", paymentRef, false);
     }
+    if (req.payment.token !== req.challenge.token) {
+      return reject("POLICY_DENIED", paymentRef, false);
+    }
+    try {
+      const amount = BigInt(req.payment.amount);
+      const minAmount = BigInt(req.challenge.minAmount);
+      if (amount < minAmount) {
+        return reject("POLICY_DENIED", paymentRef, false);
+      }
+    } catch {
+      return reject("INVALID_PAYLOAD", paymentRef, false);
+    }
+    if (!req.payment.proof || req.payment.proof.length < 4) {
+      return reject("INVALID_PAYLOAD", paymentRef, false);
+    }
     return {
       status: "accepted",
       retryable: false,
@@ -66,4 +81,3 @@ export class X402Facilitator {
     };
   }
 }
-
