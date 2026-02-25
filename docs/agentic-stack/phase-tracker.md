@@ -50,7 +50,7 @@ Legend:
 | 38 | unified platform gate signoff | done | docs/agentic-stack/unified-platform-gate-signoff.md |
 | 39 | staking steward runtime + adapter | done | packages/nextjs/lib/marketplace/agents/staking-steward.ts |
 | 40 | staking x402 + listing integration | done | packages/nextjs/app/api/v1/__tests__/staking.steward.integration.test.ts |
-| 41 | staking full test matrix | pending | |
+| 41 | staking full test matrix | done | packages/nextjs/lib/marketplace/agents/staking-steward.matrix.test.ts |
 | 42 | staking launch gate | pending | |
 | 43 | treasury dispatcher runtime + adapter | pending | |
 | 44 | treasury x402 + listing integration | pending | |
