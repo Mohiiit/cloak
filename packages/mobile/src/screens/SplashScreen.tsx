@@ -55,12 +55,12 @@ type ParticleSpec = {
 };
 
 const PARTICLES: ParticleSpec[] = [
-  { x: 80, y: 300, size: 3, fill: "#3B82F630" },
-  { x: 310, y: 340, size: 2, fill: "#8B5CF625" },
-  { x: 55, y: 430, size: 4, fill: "#3B82F618" },
-  { x: 330, y: 270, size: 2, fill: "#8B5CF620" },
-  { x: 290, y: 450, size: 3, fill: "#3B82F622" },
-  { x: 100, y: 470, size: 2, fill: "#8B5CF618" },
+  { x: 80, y: 300, size: 4, fill: "#3B82F680" },
+  { x: 310, y: 340, size: 3, fill: "#8B5CF670" },
+  { x: 55, y: 430, size: 5, fill: "#3B82F660" },
+  { x: 330, y: 270, size: 3, fill: "#8B5CF670" },
+  { x: 290, y: 450, size: 4, fill: "#3B82F668" },
+  { x: 100, y: 470, size: 3, fill: "#8B5CF660" },
 ];
 
 function rand(min: number, max: number) {
@@ -222,15 +222,19 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
   }, [startExit]);
 
   useEffect(() => {
+    const anims: Animated.CompositeAnimation[] = [];
+
     // Phase 1: Logo entrance (0 → 800ms)
-    Animated.timing(glowOpacity, {
+    const a1 = Animated.timing(glowOpacity, {
       toValue: 1,
       duration: TIMING.logoInMs,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
-    }).start();
+    });
+    a1.start();
+    anims.push(a1);
 
-    Animated.sequence([
+    const a2 = Animated.sequence([
       Animated.delay(150),
       Animated.timing(particleOpacity, {
         toValue: 1,
@@ -238,25 +242,31 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-    ]).start();
+    ]);
+    a2.start();
+    anims.push(a2);
 
-    Animated.timing(logoOpacity, {
+    const a3 = Animated.timing(logoOpacity, {
       toValue: 1,
       duration: TIMING.logoInMs,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
-    }).start();
+    });
+    a3.start();
+    anims.push(a3);
 
-    Animated.spring(logoScale, {
+    const a4 = Animated.spring(logoScale, {
       toValue: 1,
       stiffness: 110,
       damping: 14,
       mass: 0.9,
       useNativeDriver: true,
-    }).start();
+    });
+    a4.start();
+    anims.push(a4);
 
     // Rings staggered
-    Animated.sequence([
+    const a5 = Animated.sequence([
       Animated.delay(TIMING.innerRingDelayMs),
       Animated.timing(innerRingOpacity, {
         toValue: 1,
@@ -264,9 +274,11 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-    ]).start();
+    ]);
+    a5.start();
+    anims.push(a5);
 
-    Animated.sequence([
+    const a6 = Animated.sequence([
       Animated.delay(TIMING.outerRingDelayMs),
       Animated.timing(outerRingOpacity, {
         toValue: 1,
@@ -274,12 +286,14 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-    ]).start();
+    ]);
+    a6.start();
+    anims.push(a6);
 
     // Phase 2: Text reveal (600ms → 1200ms)
     const textEasing = Easing.bezier(0.25, 0.1, 0.25, 1);
 
-    Animated.sequence([
+    const a7 = Animated.sequence([
       Animated.delay(TIMING.textStartMs),
       Animated.parallel([
         Animated.timing(titleOpacity, {
@@ -295,9 +309,11 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
           useNativeDriver: true,
         }),
       ]),
-    ]).start();
+    ]);
+    a7.start();
+    anims.push(a7);
 
-    Animated.sequence([
+    const a8 = Animated.sequence([
       Animated.delay(TIMING.textStartMs + TIMING.taglineDelayMs),
       Animated.parallel([
         Animated.timing(taglineOpacity, {
@@ -313,10 +329,12 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
           useNativeDriver: true,
         }),
       ]),
-    ]).start();
+    ]);
+    a8.start();
+    anims.push(a8);
 
     // Phase 3: Loading bar (1000ms → 2400ms)
-    Animated.sequence([
+    const a9 = Animated.sequence([
       Animated.delay(TIMING.bottomStartMs),
       Animated.timing(bottomOpacity, {
         toValue: 1,
@@ -324,10 +342,12 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-    ]).start();
+    ]);
+    a9.start();
+    anims.push(a9);
 
     // Progress bar width can't use native driver, so use JS driver
-    Animated.sequence([
+    const a10 = Animated.sequence([
       Animated.delay(TIMING.bottomStartMs),
       Animated.timing(progress, {
         toValue: 1,
@@ -335,7 +355,9 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: false,
       }),
-    ]).start();
+    ]);
+    a10.start();
+    anims.push(a10);
 
     // Fixed status cycling
     statusTimer.current = setTimeout(() => {
@@ -346,6 +368,7 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
     }, 2000);
 
     return () => {
+      anims.forEach((a) => a.stop());
       if (exitTimer.current) clearTimeout(exitTimer.current);
       if (statusTimer.current) clearTimeout(statusTimer.current);
       if (statusTimer2.current) clearTimeout(statusTimer2.current);
@@ -554,15 +577,17 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
       >
         <View style={[styles.loadingTrack, { width: trackWidth }]}>
           <Animated.View style={[styles.loadingFill, { width: progressWidth }]}>
-            <Svg width="100%" height={3} preserveAspectRatio="none">
-              <Defs>
-                <LinearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
-                  <Stop offset="0%" stopColor={colors.primary} />
-                  <Stop offset="100%" stopColor={colors.secondary} />
-                </LinearGradient>
-              </Defs>
-              <Rect x={0} y={0} width="100%" height={3} rx={2} fill="url(#barGrad)" />
-            </Svg>
+            <View style={styles.loadingGradient}>
+              <Svg width={trackWidth} height={3}>
+                <Defs>
+                  <LinearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
+                    <Stop offset="0%" stopColor={colors.primary} />
+                    <Stop offset="100%" stopColor={colors.secondary} />
+                  </LinearGradient>
+                </Defs>
+                <Rect x={0} y={0} width={trackWidth} height={3} rx={2} fill="url(#barGrad)" />
+              </Svg>
+            </View>
           </Animated.View>
         </View>
 
@@ -636,6 +661,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   loadingFill: {
+    height: 3,
+    overflow: "hidden",
+  },
+  loadingGradient: {
+    width: "100%",
     height: 3,
   },
   loadingText: {
