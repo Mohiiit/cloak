@@ -69,6 +69,18 @@ const PushPlatformEnum = z.enum(["ios", "android", "web", "extension"]);
 
 const X402VersionEnum = z.literal("1");
 const X402SchemeEnum = z.literal("cloak-shielded-x402");
+const AgentTypeEnum = z.enum([
+  "staking_steward",
+  "treasury_dispatcher",
+  "swap_runner",
+]);
+const AgentPricingModeEnum = z.enum([
+  "per_run",
+  "subscription",
+  "success_fee",
+]);
+const AgentProfileStatusEnum = z.enum(["active", "paused", "retired"]);
+const AgentHireStatusEnum = z.enum(["active", "paused", "revoked"]);
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
@@ -295,6 +307,63 @@ export const X402VerifyRequestSchema = z.object({
 });
 
 export const X402SettleRequestSchema = X402VerifyRequestSchema;
+
+// ─── Marketplace Agent Registry (ERC-8004 profile layer) ───────────────────
+
+export const AgentEndpointProofSchema = z.object({
+  endpoint: z.string().url("Must be a valid URL"),
+  nonce: nonEmpty,
+  digest: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, "Digest must be a 64-char hex string"),
+});
+
+export const RegisterAgentSchema = z.object({
+  agent_id: nonEmpty,
+  name: nonEmpty,
+  description: nonEmpty,
+  image_url: z.string().url("Must be a valid URL").nullable().optional(),
+  agent_type: AgentTypeEnum,
+  capabilities: z.array(nonEmpty).min(1),
+  endpoints: z.array(z.string().url("Must be a valid URL")).min(1),
+  endpoint_proofs: z.array(AgentEndpointProofSchema).optional(),
+  pricing: z.object({
+    mode: AgentPricingModeEnum,
+    amount: nonEmpty,
+    token: nonEmpty,
+    cadence: z.string().optional(),
+  }),
+  metadata_uri: z.string().url("Must be a valid URL").nullable().optional(),
+  operator_wallet: hexString,
+  service_wallet: hexString,
+  trust_score: z.number().min(0).max(100).optional(),
+  verified: z.boolean().optional(),
+  status: AgentProfileStatusEnum.optional(),
+});
+
+export const DiscoverAgentsQuerySchema = z.object({
+  capability: z.string().optional(),
+  agent_type: AgentTypeEnum.optional(),
+  verified_only: z
+    .union([
+      z.boolean(),
+      z.string().transform((value) => value === "true"),
+    ])
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+export const CreateAgentHireSchema = z.object({
+  agent_id: nonEmpty,
+  operator_wallet: hexString,
+  policy_snapshot: z.record(z.string(), z.unknown()),
+  billing_mode: AgentPricingModeEnum,
+});
+
+export const UpdateAgentHireSchema = z.object({
+  status: AgentHireStatusEnum,
+});
 
 // ─── Validation Helper ──────────────────────────────────────────────────────
 

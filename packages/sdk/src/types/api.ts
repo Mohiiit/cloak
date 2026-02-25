@@ -546,6 +546,21 @@ export type AgentRunStatus =
 export type AgentHireStatus = "active" | "paused" | "revoked";
 
 export type AgentType = "staking_steward" | "treasury_dispatcher" | "swap_runner";
+export type AgentPricingMode = "per_run" | "subscription" | "success_fee";
+export type AgentProfileStatus = "active" | "paused" | "retired";
+
+export interface AgentEndpointOwnershipProof {
+  endpoint: string;
+  nonce: string;
+  digest: string;
+}
+
+export interface AgentTrustSummary {
+  owner_match: boolean;
+  reputation_score: number;
+  validation_score: number;
+  freshness_seconds: number;
+}
 
 export interface RegisterAgentRequest {
   agent_id: string;
@@ -555,8 +570,9 @@ export interface RegisterAgentRequest {
   agent_type: AgentType;
   capabilities: string[];
   endpoints: string[];
+  endpoint_proofs?: AgentEndpointOwnershipProof[];
   pricing: {
-    mode: "per_run" | "subscription" | "success_fee";
+    mode: AgentPricingMode;
     amount: string;
     token: string;
     cadence?: string;
@@ -580,7 +596,11 @@ export interface AgentProfileResponse {
   operator_wallet: string;
   service_wallet: string;
   trust_score: number;
+  trust_summary?: AgentTrustSummary;
   verified: boolean;
+  status?: AgentProfileStatus;
+  registry_version?: string;
+  last_indexed_at?: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -597,7 +617,7 @@ export interface CreateAgentHireRequest {
   agent_id: string;
   operator_wallet: string;
   policy_snapshot: Record<string, unknown>;
-  billing_mode: "per_run" | "subscription" | "success_fee";
+  billing_mode: AgentPricingMode;
 }
 
 export interface AgentHireResponse {
@@ -605,7 +625,7 @@ export interface AgentHireResponse {
   agent_id: string;
   operator_wallet: string;
   policy_snapshot: Record<string, unknown>;
-  billing_mode: "per_run" | "subscription" | "success_fee";
+  billing_mode: AgentPricingMode;
   status: AgentHireStatus;
   created_at: string;
   updated_at: string | null;
