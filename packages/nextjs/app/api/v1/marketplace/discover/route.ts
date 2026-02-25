@@ -14,6 +14,7 @@ import {
   consumeRateLimit,
   MARKETPLACE_RATE_LIMITS,
 } from "~~/lib/marketplace/rate-limit";
+import { incrementRegistryMetric } from "~~/lib/marketplace/registry-metrics";
 
 export const runtime = "nodejs";
 
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest) {
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     );
     const refreshOnchain = req.nextUrl.searchParams.get("refresh_onchain") === "true";
+    incrementRegistryMetric("discovery_queries");
+    if (refreshOnchain) incrementRegistryMetric("onchain_refreshes");
 
     const limit = query.limit ?? 25;
     const offset = query.offset ?? 0;

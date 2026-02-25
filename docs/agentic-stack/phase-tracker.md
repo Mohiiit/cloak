@@ -38,7 +38,7 @@ Legend:
 | 26 | marketplace profile adapters | done | packages/nextjs/lib/marketplace/profile-adapter.ts |
 | 27 | trust summary composition | done | packages/nextjs/lib/marketplace/trust-summary.ts |
 | 28 | abuse controls/rate limits | done | packages/nextjs/lib/marketplace/rate-limit.ts |
-| 29 | 8004 observability/freshness | pending | |
+| 29 | 8004 observability/freshness | done | packages/nextjs/app/api/v1/marketplace/metrics/route.ts |
 | 30 | 8004 unit tests | pending | |
 | 31 | 8004 integration tests | pending | |
 | 32 | 8004 e2e tests | pending | |

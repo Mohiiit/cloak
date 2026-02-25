@@ -13,6 +13,7 @@ import {
   validate,
 } from "~~/app/api/v1/_lib/validation";
 import {
+  getAgentProfile,
   listAgentProfiles,
   upsertAgentProfile,
 } from "~~/lib/marketplace/agents-store";
@@ -22,6 +23,9 @@ import {
   consumeRateLimit,
   MARKETPLACE_RATE_LIMITS,
 } from "~~/lib/marketplace/rate-limit";
+import {
+  incrementRegistryMetric,
+} from "~~/lib/marketplace/registry-metrics";
 
 export const runtime = "nodejs";
 
@@ -68,6 +72,7 @@ export async function GET(req: NextRequest) {
       .slice(offset, offset + limit);
 
     if (refreshOnchain) {
+      incrementRegistryMetric("onchain_refreshes");
       agents = await Promise.all(
         agents.map(async (agent) => {
           try {
@@ -115,6 +120,7 @@ export async function POST(req: NextRequest) {
     }
     const body = await req.json();
     const data = validate(RegisterAgentSchema, body);
+    const existing = getAgentProfile(data.agent_id);
 
     if (auth.wallet_address.toLowerCase() !== data.operator_wallet.toLowerCase()) {
       return forbidden("operator_wallet must match authenticated wallet");
@@ -133,6 +139,7 @@ export async function POST(req: NextRequest) {
     }
 
     const profile = upsertAgentProfile(data);
+    incrementRegistryMetric(existing ? "profiles_updated" : "profiles_registered");
     return NextResponse.json(profile, { status: 201 });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);

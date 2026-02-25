@@ -100,6 +100,7 @@ export function updateAgentProfile(
     metadata_uri: patch.metadata_uri ?? existing.metadata_uri,
     status: patch.status ?? existing.status,
     trust_summary: patch.trust_summary ?? existing.trust_summary,
+    last_indexed_at: nowIso(),
     updated_at: nowIso(),
   };
   inMemoryAgents.set(agentId, updated);
