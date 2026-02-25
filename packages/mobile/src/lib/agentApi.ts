@@ -96,6 +96,7 @@ export interface AgentChatResponse {
 
 const STORAGE_KEY = "cloak_agent_server_url";
 const DEFAULT_AGENT_SERVER_URL = "https://cloak-backend-vert.vercel.app";
+const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "10.0.2.2"]);
 
 export function normalizeAgentServerUrl(raw: string): string {
   const trimmed = (raw || "").trim().replace(/\/+$/, "");
@@ -136,12 +137,24 @@ export async function setAgentServerUrl(url: string): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, normalized);
 }
 
-export async function loadAgentState(sessionId?: string): Promise<{
+function isLocalAgentUrl(url: string): boolean {
+  const match = url.trim().match(/^[a-z]+:\/\/([^/:?#]+)/i);
+  const host = match?.[1]?.toLowerCase();
+  if (!host) return false;
+  return LOCAL_AGENT_HOSTS.has(host);
+}
+
+function isNetworkRequestError(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  if (!(err instanceof Error)) return false;
+  return /network request failed|failed to fetch|network/i.test(err.message);
+}
+
+async function fetchAgentState(serverUrl: string, sessionId?: string): Promise<{
   session: AgentSession;
   sessions: Array<{ id: string; title: string; updatedAt: string }>;
   serverUrl: string;
 }> {
-  const serverUrl = await getAgentServerUrl();
   const qs = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
   const res = await fetch(`${serverUrl}/api/agent/chat${qs}`);
   if (!res.ok) throw new Error(`Failed to load Agent state (${res.status})`);
@@ -151,6 +164,29 @@ export async function loadAgentState(sessionId?: string): Promise<{
     sessions: json.sessions || [],
     serverUrl,
   };
+}
+
+export async function loadAgentState(sessionId?: string): Promise<{
+  session: AgentSession;
+  sessions: Array<{ id: string; title: string; updatedAt: string }>;
+  serverUrl: string;
+}> {
+  const serverUrl = await getAgentServerUrl();
+  try {
+    return await fetchAgentState(serverUrl, sessionId);
+  } catch (err) {
+    if (
+      isLocalAgentUrl(serverUrl) &&
+      serverUrl !== DEFAULT_AGENT_SERVER_URL &&
+      isNetworkRequestError(err)
+    ) {
+      const fallbackUrl = normalizeAgentServerUrl(DEFAULT_AGENT_SERVER_URL);
+      const fallback = await fetchAgentState(fallbackUrl, sessionId);
+      await setAgentServerUrl(fallbackUrl);
+      return fallback;
+    }
+    throw err;
+  }
 }
 
 export async function deleteAgentSession(sessionId: string): Promise<{
