@@ -9,23 +9,32 @@ function nowIso(): string {
 export function createRun(input: {
   hireId: string;
   agentId: string;
+  hireOperatorWallet?: string | null;
   action: string;
   params: Record<string, unknown>;
   billable: boolean;
   paymentRef?: string | null;
   settlementTxHash?: string | null;
+  agentTrustSnapshot?: AgentRunResponse["agent_trust_snapshot"];
 }): AgentRunResponse {
   const id = `run_${Math.random().toString(16).slice(2)}`;
   const run: AgentRunResponse = {
     id,
     hire_id: input.hireId,
     agent_id: input.agentId,
+    hire_operator_wallet: input.hireOperatorWallet ?? null,
     action: input.action,
     params: input.params,
     billable: input.billable,
     status: "queued",
     payment_ref: input.paymentRef ?? null,
     settlement_tx_hash: input.settlementTxHash ?? null,
+    payment_evidence: {
+      scheme: input.paymentRef ? "cloak-shielded-x402" : null,
+      payment_ref: input.paymentRef ?? null,
+      settlement_tx_hash: input.settlementTxHash ?? null,
+    },
+    agent_trust_snapshot: input.agentTrustSnapshot ?? null,
     execution_tx_hashes: null,
     result: null,
     created_at: nowIso(),
@@ -59,4 +68,3 @@ export function listRuns(): AgentRunResponse[] {
     b.created_at.localeCompare(a.created_at),
   );
 }
-

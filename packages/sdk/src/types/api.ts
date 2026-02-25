@@ -645,12 +645,19 @@ export interface AgentRunResponse {
   id: string;
   hire_id: string;
   agent_id: string;
+  hire_operator_wallet?: string | null;
   action: string;
   params: Record<string, unknown>;
   billable: boolean;
   status: AgentRunStatus;
   payment_ref: string | null;
   settlement_tx_hash: string | null;
+  payment_evidence?: {
+    scheme: X402Scheme | null;
+    payment_ref: string | null;
+    settlement_tx_hash: string | null;
+  } | null;
+  agent_trust_snapshot?: AgentTrustSummary | null;
   execution_tx_hashes: string[] | null;
   result: Record<string, unknown> | null;
   created_at: string;

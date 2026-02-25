@@ -4,6 +4,8 @@ import { badRequest, unauthorized, serverError } from "~~/app/api/v1/_lib/errors
 import { createRun, listRuns } from "~~/lib/marketplace/runs-store";
 import { shieldedPaywall } from "~~/lib/marketplace/x402/paywall";
 import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
+import { getHire } from "~~/lib/marketplace/hires-store";
+import { getAgentProfile } from "~~/lib/marketplace/agents-store";
 import {
   consumeRateLimit,
   MARKETPLACE_RATE_LIMITS,
@@ -13,7 +15,7 @@ export const runtime = "nodejs";
 
 interface CreateRunBody {
   hire_id: string;
-  agent_id: string;
+  agent_id?: string;
   action: string;
   params?: Record<string, unknown>;
   billable?: boolean;
@@ -55,9 +57,19 @@ export async function POST(req: NextRequest) {
     }
     const body = (await req.json()) as CreateRunBody;
 
-    if (!body.hire_id || !body.agent_id || !body.action) {
-      return badRequest("hire_id, agent_id and action are required");
+    if (!body.hire_id || !body.action) {
+      return badRequest("hire_id and action are required");
     }
+
+    const hire = getHire(body.hire_id);
+    if (hire && body.agent_id && hire.agent_id !== body.agent_id) {
+      return badRequest("agent_id does not match hire");
+    }
+    const resolvedAgentId = hire?.agent_id || body.agent_id;
+    if (!resolvedAgentId) {
+      return badRequest("agent_id is required when hire does not exist");
+    }
+    const agentProfile = getAgentProfile(resolvedAgentId);
 
     let paymentRef: string | null = null;
     let settlementTxHash: string | null = null;
@@ -69,7 +81,7 @@ export async function POST(req: NextRequest) {
         minAmount: body.minAmount,
         context: {
           hire_id: body.hire_id,
-          agent_id: body.agent_id,
+          agent_id: resolvedAgentId,
           action: body.action,
         },
       });
@@ -80,12 +92,14 @@ export async function POST(req: NextRequest) {
 
     const run = createRun({
       hireId: body.hire_id,
-      agentId: body.agent_id,
+      agentId: resolvedAgentId,
+      hireOperatorWallet: hire?.operator_wallet ?? null,
       action: body.action,
       params: body.params || {},
       billable: body.billable ?? true,
       paymentRef,
       settlementTxHash,
+      agentTrustSnapshot: agentProfile?.trust_summary || null,
     });
 
     logAgenticEvent({
