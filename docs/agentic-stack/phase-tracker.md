@@ -28,7 +28,7 @@ Legend:
 | 16 | x402 integration tests | done | packages/nextjs/app/api/v1/__tests__/x402.integration.test.ts |
 | 17 | x402 e2e tests | done | packages/nextjs/app/api/v1/__tests__/x402.e2e.test.ts |
 | 18 | x402 security/reliability/perf tests | done | packages/nextjs/app/api/v1/__tests__/x402.security-reliability.test.ts |
-| 19 | x402 gate signoff | pending | |
+| 19 | x402 gate signoff | done | docs/agentic-stack/x402-gate-signoff.md |
 | 20 | 8004 taxonomy/schema freeze | pending | |
 | 21 | registry lifecycle APIs | pending | |
 | 22 | endpoint ownership verification | pending | |
