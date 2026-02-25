@@ -1,0 +1,28 @@
+# Agentic stack environment contract
+
+# Marketplace backend base identity
+AGENTIC_MARKETPLACE_NAME=Cloak Agent Marketplace
+AGENTIC_MARKETPLACE_NETWORK=sepolia
+
+# x402 facilitator
+X402_FACILITATOR_URL=http://localhost:3000/api/v1/marketplace/payments/x402
+X402_FACILITATOR_SECRET=replace-me
+X402_DEFAULT_TOKEN=STRK
+X402_DEFAULT_MIN_AMOUNT=100000000000000000
+X402_PAYMENT_EXPIRY_SECONDS=300
+
+# Runtime execution
+CLOAK_SEPOLIA_RPC_URL=https://api.cartridge.gg/x/starknet/sepolia
+CLOAK_SEPOLIA_RPC_FALLBACK_URL=
+STARKZAP_PAYMASTER_URL=
+
+# Optional: API-level metrics and tracing
+AGENTIC_TRACE_SALT=cloak-agentic
+AGENTIC_LOG_LEVEL=info
+
+# Optional: role addresses for local demos
+CLOAK_OPERATOR_ADDRESS=
+CLOAK_GUARDIAN_ADDRESS=
+CLOAK_AGENT_SERVICE_ADDRESS=
+CLOAK_TREASURY_ADDRESS=
+CLOAK_PAYER_ADDRESS=
