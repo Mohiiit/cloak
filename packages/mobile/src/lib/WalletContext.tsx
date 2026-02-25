@@ -13,6 +13,7 @@ import { isMockMode } from "../testing/runtimeConfig";
 
 const ALL_TOKENS: TokenKey[] = ["STRK", "ETH", "USDC"];
 const MOCK_DEPLOY_FLAG_KEY = "cloak_mock_deployed";
+const DEPLOY_STATUS_KEY = "cloak_deploy_status"; // "deployed" | absent
 
 type WalletState = {
   // Status
@@ -111,13 +112,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setKeys(loaded);
           setIsWalletCreated(true);
 
-          // Check deployment inline so we don't flash the deploy screen
+          // Check deployment inline so we don't flash the deploy screen.
+          // If network is unavailable, fall back to cached deployment status
+          // so offline users still see the homescreen.
           try {
             const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
             await provider.getNonceForAddress(loaded.starkAddress);
             setIsDeployed(true);
+            await AsyncStorage.setItem(DEPLOY_STATUS_KEY, "deployed");
           } catch {
-            // Not deployed — deploy gate will show
+            // Network failed or account not deployed — check cache
+            const cached = await AsyncStorage.getItem(DEPLOY_STATUS_KEY);
+            if (cached === "deployed") {
+              setIsDeployed(true);
+            }
+            // Otherwise stays false — deploy gate will show (correct for new accounts)
           }
         }
       }
@@ -276,8 +285,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       await provider.getNonceForAddress(keys.starkAddress);
       setIsDeployed(true);
+      await AsyncStorage.setItem(DEPLOY_STATUS_KEY, "deployed");
       return true;
     } catch {
+      // Network failed or account genuinely not deployed.
+      // Fall back to cached status so offline users keep their homescreen.
+      const cached = await AsyncStorage.getItem(DEPLOY_STATUS_KEY);
+      if (cached === "deployed") {
+        setIsDeployed(true);
+        return true;
+      }
       setIsDeployed(false);
       return false;
     } finally {
@@ -309,6 +326,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     });
     await provider.waitForTransaction(transaction_hash);
     setIsDeployed(true);
+    await AsyncStorage.setItem(DEPLOY_STATUS_KEY, "deployed");
     return transaction_hash;
   }, [keys]);
 
@@ -417,6 +435,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setIsWalletCreated(true);
       setIsInitialized(true);
       setIsDeployed(deployed);
+      if (deployed) {
+        await AsyncStorage.setItem(DEPLOY_STATUS_KEY, "deployed");
+      }
 
       // Refresh balance immediately
       try {
@@ -493,6 +514,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const resetWallet = useCallback(async () => {
     await clearWallet();
+    await AsyncStorage.removeItem(DEPLOY_STATUS_KEY);
     setKeys(null);
     setIsWalletCreated(false);
     setIsInitialized(false);
