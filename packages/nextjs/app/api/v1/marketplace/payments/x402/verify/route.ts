@@ -7,6 +7,7 @@ import {
   X402VerifyRequestSchema,
 } from "~~/app/api/v1/_lib/validation";
 import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
+import { incrementX402Metric } from "~~/lib/marketplace/x402/metrics";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = validate(X402VerifyRequestSchema, body);
     const result = await facilitator.verify(parsed);
+    incrementX402Metric(result.status === "accepted" ? "verify_accepted" : "verify_rejected");
 
     logAgenticEvent({
       level: result.status === "accepted" ? "info" : "warn",
@@ -44,4 +46,3 @@ export async function POST(req: NextRequest) {
     return serverError("Failed to verify x402 payment");
   }
 }
-

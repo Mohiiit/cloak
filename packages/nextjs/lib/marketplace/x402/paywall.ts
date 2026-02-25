@@ -8,6 +8,7 @@ import {
   ValidationError,
 } from "~~/app/api/v1/_lib/validation";
 import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
+import { incrementX402Metric } from "./metrics";
 
 const PAYMENT_HEADER = "x-x402-payment";
 const CHALLENGE_HEADER = "x-x402-challenge";
@@ -57,6 +58,7 @@ export async function shieldedPaywall(
         challengeId: challenge.challengeId,
       },
     });
+    incrementX402Metric("paywall_required");
     return NextResponse.json(
       {
         error: "Payment required",
@@ -94,6 +96,7 @@ export async function shieldedPaywall(
     if (settle.status !== "settled") {
       return NextResponse.json(settle, { status: 402 });
     }
+    incrementX402Metric("paywall_paid");
 
     return {
       ok: true,
@@ -111,4 +114,3 @@ export async function shieldedPaywall(
     );
   }
 }
-

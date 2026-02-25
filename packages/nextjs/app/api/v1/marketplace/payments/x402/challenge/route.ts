@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildChallenge } from "~~/lib/marketplace/x402/challenge";
+import { incrementX402Metric } from "~~/lib/marketplace/x402/metrics";
 import { badRequest, serverError } from "~~/app/api/v1/_lib/errors";
 import { logAgenticEvent, createTraceId } from "~~/lib/observability/agentic";
 
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
       network: body.network,
       ttlSeconds: body.ttlSeconds,
     });
+    incrementX402Metric("challenge_issued");
 
     logAgenticEvent({
       level: "info",
@@ -59,4 +61,3 @@ export async function POST(req: NextRequest) {
     return serverError("Failed to generate x402 challenge");
   }
 }
-
