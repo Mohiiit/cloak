@@ -30,7 +30,7 @@ Legend:
 | 18 | x402 security/reliability/perf tests | done | packages/nextjs/app/api/v1/__tests__/x402.security-reliability.test.ts |
 | 19 | x402 gate signoff | done | docs/agentic-stack/x402-gate-signoff.md |
 | 20 | 8004 taxonomy/schema freeze | done | docs/agentic-stack/erc8004-taxonomy-schema-freeze.md |
-| 21 | registry lifecycle APIs | pending | |
+| 21 | registry lifecycle APIs | done | packages/nextjs/app/api/v1/marketplace/agents/route.ts |
 | 22 | endpoint ownership verification | pending | |
 | 23 | discovery index ingestion | pending | |
 | 24 | discovery query API/ranking | pending | |

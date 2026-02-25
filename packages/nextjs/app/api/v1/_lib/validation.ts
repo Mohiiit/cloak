@@ -361,6 +361,13 @@ export const CreateAgentHireSchema = z.object({
   billing_mode: AgentPricingModeEnum,
 });
 
+export const UpdateAgentProfileSchema = z.object({
+  status: AgentProfileStatusEnum.optional(),
+  verified: z.boolean().optional(),
+  trust_score: z.number().min(0).max(100).optional(),
+  metadata_uri: z.string().url("Must be a valid URL").nullable().optional(),
+});
+
 export const UpdateAgentHireSchema = z.object({
   status: AgentHireStatusEnum,
 });
