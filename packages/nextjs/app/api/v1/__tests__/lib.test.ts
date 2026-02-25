@@ -24,6 +24,10 @@ import {
   PushRegisterSchema,
   CreateViewingGrantSchema,
   CreateInnocenceProofSchema,
+  X402ChallengeSchema,
+  X402PaymentPayloadSchema,
+  X402VerifyRequestSchema,
+  X402SettleRequestSchema,
   validate,
   ValidationError,
 } from "../_lib/validation";
@@ -983,6 +987,80 @@ describe("errors.ts", () => {
       const body = await res.json();
       expect(body.error).toBe("Database connection failed");
     });
+  });
+});
+
+describe("x402 validation schemas", () => {
+  const validChallenge = {
+    version: "1",
+    scheme: "cloak-shielded-x402",
+    challengeId: "chal_1",
+    network: "sepolia",
+    token: "STRK",
+    minAmount: "100000000000000000",
+    recipient: "0xabc123",
+    contextHash: "0123456789abcdef0123456789abcdef",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    facilitator: "https://example.com/api/v1/marketplace/payments/x402",
+  };
+
+  const validPayment = {
+    version: "1",
+    scheme: "cloak-shielded-x402",
+    challengeId: "chal_1",
+    tongoAddress: "tongo1abc",
+    token: "STRK",
+    amount: "100000000000000000",
+    proof: "proofblob",
+    replayKey: "rk_1",
+    contextHash: "0123456789abcdef0123456789abcdef",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    nonce: "nonce_1",
+    createdAt: new Date().toISOString(),
+  };
+
+  it("accepts valid challenge", () => {
+    expect(X402ChallengeSchema.safeParse(validChallenge).success).toBe(true);
+  });
+
+  it("rejects malformed challenge scheme", () => {
+    expect(
+      X402ChallengeSchema.safeParse({
+        ...validChallenge,
+        scheme: "wrong-scheme",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts valid payment payload", () => {
+    expect(X402PaymentPayloadSchema.safeParse(validPayment).success).toBe(true);
+  });
+
+  it("rejects malformed payment payload", () => {
+    expect(
+      X402PaymentPayloadSchema.safeParse({
+        ...validPayment,
+        createdAt: "not-a-date",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts verify request envelope", () => {
+    expect(
+      X402VerifyRequestSchema.safeParse({
+        challenge: validChallenge,
+        payment: validPayment,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts settle request envelope", () => {
+    expect(
+      X402SettleRequestSchema.safeParse({
+        challenge: validChallenge,
+        payment: validPayment,
+      }).success,
+    ).toBe(true);
   });
 });
 

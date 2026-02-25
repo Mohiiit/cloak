@@ -459,6 +459,181 @@ export interface InnocenceProofResponse {
   created_at: string;
 }
 
+// ─── x402 Marketplace Payments ───────────────────────────────────────────────
+
+export type X402Version = "1";
+export type X402Scheme = "cloak-shielded-x402";
+export type X402PaymentStatus =
+  | "accepted"
+  | "rejected"
+  | "settled"
+  | "pending"
+  | "failed";
+
+export type X402ErrorCode =
+  | "INVALID_PAYLOAD"
+  | "EXPIRED_PAYMENT"
+  | "REPLAY_DETECTED"
+  | "CONTEXT_MISMATCH"
+  | "POLICY_DENIED"
+  | "RPC_FAILURE"
+  | "SETTLEMENT_FAILED"
+  | "TIMEOUT";
+
+export interface X402ChallengeResponse {
+  version: X402Version;
+  scheme: X402Scheme;
+  challengeId: string;
+  network: string;
+  token: string;
+  minAmount: string;
+  recipient: string;
+  contextHash: string;
+  expiresAt: string;
+  facilitator: string;
+  signature?: string;
+}
+
+export interface X402PaymentPayloadRequest {
+  version: X402Version;
+  scheme: X402Scheme;
+  challengeId: string;
+  tongoAddress: string;
+  token: string;
+  amount: string;
+  proof: string;
+  replayKey: string;
+  contextHash: string;
+  expiresAt: string;
+  nonce: string;
+  createdAt: string;
+}
+
+export interface X402VerifyRequest {
+  challenge: X402ChallengeResponse;
+  payment: X402PaymentPayloadRequest;
+}
+
+export interface X402VerifyResponse {
+  status: "accepted" | "rejected";
+  reasonCode?: X402ErrorCode;
+  retryable: boolean;
+  paymentRef: string;
+}
+
+export interface X402SettleRequest {
+  challenge: X402ChallengeResponse;
+  payment: X402PaymentPayloadRequest;
+}
+
+export interface X402SettleResponse {
+  status: "settled" | "pending" | "rejected" | "failed";
+  txHash?: string;
+  paymentRef: string;
+  reasonCode?: X402ErrorCode;
+}
+
+// ─── Marketplace: Agents / Hires / Runs ─────────────────────────────────────
+
+export type AgentRunStatus =
+  | "queued"
+  | "blocked_policy"
+  | "pending_payment"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type AgentHireStatus = "active" | "paused" | "revoked";
+
+export type AgentType = "staking_steward" | "treasury_dispatcher" | "swap_runner";
+
+export interface RegisterAgentRequest {
+  agent_id: string;
+  name: string;
+  description: string;
+  image_url?: string | null;
+  agent_type: AgentType;
+  capabilities: string[];
+  endpoints: string[];
+  pricing: {
+    mode: "per_run" | "subscription" | "success_fee";
+    amount: string;
+    token: string;
+    cadence?: string;
+  };
+  metadata_uri?: string | null;
+  operator_wallet: string;
+  service_wallet: string;
+}
+
+export interface AgentProfileResponse {
+  id: string;
+  agent_id: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  agent_type: AgentType;
+  capabilities: string[];
+  endpoints: string[];
+  pricing: Record<string, unknown>;
+  metadata_uri: string | null;
+  operator_wallet: string;
+  service_wallet: string;
+  trust_score: number;
+  verified: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface DiscoverAgentsQuery {
+  capability?: string;
+  agent_type?: AgentType;
+  verified_only?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CreateAgentHireRequest {
+  agent_id: string;
+  operator_wallet: string;
+  policy_snapshot: Record<string, unknown>;
+  billing_mode: "per_run" | "subscription" | "success_fee";
+}
+
+export interface AgentHireResponse {
+  id: string;
+  agent_id: string;
+  operator_wallet: string;
+  policy_snapshot: Record<string, unknown>;
+  billing_mode: "per_run" | "subscription" | "success_fee";
+  status: AgentHireStatus;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface CreateAgentRunRequest {
+  hire_id: string;
+  action: string;
+  params: Record<string, unknown>;
+  billable: boolean;
+}
+
+export interface AgentRunResponse {
+  id: string;
+  hire_id: string;
+  agent_id: string;
+  action: string;
+  params: Record<string, unknown>;
+  billable: boolean;
+  status: AgentRunStatus;
+  payment_ref: string | null;
+  settlement_tx_hash: string | null;
+  execution_tx_hashes: string[] | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 // ─── Generic API ─────────────────────────────────────────────────────────────
 
 export interface ApiError {

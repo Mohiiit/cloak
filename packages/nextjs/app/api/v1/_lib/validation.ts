@@ -67,6 +67,9 @@ const SwapStepStatusEnum = z.enum([
 
 const PushPlatformEnum = z.enum(["ios", "android", "web", "extension"]);
 
+const X402VersionEnum = z.literal("1");
+const X402SchemeEnum = z.literal("cloak-shielded-x402");
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 export const AuthRegisterSchema = z.object({
@@ -254,6 +257,44 @@ export const CreateInnocenceProofSchema = z.object({
   nullifier_hash: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
 });
+
+// ─── x402 Payments ───────────────────────────────────────────────────────────
+
+export const X402ChallengeSchema = z.object({
+  version: X402VersionEnum,
+  scheme: X402SchemeEnum,
+  challengeId: nonEmpty,
+  network: nonEmpty,
+  token: nonEmpty,
+  minAmount: nonEmpty,
+  recipient: hexString,
+  contextHash: z.string().min(16),
+  expiresAt: isoDatetime,
+  facilitator: z.string().url("Must be a valid URL"),
+  signature: z.string().optional(),
+});
+
+export const X402PaymentPayloadSchema = z.object({
+  version: X402VersionEnum,
+  scheme: X402SchemeEnum,
+  challengeId: nonEmpty,
+  tongoAddress: nonEmpty,
+  token: nonEmpty,
+  amount: nonEmpty,
+  proof: nonEmpty,
+  replayKey: nonEmpty,
+  contextHash: z.string().min(16),
+  expiresAt: isoDatetime,
+  nonce: nonEmpty,
+  createdAt: isoDatetime,
+});
+
+export const X402VerifyRequestSchema = z.object({
+  challenge: X402ChallengeSchema,
+  payment: X402PaymentPayloadSchema,
+});
+
+export const X402SettleRequestSchema = X402VerifyRequestSchema;
 
 // ─── Validation Helper ──────────────────────────────────────────────────────
 
