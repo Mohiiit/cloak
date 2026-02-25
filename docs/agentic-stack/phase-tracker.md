@@ -59,4 +59,4 @@ Legend:
 | 47 | swap runner runtime + adapter | done | packages/nextjs/lib/marketplace/agents/swap-runner.ts |
 | 48 | swap x402 + listing integration | done | packages/nextjs/app/api/v1/__tests__/swap.runner.integration.test.ts |
 | 49 | swap full test matrix | done | packages/nextjs/lib/marketplace/agents/swap-runner.matrix.test.ts |
-| 50 | full stack release gate | pending | |
+| 50 | full stack release gate | done | docs/agentic-stack/full-stack-release-gate.md |
