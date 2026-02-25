@@ -25,7 +25,7 @@ Legend:
 | 13 | paywall integrated route | done | packages/nextjs/lib/marketplace/x402/paywall.ts |
 | 14 | x402 metrics/runbooks | done | packages/nextjs/app/api/v1/marketplace/payments/x402/metrics/route.ts |
 | 15 | x402 unit tests | done | packages/nextjs/lib/marketplace/x402/facilitator.test.ts |
-| 16 | x402 integration tests | pending | |
+| 16 | x402 integration tests | done | packages/nextjs/app/api/v1/__tests__/x402.integration.test.ts |
 | 17 | x402 e2e tests | pending | |
 | 18 | x402 security/reliability/perf tests | pending | |
 | 19 | x402 gate signoff | pending | |
