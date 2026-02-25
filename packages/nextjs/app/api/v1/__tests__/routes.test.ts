@@ -1074,7 +1074,7 @@ describe("GET /api/v1/activity", () => {
       id: "wa1",
       ward_address: "0xWARD",
       guardian_address: "0x123",
-      action: "transfer",
+      action: "configure",
       token: "STRK",
       amount: "10",
       status: "pending_guardian",
@@ -1129,6 +1129,7 @@ describe("GET /api/v1/activity", () => {
       (r: { source: string }) => r.source === "ward_request",
     );
     expect(wardRecord).toBeDefined();
+    expect(wardRecord.type).toBe("configure_ward");
     expect(wardRecord.status).toBe("pending");
     expect(wardRecord.status_detail).toBe("pending_guardian");
   });

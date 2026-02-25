@@ -1,7 +1,14 @@
 import { useCallback, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import { useAudioRecorder } from "./useAudioRecorder";
-import { getAgentServerUrl, type AgentChatResponse, type AgentContactInput, type AgentWardInput } from "../lib/agentApi";
+import {
+  getAgentClientId,
+  getAgentServerUrl,
+  type AgentChatResponse,
+  type AgentContactInput,
+  type AgentWardInput,
+} from "../lib/agentApi";
 import type { VoiceLanguageCode } from "@cloak-wallet/sdk";
 
 const VOICE_LANGUAGE_KEY = "cloak_voice_language";
@@ -76,7 +83,15 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
   const stopAndTranscribe = useCallback(
     async (params: VoiceAgentParams): Promise<(AgentChatResponse & { serverUrl: string }) | null> => {
       const result = await stopRecording();
-      if (!result) return null;
+      if (!result) {
+        if (Platform.OS === "ios") {
+          throw new Error("No audio captured. In iOS Simulator, set I/O > Audio Input to your Mac microphone and retry.");
+        }
+        throw new Error("No audio captured. Check mic input and hold to speak.");
+      }
+      if (result.durationMs < 150) {
+        throw new Error("Recording too short. Hold the button a little longer and try again.");
+      }
 
       setIsTranscribing(true);
       setTranscript(null);
@@ -84,21 +99,21 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
 
       try {
         const serverUrl = await getAgentServerUrl();
+        const clientId = await getAgentClientId();
 
         // Build multipart form data
         const formData = new FormData();
 
-        // Convert base64 wav to a blob-like object for RN FormData
-        formData.append("audio", {
-          uri: `data:audio/wav;base64,${result.base64}`,
-          type: "audio/wav",
-          name: "recording.wav",
-        } as any);
+        // Avoid data URI file uploads on RN iOS simulators: send raw base64 payload.
+        formData.append("audioBase64", result.base64);
+        formData.append("codec", "wav");
+        formData.append("recordingDurationMs", String(result.durationMs));
 
         formData.append("language", language);
         if (provider !== "auto") formData.append("provider", provider);
         if (params.sessionId) formData.append("sessionId", params.sessionId);
         if (params.walletAddress) formData.append("walletAddress", params.walletAddress);
+        formData.append("clientId", clientId);
         if (params.contacts.length > 0) formData.append("contacts", JSON.stringify(params.contacts));
         if (params.wards && params.wards.length > 0) formData.append("wards", JSON.stringify(params.wards));
 

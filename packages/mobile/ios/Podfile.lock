@@ -2650,6 +2650,8 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
+  - RNLiveAudioStream (1.1.1):
+    - React
   - RNReactNativeHapticFeedback (2.3.3):
     - boost
     - DoubleConversion
@@ -2887,6 +2889,7 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
   - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
+  - RNLiveAudioStream (from `../node_modules/react-native-live-audio-stream`)
   - RNReactNativeHapticFeedback (from `../node_modules/react-native-haptic-feedback`)
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
@@ -3064,6 +3067,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-async-storage/async-storage"
   RNCClipboard:
     :path: "../node_modules/@react-native-clipboard/clipboard"
+  RNLiveAudioStream:
+    :path: "../node_modules/react-native-live-audio-stream"
   RNReactNativeHapticFeedback:
     :path: "../node_modules/react-native-haptic-feedback"
   RNScreens:
@@ -3158,6 +3163,7 @@ SPEC CHECKSUMS:
   ReactCommon: 05ad684db7d88e194272ae26baddf6300e30b8b7
   RNCAsyncStorage: 302f2fac014fd450046c120567ca364632da682b
   RNCClipboard: 962296f7af77f6c039b683e21c2e2255af9c05df
+  RNLiveAudioStream: 02584d52711b6b9f268cb371a4b1bdd76ab3e079
   RNReactNativeHapticFeedback: 63aa39dbd6ef56e9de688210c5761d4007927a7e
   RNScreens: ec8bdc9f024d5828e5adf4f5e8870d5260cff616
   RNSVG: 8744ec9d5c0ca0f51cdd7a577c30ce01cd3d76b0

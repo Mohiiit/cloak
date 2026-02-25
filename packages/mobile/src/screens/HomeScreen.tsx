@@ -898,7 +898,10 @@ export default function HomeScreen({ navigation }: any) {
   const strkUnits = safeBigInt(wallet.tongoBalances.STRK?.balance);
   const ethUnits = safeBigInt(wallet.tongoBalances.ETH?.balance);
   const usdcUnits = safeBigInt(wallet.tongoBalances.USDC?.balance);
-  const totalShieldedUnits = strkUnits + ethUnits + usdcUnits;
+  const strkPending = safeBigInt(wallet.tongoBalances.STRK?.pending ?? "0");
+  const ethPending = safeBigInt(wallet.tongoBalances.ETH?.pending ?? "0");
+  const usdcPending = safeBigInt(wallet.tongoBalances.USDC?.pending ?? "0");
+  const totalShieldedUnits = strkUnits + ethUnits + usdcUnits + strkPending + ethPending + usdcPending;
   const pendingUnits = safeBigInt(wallet.pending);
 
   const portfolioTokens: TokenKey[] = ["STRK", "ETH", "USDC"];

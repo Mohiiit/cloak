@@ -1,7 +1,7 @@
 /**
  * WalletContext — Global wallet state for the app.
  */
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { hash, CallData, Account, RpcProvider } from "starknet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTongoBridge } from "../bridge/useTongoBridge";
@@ -101,6 +101,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [erc20Balances, setErc20Balances] = useState<Record<TokenKey, string>>({ ...EMPTY_ERC20 });
   const [tongoBalances, setTongoBalances] = useState<Record<TokenKey, { balance: string; pending: string }>>({ ...EMPTY_TONGO });
   const [txHistory, setTxHistory] = useState<any[]>([]);
+  const didInitBalanceRefresh = useRef(false);
 
   // Load existing wallet on mount and check deployment before showing UI
   useEffect(() => {
@@ -153,14 +154,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, [bridge.isReady, keys, isInitialized, selectedToken, bridge, showToast]);
-
-  // Refresh balance when initialized
-  useEffect(() => {
-    if (isInitialized) {
-      refreshBalance();
-      refreshAllBalances();
-    }
-  }, [isInitialized]);
 
   // Switch token
   const handleSetToken = useCallback(
@@ -221,24 +214,24 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const erc20Results = await Promise.allSettled(
         ALL_TOKENS.map((t) => bridge.queryERC20Balance(t, keys.starkAddress)),
       );
-      const newErc20: Record<TokenKey, string> = { ...EMPTY_ERC20 };
+      const erc20Updates: Partial<Record<TokenKey, string>> = {};
       ALL_TOKENS.forEach((t, i) => {
         const r = erc20Results[i];
-        if (r.status === "fulfilled") newErc20[t] = r.value;
+        if (r.status === "fulfilled") erc20Updates[t] = r.value;
       });
-      setErc20Balances(newErc20);
+      setErc20Balances((prev) => ({ ...prev, ...erc20Updates }));
 
       // Fetch Tongo balances for all supported tokens by temporarily switching pools.
-      const newTongo: Record<TokenKey, { balance: string; pending: string }> = { ...EMPTY_TONGO };
+      const tongoUpdates: Partial<Record<TokenKey, { balance: string; pending: string }>> = {};
       const originalToken = selectedToken;
 
       for (const token of ALL_TOKENS) {
         try {
           await bridge.switchToken(keys.tongoPrivateKey, token);
           const tokenState = await bridge.getState();
-          newTongo[token] = { balance: tokenState.balance, pending: tokenState.pending };
+          tongoUpdates[token] = { balance: tokenState.balance, pending: tokenState.pending };
         } catch {
-          // Keep defaults for tokens we could not fetch.
+          // Keep previous value for tokens we could not fetch.
         }
       }
 
@@ -252,12 +245,33 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         // Keep previous selected-token balance values if restore fails.
       }
 
-      setTongoBalances(newTongo);
+      setTongoBalances((prev) => ({ ...prev, ...tongoUpdates }));
     } catch (e) {
       console.warn("[WalletContext] refreshAllBalances error:", e);
       showToast("Could not refresh all balances", "warning");
     }
   }, [bridge, isInitialized, keys, selectedToken, showToast]);
+
+  // Keep the latest refresh callbacks in refs so init refresh can stay one-shot
+  // without depending on unstable object identities (e.g., bridge wrapper object).
+  const refreshBalanceRef = useRef(refreshBalance);
+  const refreshAllBalancesRef = useRef(refreshAllBalances);
+  useEffect(() => {
+    refreshBalanceRef.current = refreshBalance;
+    refreshAllBalancesRef.current = refreshAllBalances;
+  }, [refreshBalance, refreshAllBalances]);
+
+  // Refresh balances once after initialization.
+  useEffect(() => {
+    if (!isInitialized) {
+      didInitBalanceRefresh.current = false;
+      return;
+    }
+    if (didInitBalanceRefresh.current) return;
+    didInitBalanceRefresh.current = true;
+    refreshBalanceRef.current();
+    refreshAllBalancesRef.current();
+  }, [isInitialized]);
 
   const refreshTxHistory = useCallback(async () => {
     if (!bridge.isReady || !isInitialized) return;

@@ -29,6 +29,29 @@ interface VoiceMeta {
   confidence: number;
   language: string;
   provider: string;
+  model?: string;
+  metrics?: {
+    audioBytes: number;
+    codec: string;
+    recordingDurationMs?: number;
+    transcriptChars: number;
+    timings: {
+      parseRequestMs: number;
+      transcribeMs: number;
+      agentMs: number;
+      totalMs: number;
+    };
+    usage?: {
+      creditsUsed?: number;
+      creditsRemaining?: number;
+      totalCredits?: number;
+      estimatedCostUsd?: number;
+      durationSec?: number;
+      billedDurationSec?: number;
+      currency?: string;
+      requestId?: string;
+    };
+  };
 }
 
 interface VoiceAgentResponse {
@@ -85,6 +108,7 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
         const ext = blob.type.includes("webm") ? "webm" : blob.type.includes("ogg") ? "ogg" : "wav";
         formData.append("audio", blob, `recording.${ext}`);
         formData.append("language", language);
+        formData.append("recordingDurationMs", String(recorder.durationMs));
         if (params.sessionId) formData.append("sessionId", params.sessionId);
         if (params.walletAddress) formData.append("walletAddress", params.walletAddress);
         if (params.contacts?.length) formData.append("contacts", JSON.stringify(params.contacts));
@@ -109,7 +133,7 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
         abortRef.current = null;
       }
     },
-    [recorder.stopRecording, language],
+    [recorder.durationMs, recorder.stopRecording, language],
   );
 
   const cancel = useCallback(() => {

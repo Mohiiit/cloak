@@ -22,7 +22,7 @@ import TestStateMarkers from "../testing/TestStateMarkers";
 import type { AppTabParamList } from "./types";
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
-const AGENT_HOLD_TO_RECORD_MS = 3000;
+const AGENT_HOLD_TO_RECORD_MS = 250;
 
 const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
   Home: ({ size, color }) => <Home size={size} color={color} />,
@@ -88,6 +88,8 @@ function AgentTabBarButton({
   children,
 }: BottomTabBarButtonProps) {
   const holdTriggeredRef = useRef(false);
+  const holdStartSentRef = useRef(false);
+  const holdStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   return (
     <Pressable
@@ -101,19 +103,39 @@ function AgentTabBarButton({
       delayLongPress={AGENT_HOLD_TO_RECORD_MS}
       onPressIn={(e) => {
         holdTriggeredRef.current = false;
+        holdStartSentRef.current = false;
+        if (holdStartTimerRef.current) {
+          clearTimeout(holdStartTimerRef.current);
+          holdStartTimerRef.current = null;
+        }
         onPressIn?.(e);
       }}
       onLongPress={(e) => {
         holdTriggeredRef.current = true;
         onLongPress?.(e);
         onPress?.(e);
-        emitAgentTabVoiceEvent("start");
+        // Give navigation a moment so Agent screen is active before recording starts.
+        holdStartTimerRef.current = setTimeout(() => {
+          holdStartTimerRef.current = null;
+          if (!holdTriggeredRef.current) return;
+          emitAgentTabVoiceEvent("start");
+          holdStartSentRef.current = true;
+        }, 120);
       }}
       onPressOut={(e) => {
         onPressOut?.(e);
         if (!holdTriggeredRef.current) return;
+        if (holdStartTimerRef.current) {
+          clearTimeout(holdStartTimerRef.current);
+          holdStartTimerRef.current = null;
+        }
+        if (!holdStartSentRef.current) {
+          emitAgentTabVoiceEvent("start");
+          holdStartSentRef.current = true;
+        }
         emitAgentTabVoiceEvent("stop");
         holdTriggeredRef.current = false;
+        holdStartSentRef.current = false;
       }}
       onPress={(e) => {
         if (holdTriggeredRef.current) return;
@@ -199,6 +221,7 @@ export default function AppNavigator() {
           component={AgentScreen}
           options={{
             headerTitle: "",
+            lazy: false,
             tabBarButton: (props) => <AgentTabBarButton {...props} />,
           }}
         />

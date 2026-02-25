@@ -11,8 +11,11 @@ import {
 import {
   ArrowDownLeft,
   ArrowUpFromLine,
+  Key,
+  Plus,
   RefreshCw,
   Repeat,
+  Shield,
   ShieldOff,
   ShieldPlus,
 } from "lucide-react-native";
@@ -130,6 +133,23 @@ function isApprovalTx(tx: TxMetadataExtended): boolean {
   return false;
 }
 
+function normalizedActivityType(tx: TxMetadataExtended): string {
+  if (tx.source !== "ward_request") return tx.type;
+  switch (tx.type) {
+    case "deploy":
+    case "deploy_account":
+    case "deploy_contract":
+      return "deploy_ward";
+    case "fund":
+      return "fund_ward";
+    case "configure":
+    case "configure_limits":
+      return "configure_ward";
+    default:
+      return tx.type;
+  }
+}
+
 function categoryForTx(tx: TxMetadataExtended): TxCategory {
   if (tx.type === "swap" || !!tx.swap) return "swap";
   if (isApprovalTx(tx)) return "approvals";
@@ -204,30 +224,31 @@ function getTxTitle(
   wardNameLookup?: (addr: string) => string | undefined,
   myAddress?: string,
 ): string {
+  const type = normalizedActivityType(tx);
   if (tx.type === "swap" || tx.swap) return getSwapTitle(tx);
-  if (tx.type === "approval") return tx.note || "Approval";
-  if (tx.type === "fund") return tx.note || `Shielded deposit (${normalizeToken(tx.token)})`;
+  if (type === "approval") return tx.note || "Approval";
+  if (type === "fund") return tx.note || `Shielded deposit (${normalizeToken(tx.token)})`;
 
   if (myAddress && tx.walletAddress && tx.wardAddress) {
     const myNorm = myAddress.toLowerCase().replace(/^0x0+/, "0x");
     const wardNorm = tx.wardAddress.toLowerCase().replace(/^0x0+/, "0x");
     const walletNorm = tx.walletAddress.toLowerCase().replace(/^0x0+/, "0x");
     if (myNorm === wardNorm && myNorm !== walletNorm) {
-      if (tx.type === "fund_ward") return "Received from Guardian";
-      if (tx.type === "configure_ward") return tx.note || "Guardian configured account";
-      if (tx.type === "deploy_ward") return "Account deployed by Guardian";
+      if (type === "fund_ward") return "Received from Guardian";
+      if (type === "configure_ward") return tx.note || "Guardian configured account";
+      if (type === "deploy_ward") return "Account deployed by Guardian";
     }
   }
 
   const isGuardianSubmittedWardOp =
-    tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(tx.type as any);
+    tx.accountType === "guardian" && GUARDIAN_WARD_TYPES.includes(type as any);
   if (isGuardianSubmittedWardOp) {
     return resolveWardLabel(tx, wardNameLookup);
   }
 
   const token = normalizeToken(tx.token);
   const tokenAmount = `${toDisplayAmountFromAny(tx.amount, tx.amount_unit, token, tx.type)} ${token}`;
-  switch (tx.type) {
+  switch (type) {
     case "withdraw":
       return tx.note || `Unshielded ${tokenAmount}`;
     case "erc20_transfer":
@@ -250,11 +271,37 @@ function getTxTitle(
 }
 
 function getTxIconMeta(tx: TxMetadataExtended): IconMeta {
+  const type = normalizedActivityType(tx);
   const category = categoryForTx(tx);
+
+  if (type === "deploy_ward") {
+    return {
+      icon: <Shield size={18} color="#38BDF8" />,
+      background: "rgba(56, 189, 248, 0.14)",
+    };
+  }
+  if (type === "fund_ward") {
+    return {
+      icon: <Plus size={18} color={colors.success} />,
+      background: "rgba(16, 185, 129, 0.14)",
+    };
+  }
+  if (type === "configure_ward") {
+    return {
+      icon: <Key size={18} color={colors.secondary} />,
+      background: "rgba(139, 92, 246, 0.14)",
+    };
+  }
   if (category === "swap") {
     return {
       icon: <Repeat size={18} color={colors.warning} />,
       background: "rgba(245, 158, 11, 0.12)",
+    };
+  }
+  if (type === "fund") {
+    return {
+      icon: <ShieldPlus size={18} color={colors.success} />,
+      background: "rgba(16, 185, 129, 0.12)",
     };
   }
   if (category === "approvals") {
@@ -263,19 +310,19 @@ function getTxIconMeta(tx: TxMetadataExtended): IconMeta {
       background: "rgba(16, 185, 129, 0.12)",
     };
   }
-  if (tx.type === "withdraw") {
+  if (type === "withdraw") {
     return {
       icon: <ShieldOff size={18} color={colors.secondary} />,
       background: "rgba(139, 92, 246, 0.12)",
     };
   }
-  if (tx.type === "fund" || tx.type === "receive") {
+  if (type === "receive") {
     return {
       icon: <ArrowDownLeft size={18} color={colors.success} />,
       background: "rgba(16, 185, 129, 0.12)",
     };
   }
-  if (tx.type === "erc20_transfer") {
+  if (type === "erc20_transfer") {
     return {
       icon: <ArrowUpFromLine size={18} color="#F97316" />,
       background: "rgba(249, 115, 22, 0.12)",
@@ -288,6 +335,7 @@ function getTxIconMeta(tx: TxMetadataExtended): IconMeta {
 }
 
 function getTxLeftSubtitle(tx: TxMetadataExtended): string {
+  const type = normalizedActivityType(tx);
   const category = categoryForTx(tx);
   if (category === "swap") {
     const progress = getSwapProgressLabel(tx);
@@ -295,8 +343,11 @@ function getTxLeftSubtitle(tx: TxMetadataExtended): string {
     return tx.statusDetail || `${statusLabel(tx.status)} · Swap`;
   }
   if (category === "approvals") {
-    if (tx.type === "approval") {
+    if (type === "approval") {
       return `${formatRelativeTime(tx.timestamp)} · Approvals`;
+    }
+    if (type === "deploy_ward" || type === "fund_ward" || type === "configure_ward") {
+      return `${formatRelativeTime(tx.timestamp)} · Wards`;
     }
     if (tx.statusDetail === "pending_ward_sig") return "Waiting for ward signature";
     if (tx.statusDetail === "pending_guardian") return "Waiting for guardian approval";
@@ -314,6 +365,7 @@ function getTxLeftSubtitle(tx: TxMetadataExtended): string {
 }
 
 function getTxAmountMeta(tx: TxMetadataExtended): AmountMeta {
+  const type = normalizedActivityType(tx);
   const token = normalizeToken(tx.token);
   const hasAmount = hasAmountFromAny(tx.amount, tx.amount_unit, token, tx.type);
   const displayAmount = toDisplayAmountFromAny(tx.amount, tx.amount_unit, token, tx.type);
@@ -346,6 +398,27 @@ function getTxAmountMeta(tx: TxMetadataExtended): AmountMeta {
   }
 
   if (category === "approvals") {
+    if (type === "deploy_ward") {
+      return {
+        primary: "Deploy Ward",
+        secondary: tx.statusDetail || `Status: ${statusLabel(tx.status)}`,
+        color: "#38BDF8",
+      };
+    }
+    if (type === "fund_ward") {
+      return {
+        primary: hasAmount ? `Fund ${displayAmount} ${token}` : "Fund Ward",
+        secondary: tx.statusDetail || `Status: ${statusLabel(tx.status)}`,
+        color: colors.success,
+      };
+    }
+    if (type === "configure_ward") {
+      return {
+        primary: "Configure Ward",
+        secondary: tx.statusDetail || `Status: ${statusLabel(tx.status)}`,
+        color: colors.secondary,
+      };
+    }
     const primary = hasAmount ? `Limit ${displayAmount} ${token}` : "Approval";
     const secondary = tx.statusDetail || `Status: ${statusLabel(tx.status)}`;
     return { primary, secondary, color: colors.success };
@@ -359,12 +432,20 @@ function getTxAmountMeta(tx: TxMetadataExtended): AmountMeta {
     };
   }
 
-  const isCredit = ["fund", "receive", "rollover"].includes(tx.type);
+  if (type === "fund") {
+    return {
+      primary: `${displayAmount} ${token}`,
+      secondary: tx.statusDetail || "Shielded conversion",
+      color: colors.text,
+    };
+  }
+
+  const isCredit = ["fund", "receive", "rollover"].includes(type);
   const prefix = isCredit ? "+" : "-";
   const color =
-    tx.type === "withdraw"
+    type === "withdraw"
       ? colors.secondary
-      : tx.type === "erc20_transfer"
+      : type === "erc20_transfer"
       ? "#F97316"
       : isCredit
       ? colors.success

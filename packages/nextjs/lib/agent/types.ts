@@ -85,12 +85,40 @@ export type AgentCard =
   | { type: "ward_summary"; name: string; address: string; guardian?: string; frozen?: boolean }
   | { type: "error"; title: string; message: string };
 
+export interface VoiceUsageMetrics {
+  creditsUsed?: number;
+  creditsRemaining?: number;
+  totalCredits?: number;
+  estimatedCostUsd?: number;
+  durationSec?: number;
+  billedDurationSec?: number;
+  currency?: string;
+  requestId?: string;
+}
+
+export interface VoiceTimingMetrics {
+  parseRequestMs: number;
+  transcribeMs: number;
+  agentMs: number;
+  totalMs: number;
+}
+
+export interface VoiceMetrics {
+  audioBytes: number;
+  codec: string;
+  recordingDurationMs?: number;
+  transcriptChars: number;
+  timings: VoiceTimingMetrics;
+  usage?: VoiceUsageMetrics;
+}
+
 // ─── Request / Response ───
 
 export interface AgentChatRequest {
   message: string;
   sessionId?: string;
   walletAddress?: string;
+  clientId?: string;
   contacts?: AgentContact[];
   wards?: AgentWard[];
   source?: "text" | "voice";
@@ -112,5 +140,7 @@ export interface AgentChatResponse {
     confidence: number;
     language: string;
     provider: string;
+    model?: string;
+    metrics?: VoiceMetrics;
   };
 }

@@ -1,11 +1,10 @@
 import {
   fetchWardInfo,
-  getActivityRecords,
   getProvider,
   truncateAddress,
 } from "@cloak-wallet/sdk";
-import { getClient } from "~~/lib/api-client";
 import type { AgentCard, AgentIntent, AgentWard, ActivityCardItem } from "~~/lib/agent/types";
+import { listAgentActivity } from "~~/lib/agent/scripts/activity-source";
 
 const MAX_CARD_ITEMS = 5;
 
@@ -56,8 +55,10 @@ async function wardActivityCard(
   wardName?: string,
 ): Promise<{ cards: AgentCard[]; reply?: string }> {
   try {
-    const client = getClient();
-    const records = await getActivityRecords(wardAddress, MAX_CARD_ITEMS + 1, client);
+    const { records, total } = await listAgentActivity(
+      wardAddress,
+      MAX_CARD_ITEMS + 1,
+    );
 
     if (records.length === 0) {
       return {
@@ -77,7 +78,7 @@ async function wardActivityCard(
     }));
 
     return {
-      cards: [{ type: "activity_list", items, total: records.length }],
+      cards: [{ type: "activity_list", items, total }],
       reply: `Recent activity for ward "${wardName || truncateAddress(wardAddress)}":`,
     };
   } catch (err) {

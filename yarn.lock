@@ -2311,7 +2311,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloak-wallet/sdk@workspace:*, @cloak-wallet/sdk@workspace:packages/sdk":
+"@cloak-wallet/sdk@^0.2.1, @cloak-wallet/sdk@workspace:*, @cloak-wallet/sdk@workspace:packages/sdk":
   version: 0.0.0-use.local
   resolution: "@cloak-wallet/sdk@workspace:packages/sdk"
   dependencies:
@@ -6612,7 +6612,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@ss-2/nextjs@workspace:packages/nextjs"
   dependencies:
-    "@cloak-wallet/sdk": "workspace:*"
+    "@cloak-wallet/sdk": ^0.2.1
     "@fatsolutions/tongo-sdk": ^1.3.1
     "@heroicons/react": ^2.1.3
     "@keplr-wallet/common": ^0.12.175
@@ -8747,6 +8747,7 @@ __metadata:
     react-native-biometrics: ^3.0.1
     react-native-get-random-values: ^2.0.0
     react-native-haptic-feedback: ^2.3.3
+    react-native-live-audio-stream: 1.1.1
     react-native-qrcode-svg: ^6.3.21
     react-native-safe-area-context: ^5.6.2
     react-native-screens: ^4.23.0
@@ -17937,6 +17938,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-native-live-audio-stream@npm:1.1.1":
+  version: 1.1.1
+  resolution: "react-native-live-audio-stream@npm:1.1.1"
+  checksum: 1503fb1d9e2df58bf31bfa9ee3cf5167802a659ec64e3a6ca8ba2401b6388af158f9e04895699152e91eec66bcc949a3f35ae38fb63435ae28959b5be56bbd2e
+  languageName: node
+  linkType: hard
+
 "react-native-qrcode-svg@npm:^6.3.21":
   version: 6.3.21
   resolution: "react-native-qrcode-svg@npm:6.3.21"
@@ -19460,6 +19468,7 @@ __metadata:
   dependencies:
     daisyui: ^4.7.3
     husky: ^9.0.11
+    next: 15.2.6
     pinst: ^3.0.0
     postcss: ^8.4.38
     prettier: ^3.2.5

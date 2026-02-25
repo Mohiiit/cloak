@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -256,6 +258,14 @@ export default function AgentScreen() {
   const voiceEventVersion = useAgentTabVoiceEventVersion();
   const walletAddress = wallet.keys?.starkAddress;
 
+  const closeDrawer = useCallback(() => {
+    setShowDrawer(false);
+  }, []);
+
+  const toggleDrawer = useCallback(() => {
+    setShowDrawer((prev) => !prev);
+  }, []);
+
   useEffect(() => {
     Animated.timing(drawerAnim, {
       toValue: showDrawer ? 0 : -DRAWER_WIDTH,
@@ -263,6 +273,15 @@ export default function AgentScreen() {
       useNativeDriver: true,
     }).start();
   }, [drawerAnim, showDrawer]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || !showDrawer) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setShowDrawer(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [showDrawer]);
 
   const mappedContacts = useMemo(
     () =>
@@ -295,7 +314,7 @@ export default function AgentScreen() {
   const ensureSessionForVoice = useCallback(async (): Promise<string | undefined> => {
     if (activeSession?.id) return activeSession.id;
     try {
-      const data = await loadAgentState();
+      const data = await loadAgentState({ walletAddress: walletAddress || undefined });
       setActiveSession(data.session);
       setSessions(data.sessions);
       setServerUrlState(data.serverUrl);
@@ -305,7 +324,7 @@ export default function AgentScreen() {
       showToast(err?.message || "Unable to initialize Agent session", "error");
       return undefined;
     }
-  }, [activeSession?.id, showToast]);
+  }, [activeSession?.id, showToast, walletAddress]);
 
   const handleVoiceStopAndTranscribe = useCallback(async (sessionId?: string) => {
     try {
@@ -317,6 +336,20 @@ export default function AgentScreen() {
       });
       if (!result) return;
       applyAgentResponse(result);
+      const voiceMetrics = result.voiceMeta?.metrics;
+      if (voiceMetrics) {
+        const totalMs = Math.round(voiceMetrics.timings.totalMs);
+        const sttMs = Math.round(voiceMetrics.timings.transcribeMs);
+        const agentMs = Math.round(voiceMetrics.timings.agentMs);
+        const parts = [`Voice ${totalMs}ms`, `STT ${sttMs}ms`, `Agent ${agentMs}ms`];
+        const creditsUsed = voiceMetrics.usage?.creditsUsed;
+        if (typeof creditsUsed === "number") {
+          parts.push(`Credits ${creditsUsed}`);
+        } else if (typeof voiceMetrics.usage?.estimatedCostUsd === "number") {
+          parts.push(`$${voiceMetrics.usage.estimatedCostUsd.toFixed(4)}`);
+        }
+        showToast(parts.join(" · "), "info");
+      }
     } catch (err: any) {
       showToast(err?.message || "Voice transcription failed", "error");
     }
@@ -324,14 +357,26 @@ export default function AgentScreen() {
 
   const handleHoldVoiceStart = useCallback(async () => {
     if (isVoiceRecording || isVoiceTranscribing) return;
-    const sessionId = await ensureSessionForVoice();
     const ok = await startVoiceRecording();
     if (!ok) {
       showToast("Microphone permission denied or audio module not available", "error");
       return;
     }
-    quickVoiceSessionRef.current = sessionId;
-  }, [ensureSessionForVoice, isVoiceRecording, isVoiceTranscribing, showToast, startVoiceRecording]);
+    // Start recording first; session loading can take network time.
+    quickVoiceSessionRef.current = activeSession?.id;
+    void ensureSessionForVoice().then((sessionId) => {
+      if (sessionId) {
+        quickVoiceSessionRef.current = sessionId;
+      }
+    });
+  }, [
+    activeSession?.id,
+    ensureSessionForVoice,
+    isVoiceRecording,
+    isVoiceTranscribing,
+    showToast,
+    startVoiceRecording,
+  ]);
 
   const handleHoldVoiceStop = useCallback(async () => {
     if (!isVoiceRecording) return;
@@ -366,7 +411,10 @@ export default function AgentScreen() {
   const refreshState = useCallback(async (sessionId?: string) => {
     setIsLoading(true);
     try {
-      const data = await loadAgentState(sessionId);
+      const data = await loadAgentState({
+        sessionId,
+        walletAddress: walletAddress || undefined,
+      });
       setActiveSession(data.session);
       setSessions(data.sessions);
       setServerUrlState(data.serverUrl);
@@ -380,7 +428,7 @@ export default function AgentScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, walletAddress]);
 
   useEffect(() => {
     void refreshState();
@@ -440,7 +488,7 @@ export default function AgentScreen() {
 
   async function handleDeleteSession(id: string) {
     try {
-      const result = await deleteAgentSession(id);
+      const result = await deleteAgentSession(id, walletAddress || undefined);
       setSessions(result.sessions);
       if (activeSession?.id === id) {
         setActiveSession(null);
@@ -525,7 +573,7 @@ export default function AgentScreen() {
 
       showToast("Agent payment submitted", "success");
       if (activeSession?.id) {
-        await submitMessage("what are my previous sessions", activeSession.id);
+        await refreshState(activeSession.id);
       }
     } catch (err: any) {
       showToast(err?.message || "Failed to execute agent action", "error");
@@ -603,10 +651,9 @@ export default function AgentScreen() {
 
       {/* ─── Sessions Drawer Overlay ─── */}
       {showDrawer && (
-        <TouchableOpacity
+        <Pressable
           style={styles.drawerOverlay}
-          activeOpacity={1}
-          onPress={() => setShowDrawer(false)}
+          onPress={closeDrawer}
         />
       )}
 
@@ -614,7 +661,7 @@ export default function AgentScreen() {
       <Animated.View style={[styles.drawer, { transform: [{ translateX: drawerAnim }] }]}>
         <View style={styles.drawerHeader}>
           <Text style={styles.drawerTitle}>Sessions</Text>
-          <TouchableOpacity onPress={() => setShowDrawer(false)}>
+          <TouchableOpacity onPress={closeDrawer}>
             <X size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
@@ -626,7 +673,7 @@ export default function AgentScreen() {
 
         <ScrollView style={styles.drawerList} contentContainerStyle={{ gap: 6, paddingBottom: 24 }}>
           {sessions.map((s) => (
-            <TouchableOpacity
+            <Pressable
               key={s.id}
               style={[styles.drawerItem, activeSession?.id === s.id && styles.drawerItemActive]}
               onPress={() => void selectSession(s.id)}
@@ -639,19 +686,22 @@ export default function AgentScreen() {
                 >
                   {s.title}
                 </Text>
-                <TouchableOpacity
+                <Pressable
                   style={styles.drawerItemDelete}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  onPress={() => void handleDeleteSession(s.id)}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    void handleDeleteSession(s.id);
+                  }}
                 >
                   <X size={12} color={colors.textMuted} />
-                </TouchableOpacity>
+                </Pressable>
               </View>
               <View style={styles.drawerItemMeta}>
                 <Clock3 size={10} color={colors.textMuted} />
                 <Text style={styles.drawerItemTime}>{formatTime(s.updatedAt)}</Text>
               </View>
-            </TouchableOpacity>
+            </Pressable>
           ))}
           {sessions.length === 0 && (
             <Text style={styles.drawerEmpty}>No sessions yet. Start chatting!</Text>
@@ -667,7 +717,7 @@ export default function AgentScreen() {
 
       {/* ─── Header ─── */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => setShowDrawer(true)}>
+        <TouchableOpacity style={styles.headerBtn} onPress={toggleDrawer}>
           <MessageSquare size={18} color={colors.textSecondary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>

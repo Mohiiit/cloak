@@ -7,6 +7,7 @@ import {
   createSession,
   getSessionById,
   listSessionSummaries,
+  type SessionScope,
 } from "~~/lib/agent/session-store";
 import type {
   AgentCard,
@@ -115,17 +116,28 @@ function sanitizeAddresses(intent: AgentIntent): void {
   }
 }
 
-async function resolveSession(input: AgentChatRequest): Promise<AgentSession> {
+function getSessionScope(input: {
+  walletAddress?: string;
+  clientId?: string;
+}): SessionScope {
+  return {
+    walletAddress: input.walletAddress,
+    clientId: input.clientId,
+  };
+}
+
+async function resolveSession(input: AgentChatRequest, scope: SessionScope): Promise<AgentSession> {
   if (input.sessionId) {
-    const existing = await getSessionById(input.sessionId);
+    const existing = await getSessionById(input.sessionId, scope);
     if (existing) return existing;
   }
-  return createSession();
+  return createSession(scope);
 }
 
 export async function handleAgentChat(input: AgentChatRequest): Promise<AgentChatResponse> {
-  const sessionsBefore = await listSessionSummaries();
-  const session = await resolveSession(input);
+  const scope = getSessionScope(input);
+  const sessionsBefore = await listSessionSummaries(scope);
+  let session = await resolveSession(input, scope);
 
   const message = input.message || "";
   const contacts = input.contacts || [];
@@ -148,6 +160,11 @@ export async function handleAgentChat(input: AgentChatRequest): Promise<AgentCha
   }
 
   sanitizeAddresses(intent);
+
+  if (intent.type === "start_session") {
+    // Always create a fresh session and let the assistant open it.
+    session = await createSession(scope);
+  }
 
   const plan = buildPlan(intent);
 
@@ -184,21 +201,27 @@ export async function handleAgentChat(input: AgentChatRequest): Promise<AgentCha
     });
   }
 
-  const userMsg = createMessage("user", input.message || "");
-  userMsg.intent = intent;
+  const includeUserMessage = intent.type !== "start_session";
+  const userMsg = includeUserMessage ? createMessage("user", input.message || "") : null;
+  if (userMsg) {
+    userMsg.intent = intent;
+  }
   const assistantMsg = createMessage("assistant", reply);
   assistantMsg.cards = cards.length > 0 ? cards : undefined;
 
-  let updatedSession = await appendMessages(session.id, [userMsg, assistantMsg]);
+  const toAppend = userMsg ? [userMsg, assistantMsg] : [assistantMsg];
+  let updatedSession = await appendMessages(session.id, toAppend, scope);
   if (!updatedSession) {
     updatedSession = {
       ...session,
       updatedAt: new Date().toISOString(),
-      messages: [...session.messages, userMsg, assistantMsg],
+      messages: userMsg
+        ? [...session.messages, userMsg, assistantMsg]
+        : [...session.messages, assistantMsg],
     };
   }
 
-  const sessions = await listSessionSummaries();
+  const sessions = await listSessionSummaries(scope);
 
   return {
     session: updatedSession,
@@ -209,29 +232,33 @@ export async function handleAgentChat(input: AgentChatRequest): Promise<AgentCha
   };
 }
 
-export async function loadAgentState(sessionId?: string): Promise<{
+export async function loadAgentState(
+  sessionId?: string,
+  scopeInput?: { walletAddress?: string; clientId?: string },
+): Promise<{
   session: AgentSession;
   sessions: Array<{ id: string; title: string; updatedAt: string }>;
 }> {
-  const sessions = await listSessionSummaries();
+  const scope = getSessionScope(scopeInput || {});
+  const sessions = await listSessionSummaries(scope);
 
   if (sessionId) {
-    const found = await getSessionById(sessionId);
+    const found = await getSessionById(sessionId, scope);
     if (found) {
       return { session: found, sessions };
     }
   }
 
   if (sessions.length > 0) {
-    const latest = await getSessionById(sessions[0].id);
+    const latest = await getSessionById(sessions[0].id, scope);
     if (latest) {
       return { session: latest, sessions };
     }
   }
 
-  const created = await createSession();
+  const created = await createSession(scope);
   return {
     session: created,
-    sessions: await listSessionSummaries(),
+    sessions: await listSessionSummaries(scope),
   };
 }

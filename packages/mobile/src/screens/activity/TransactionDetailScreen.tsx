@@ -163,7 +163,38 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   const { txHash } = route.params;
   const wallet = useWallet();
 
-  const [meta, setMeta] = useState<TxMetadataExtended | null>(null);
+  const initialMeta = useMemo<TxMetadataExtended>(() => ({
+    txHash,
+    source: "local",
+    recipientName: route.params.recipientName,
+    note: route.params.note,
+    privacyLevel: "private",
+    timestamp:
+      typeof route.params.timestamp === "number"
+        ? route.params.timestamp
+        : route.params.timestamp
+        ? new Date(route.params.timestamp).getTime()
+        : Date.now(),
+    type: route.params.type || "send",
+    token: "STRK",
+    amount: route.params.amount,
+    amount_unit:
+      route.params.amount_unit === "tongo_units"
+      || route.params.amount_unit === "erc20_wei"
+      || route.params.amount_unit === "erc20_display"
+        ? route.params.amount_unit
+        : null,
+  }), [
+    txHash,
+    route.params.amount,
+    route.params.amount_unit,
+    route.params.note,
+    route.params.recipientName,
+    route.params.timestamp,
+    route.params.type,
+  ]);
+
+  const [meta, setMeta] = useState<TxMetadataExtended | null>(initialMeta);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -172,19 +203,32 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
     async function loadData() {
       const walletAddress = wallet.keys?.starkAddress;
       if (!walletAddress) return;
+      const cachedRow = await loadActivityByTxHash(
+        walletAddress,
+        txHash,
+        wallet.keys?.starkPublicKey,
+        { network: false, limit: 500 },
+      );
+      if (isMounted && cachedRow) {
+        setMeta((prev) => ({ ...(prev || initialMeta), ...(cachedRow as TxMetadataExtended) }));
+      }
+
       const row = await loadActivityByTxHash(
         walletAddress,
         txHash,
         wallet.keys?.starkPublicKey,
+        { network: true, limit: 500 },
       );
-      if (isMounted) setMeta((row as TxMetadataExtended) || null);
+      if (isMounted && row) {
+        setMeta((prev) => ({ ...(prev || initialMeta), ...(row as TxMetadataExtended) }));
+      }
     }
 
     loadData();
     return () => {
       isMounted = false;
     };
-  }, [txHash, wallet.keys?.starkAddress, wallet.keys?.starkPublicKey]);
+  }, [initialMeta, txHash, wallet.keys?.starkAddress, wallet.keys?.starkPublicKey]);
 
   const token = ((meta?.token as TokenKey) || "STRK") satisfies TokenKey;
   const amountRaw = meta?.amount || "0";
@@ -201,6 +245,7 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   const isWardAdmin = WARD_ADMIN_TYPES.includes(meta?.type as any);
   const isShieldedOp = SHIELDED_TYPES.includes(meta?.type as any) && !isGuardianWardOp;
   const isPublicOp = (meta?.type === "erc20_transfer" && !isGuardianWardOp) || isWardAdmin || (viewingAsWard && meta?.accountType === "guardian");
+  const isShieldDeposit = meta?.type === "fund";
   const prefix = isDebit(meta?.type) ? "-" : "+";
   const displayAmount = toDisplayAmountFromAny(amountRaw, meta?.amount_unit, token, meta?.type);
   const unitsAmount = toTongoUnitsFromAny(amountRaw, meta?.amount_unit, token, meta?.type);
@@ -209,7 +254,12 @@ export default function TransactionDetailScreen({ navigation, route }: Props) {
   let signedAmount: string;
   let heroSecondary = "";
 
-  if (isGuardianWardOp && meta?.type === "erc20_transfer") {
+  if (isShieldDeposit) {
+    signedAmount = `${displayAmount} ${token}`;
+    if (unitsAmount !== "0") {
+      heroSecondary = `→ ${unitLabel(unitsAmount)} shielded`;
+    }
+  } else if (isGuardianWardOp && meta?.type === "erc20_transfer") {
     signedAmount = `${displayAmount} ${token}`;
   } else if (isShieldedOp || isGuardianWardOp) {
     signedAmount = isGuardianWardOp ? unitLabel(unitsAmount) : `${prefix}${unitLabel(unitsAmount)}`;

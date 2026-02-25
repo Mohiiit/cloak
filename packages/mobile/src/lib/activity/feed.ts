@@ -31,6 +31,11 @@ export interface ActivityFeedItem {
   swap?: ActivityRecord["swap"] | null;
 }
 
+type LoadActivityByTxHashOptions = {
+  network?: boolean;
+  limit?: number;
+};
+
 const ACTIVITY_CACHE_PREFIX = "cloak_activity_history_v1:";
 const ACTIVITY_CACHE_TTL_MS = 60_000;
 
@@ -153,6 +158,27 @@ function localNoteToFeedItem(note: TxMetadata): ActivityFeedItem {
     type: note.type,
     token: note.token,
     amount: note.amount,
+  };
+}
+
+function mergeLocalNoteWithRemote(
+  remote: ActivityFeedItem,
+  local?: ActivityFeedItem | null,
+): ActivityFeedItem {
+  if (!local) return remote;
+  return {
+    ...remote,
+    // Keep locally-authored metadata only when backend doesn't have a value.
+    recipient: remote.recipient || local.recipient,
+    recipientName: remote.recipientName || local.recipientName,
+    note: remote.note || local.note,
+    // Preserve local privacy hint for UI semantics.
+    privacyLevel: local.privacyLevel || remote.privacyLevel,
+    // Backfill sparse backend rows from local cache when needed.
+    amount: remote.amount ?? local.amount,
+    token: remote.token || local.token,
+    type: remote.type || local.type,
+    timestamp: remote.timestamp || local.timestamp,
   };
 }
 
@@ -311,33 +337,61 @@ export async function loadActivityByTxHash(
   walletAddress: string,
   txHash: string,
   publicKey?: string,
+  options: LoadActivityByTxHashOptions = {},
 ): Promise<ActivityFeedItem | null> {
+  const { network = true, limit = 200 } = options;
+  let localMatch: ActivityFeedItem | null = null;
+
   // 1. Check local notes first (instant, no network)
   try {
     const notes = await getTxNotes();
     const local = notes?.[txHash];
-    if (local) return localNoteToFeedItem(local as TxMetadata);
+    if (local) localMatch = localNoteToFeedItem(local as TxMetadata);
   } catch {
     // fall through
   }
 
   // 2. Check cached activity history
+  let cachedMatch: ActivityFeedItem | null = null;
   try {
     const cached = await loadCachedActivityHistory(walletAddress, 500);
-    const match = cached.find((r) => r.txHash === txHash);
-    if (match) return match;
+    cachedMatch = cached.find((r) => r.txHash === txHash) || null;
+    // Fast path for detail views: return cached data immediately.
+    if (cachedMatch && !network) {
+      return mergeLocalNoteWithRemote(cachedMatch, localMatch);
+    }
   } catch {
     // fall through
+  }
+
+  if (!network && localMatch) {
+    return localMatch;
   }
 
   // 3. Query API for recent activity and find by tx_hash
   try {
     const client = await getApiClient({ walletAddress, publicKey });
-    const records = await getActivityRecords(walletAddress, 200, client);
+    const records = await getActivityRecords(walletAddress, limit, client);
+    if (records.length > 0) {
+      const items = records
+        .map(activityToFeedItem)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      await saveActivityCache(walletAddress, items);
+    }
     const match = records.find((r) => r.tx_hash === txHash);
-    if (match) return activityToFeedItem(match);
+    if (match) {
+      return mergeLocalNoteWithRemote(activityToFeedItem(match), localMatch);
+    }
   } catch {
     // fall through
+  }
+
+  if (cachedMatch) {
+    return mergeLocalNoteWithRemote(cachedMatch, localMatch);
+  }
+
+  if (localMatch) {
+    return localMatch;
   }
 
   // 4. Fallback: search mock data

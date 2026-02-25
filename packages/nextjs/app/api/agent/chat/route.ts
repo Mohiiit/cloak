@@ -26,14 +26,16 @@ export async function DELETE(req: Request) {
   try {
     const url = new URL(req.url);
     const sessionId = url.searchParams.get("sessionId");
+    const walletAddress = url.searchParams.get("walletAddress") || undefined;
+    const clientId = url.searchParams.get("clientId") || undefined;
     if (!sessionId) {
       return Response.json({ error: "Missing sessionId" }, { status: 400 });
     }
-    const deleted = await deleteSession(sessionId);
+    const deleted = await deleteSession(sessionId, { walletAddress, clientId });
     if (!deleted) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
-    const sessions = await listSessionSummaries();
+    const sessions = await listSessionSummaries({ walletAddress, clientId });
     return Response.json({ sessions });
   } catch (err: any) {
     return Response.json(
@@ -47,7 +49,9 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const sessionId = url.searchParams.get("sessionId") || undefined;
-    const result = await loadAgentState(sessionId);
+    const walletAddress = url.searchParams.get("walletAddress") || undefined;
+    const clientId = url.searchParams.get("clientId") || undefined;
+    const result = await loadAgentState(sessionId, { walletAddress, clientId });
     return Response.json(result);
   } catch (err: any) {
     return Response.json(

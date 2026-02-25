@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Send, Clock3, Play, Loader2, Plus, X, ArrowUpRight, Shield, ShieldAlert, Activity, AlertCircle, Lock, Unlock, Mic, MicOff } from "lucide-react";
 import { useAccount } from "@starknet-react/core";
 import { CallData, uint256 } from "starknet";
@@ -281,13 +281,13 @@ export default function AgentPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const voice = useVoiceAgent();
 
-  useEffect(() => {
-    void loadState();
-  }, []);
-
-  async function loadState(sessionId?: string) {
+  const loadState = useCallback(async (sessionId?: string) => {
     try {
-      const res = await fetch(`/api/agent/chat${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`);
+      const params = new URLSearchParams();
+      if (sessionId) params.set("sessionId", sessionId);
+      if (address) params.set("walletAddress", address);
+      const qs = params.toString();
+      const res = await fetch(`/api/agent/chat${qs ? `?${qs}` : ""}`);
       if (!res.ok) throw new Error("Failed to load agent state");
       const data = (await res.json()) as { session: AgentSession; sessions: Array<{ id: string; title: string; updatedAt: string }> };
       setActiveSession(data.session);
@@ -296,11 +296,18 @@ export default function AgentPage() {
     } catch (err: any) {
       toast.error(err?.message || "Failed to initialize agent mode");
     }
-  }
+  }, [address]);
+
+  useEffect(() => {
+    if (status !== "connected") return;
+    void loadState();
+  }, [loadState, status]);
 
   async function deleteSessionById(sessionId: string) {
     try {
-      const res = await fetch(`/api/agent/chat?sessionId=${encodeURIComponent(sessionId)}`, {
+      const params = new URLSearchParams({ sessionId });
+      if (address) params.set("walletAddress", address);
+      const res = await fetch(`/api/agent/chat?${params.toString()}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete session");

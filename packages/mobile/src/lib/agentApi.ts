@@ -64,6 +64,33 @@ export type AgentCard =
   | { type: "ward_summary"; name: string; address: string; guardian?: string; frozen?: boolean }
   | { type: "error"; title: string; message: string };
 
+export interface VoiceUsageMetrics {
+  creditsUsed?: number;
+  creditsRemaining?: number;
+  totalCredits?: number;
+  estimatedCostUsd?: number;
+  durationSec?: number;
+  billedDurationSec?: number;
+  currency?: string;
+  requestId?: string;
+}
+
+export interface VoiceTimingMetrics {
+  parseRequestMs: number;
+  transcribeMs: number;
+  agentMs: number;
+  totalMs: number;
+}
+
+export interface VoiceMetrics {
+  audioBytes: number;
+  codec: string;
+  recordingDurationMs?: number;
+  transcriptChars: number;
+  timings: VoiceTimingMetrics;
+  usage?: VoiceUsageMetrics;
+}
+
 export interface AgentMessage {
   id: string;
   role: "user" | "assistant";
@@ -91,12 +118,24 @@ export interface AgentChatResponse {
     confidence: number;
     language: string;
     provider: string;
+    model?: string;
+    metrics?: VoiceMetrics;
   };
 }
 
 const STORAGE_KEY = "cloak_agent_server_url";
+const CLIENT_ID_STORAGE_KEY = "cloak_agent_client_id";
 const DEFAULT_AGENT_SERVER_URL = "https://cloak-backend-vert.vercel.app";
-const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "10.0.2.2"]);
+const FALLBACK_HTTP_STATUSES = new Set([401, 404]);
+
+class AgentHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 export function normalizeAgentServerUrl(raw: string): string {
   const trimmed = (raw || "").trim().replace(/\/+$/, "");
@@ -137,11 +176,24 @@ export async function setAgentServerUrl(url: string): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, normalized);
 }
 
-function isLocalAgentUrl(url: string): boolean {
-  const match = url.trim().match(/^[a-z]+:\/\/([^/:?#]+)/i);
-  const host = match?.[1]?.toLowerCase();
-  if (!host) return false;
-  return LOCAL_AGENT_HOSTS.has(host);
+function generateClientId(): string {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `mobile_${Platform.OS}_${Date.now().toString(36)}_${rand}`;
+}
+
+function sanitizeClientId(raw?: string | null): string | null {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return null;
+  const safe = trimmed.replace(/[^a-zA-Z0-9._:-]/g, "").slice(0, 96);
+  return safe || null;
+}
+
+export async function getAgentClientId(): Promise<string> {
+  const saved = sanitizeClientId(await AsyncStorage.getItem(CLIENT_ID_STORAGE_KEY));
+  if (saved) return saved;
+  const next = generateClientId();
+  await AsyncStorage.setItem(CLIENT_ID_STORAGE_KEY, next);
+  return next;
 }
 
 function isNetworkRequestError(err: unknown): boolean {
@@ -150,14 +202,58 @@ function isNetworkRequestError(err: unknown): boolean {
   return /network request failed|failed to fetch|network/i.test(err.message);
 }
 
-async function fetchAgentState(serverUrl: string, sessionId?: string): Promise<{
+function isJsonParseError(err: unknown): boolean {
+  if (err instanceof SyntaxError) return true;
+  if (!(err instanceof Error)) return false;
+  return /json|unexpected token/i.test(err.message);
+}
+
+function shouldFallbackToDefault(serverUrl: string, err: unknown): boolean {
+  const defaultUrl = normalizeAgentServerUrl(DEFAULT_AGENT_SERVER_URL);
+  if (!serverUrl || serverUrl === defaultUrl) return false;
+
+  if (isNetworkRequestError(err)) return true;
+  if (isJsonParseError(err)) return true;
+  if (err instanceof AgentHttpError) {
+    return FALLBACK_HTTP_STATUSES.has(err.status);
+  }
+  return false;
+}
+
+async function createAgentHttpError(prefix: string, res: Response): Promise<AgentHttpError> {
+  const fallback = `${prefix} (${res.status})`;
+  try {
+    const json = await res.clone().json();
+    const detail = typeof json?.error === "string" ? json.error : "";
+    return new AgentHttpError(detail || fallback, res.status);
+  } catch {
+    return new AgentHttpError(fallback, res.status);
+  }
+}
+
+interface AgentScopeParams {
+  sessionId?: string;
+  walletAddress?: string;
+  clientId?: string;
+}
+
+function buildChatQuery(params: AgentScopeParams): string {
+  const search = new URLSearchParams();
+  if (params.sessionId) search.set("sessionId", params.sessionId);
+  if (params.walletAddress) search.set("walletAddress", params.walletAddress);
+  if (params.clientId) search.set("clientId", params.clientId);
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
+
+async function fetchAgentState(serverUrl: string, params: AgentScopeParams): Promise<{
   session: AgentSession;
   sessions: Array<{ id: string; title: string; updatedAt: string }>;
   serverUrl: string;
 }> {
-  const qs = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const qs = buildChatQuery(params);
   const res = await fetch(`${serverUrl}/api/agent/chat${qs}`);
-  if (!res.ok) throw new Error(`Failed to load Agent state (${res.status})`);
+  if (!res.ok) throw await createAgentHttpError("Failed to load Agent state", res);
   const json = await res.json();
   return {
     session: json.session,
@@ -166,22 +262,40 @@ async function fetchAgentState(serverUrl: string, sessionId?: string): Promise<{
   };
 }
 
-export async function loadAgentState(sessionId?: string): Promise<{
+type LoadAgentStateInput =
+  | string
+  | {
+      sessionId?: string;
+      walletAddress?: string;
+    };
+
+function normalizeLoadStateInput(input?: LoadAgentStateInput): {
+  sessionId?: string;
+  walletAddress?: string;
+} {
+  if (!input) return {};
+  if (typeof input === "string") return { sessionId: input };
+  return input;
+}
+
+export async function loadAgentState(input?: LoadAgentStateInput): Promise<{
   session: AgentSession;
   sessions: Array<{ id: string; title: string; updatedAt: string }>;
   serverUrl: string;
 }> {
+  const { sessionId, walletAddress } = normalizeLoadStateInput(input);
+  const clientId = await getAgentClientId();
   const serverUrl = await getAgentServerUrl();
   try {
-    return await fetchAgentState(serverUrl, sessionId);
+    return await fetchAgentState(serverUrl, { sessionId, walletAddress, clientId });
   } catch (err) {
-    if (
-      isLocalAgentUrl(serverUrl) &&
-      serverUrl !== DEFAULT_AGENT_SERVER_URL &&
-      isNetworkRequestError(err)
-    ) {
+    if (shouldFallbackToDefault(serverUrl, err)) {
       const fallbackUrl = normalizeAgentServerUrl(DEFAULT_AGENT_SERVER_URL);
-      const fallback = await fetchAgentState(fallbackUrl, sessionId);
+      const fallback = await fetchAgentState(fallbackUrl, {
+        sessionId,
+        walletAddress,
+        clientId,
+      });
       await setAgentServerUrl(fallbackUrl);
       return fallback;
     }
@@ -189,17 +303,36 @@ export async function loadAgentState(sessionId?: string): Promise<{
   }
 }
 
-export async function deleteAgentSession(sessionId: string): Promise<{
+export async function deleteAgentSession(
+  sessionId: string,
+  walletAddress?: string,
+): Promise<{
   sessions: Array<{ id: string; title: string; updatedAt: string }>;
 }> {
+  const clientId = await getAgentClientId();
   const serverUrl = await getAgentServerUrl();
-  const res = await fetch(
-    `${serverUrl}/api/agent/chat?sessionId=${encodeURIComponent(sessionId)}`,
-    { method: "DELETE" },
-  );
-  if (!res.ok) throw new Error(`Failed to delete session (${res.status})`);
-  const json = await res.json();
-  return { sessions: json.sessions || [] };
+  const performDelete = async (url: string) => {
+    const qs = buildChatQuery({ sessionId, walletAddress, clientId });
+    const res = await fetch(
+      `${url}/api/agent/chat${qs}`,
+      { method: "DELETE" },
+    );
+    if (!res.ok) throw await createAgentHttpError("Failed to delete session", res);
+    const json = await res.json();
+    return { sessions: json.sessions || [] };
+  };
+
+  try {
+    return await performDelete(serverUrl);
+  } catch (err) {
+    if (shouldFallbackToDefault(serverUrl, err)) {
+      const fallbackUrl = normalizeAgentServerUrl(DEFAULT_AGENT_SERVER_URL);
+      const result = await performDelete(fallbackUrl);
+      await setAgentServerUrl(fallbackUrl);
+      return result;
+    }
+    throw err;
+  }
 }
 
 export async function sendAgentMessage(input: {
@@ -209,37 +342,48 @@ export async function sendAgentMessage(input: {
   contacts: AgentContactInput[];
   wards?: AgentWardInput[];
 }): Promise<AgentChatResponse & { serverUrl: string }> {
+  const clientId = await getAgentClientId();
   const serverUrl = await getAgentServerUrl();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45_000);
-  let res: Response;
-  try {
-    res = await fetch(`${serverUrl}/api/agent/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-      signal: controller.signal,
-    });
-  } catch (err: any) {
+  const performSend = async (url: string): Promise<AgentChatResponse & { serverUrl: string }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 45_000);
+
+    let res: Response;
+    try {
+      res = await fetch(`${url}/api/agent/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...input,
+          clientId,
+        }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (err?.name === "AbortError") throw new Error("Agent request timed out");
+      throw err;
+    }
     clearTimeout(timer);
-    if (err?.name === "AbortError") throw new Error("Agent request timed out");
+
+    if (!res.ok) throw await createAgentHttpError("Agent request failed", res);
+
+    const json = await res.json();
+    return {
+      ...json,
+      serverUrl: url,
+    };
+  };
+
+  try {
+    return await performSend(serverUrl);
+  } catch (err) {
+    if (shouldFallbackToDefault(serverUrl, err)) {
+      const fallbackUrl = normalizeAgentServerUrl(DEFAULT_AGENT_SERVER_URL);
+      const result = await performSend(fallbackUrl);
+      await setAgentServerUrl(fallbackUrl);
+      return result;
+    }
     throw err;
   }
-  clearTimeout(timer);
-
-  if (!res.ok) {
-    const fallback = `Agent request failed (${res.status})`;
-    try {
-      const err = await res.json();
-      throw new Error(err?.error || fallback);
-    } catch {
-      throw new Error(fallback);
-    }
-  }
-
-  const json = await res.json();
-  return {
-    ...json,
-    serverUrl,
-  };
 }

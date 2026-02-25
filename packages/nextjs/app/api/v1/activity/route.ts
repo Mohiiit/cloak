@@ -177,6 +177,19 @@ function statusNoteForWardRequest(status: string): string | null {
   return null;
 }
 
+function normalizeWardActionType(action?: string | null): string {
+  const normalized = (action || "").trim().toLowerCase();
+  if (!normalized) return "transfer";
+  if (normalized === "deploy" || normalized === "deploy_account" || normalized === "deploy_contract") {
+    return "deploy_ward";
+  }
+  if (normalized === "fund") return "fund_ward";
+  if (normalized === "configure" || normalized === "configure_limits") {
+    return "configure_ward";
+  }
+  return normalized;
+}
+
 function normalizeWardAmountUnit(row: WardApprovalRow): string | null {
   const unit = row.amount_unit;
   if (unit === "tongo_units" || unit === "erc20_wei" || unit === "erc20_display") {
@@ -433,7 +446,7 @@ export async function GET(req: NextRequest) {
           source: "ward_request" as const,
           wallet_address: walletAddr,
           tx_hash: txHash,
-          type: row.action || "transfer",
+          type: normalizeWardActionType(row.action),
           token: row.token || "STRK",
           amount: row.amount ?? null,
           amount_unit: normalizeWardAmountUnit(row),

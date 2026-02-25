@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { PermissionsAndroid, Platform } from "react-native";
+import { Camera } from "react-native-vision-camera";
 
 /**
  * Lightweight audio recorder for React Native.
@@ -18,13 +19,31 @@ interface UseAudioRecorderReturn {
   cancel(): void;
 }
 
-const SAMPLE_RATE = 16000;
+const IOS_SAMPLE_RATE = 44100;
+const ANDROID_SAMPLE_RATE = 32000;
+const SAMPLE_RATE = Platform.OS === "ios" ? IOS_SAMPLE_RATE : ANDROID_SAMPLE_RATE;
 const CHANNELS = 1;
 const BITS_PER_SAMPLE = 16;
+const BUFFER_SIZE = Platform.OS === "ios" ? 8192 : 4096;
+const STOP_FLUSH_DELAY_MS = 250;
 
 /** Request mic permission (Android requires runtime permission) */
 async function requestMicPermission(): Promise<boolean> {
-  if (Platform.OS === "ios") return true; // handled by Info.plist at usage time
+  if (Platform.OS === "ios") {
+    try {
+      const status = await Camera.getMicrophonePermissionStatus();
+      console.warn(`[useAudioRecorder] iOS microphone permission status=${status}`);
+      if (status === "granted") return true;
+      if (status === "not-determined" || status === "denied") {
+        const next = await Camera.requestMicrophonePermission();
+        console.warn(`[useAudioRecorder] iOS microphone permission request result=${next}`);
+        return next === "granted";
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
   try {
     const result = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
@@ -101,6 +120,8 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
   const chunksRef = useRef<string[]>([]);
+  const chunkCountRef = useRef(0);
+  const chunkByteLenRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
   const streamRef = useRef<{ stop: () => void } | null>(null);
@@ -118,24 +139,34 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     }
 
     chunksRef.current = [];
+    chunkCountRef.current = 0;
+    chunkByteLenRef.current = 0;
     setDurationMs(0);
     startTimeRef.current = Date.now();
 
-    LiveAudioStream.init({
+    const recorderOptions: any = {
       sampleRate: SAMPLE_RATE,
       channels: CHANNELS,
       bitsPerSample: BITS_PER_SAMPLE,
-      audioSource: 6, // VOICE_RECOGNITION
-      bufferSize: 4096,
+      bufferSize: BUFFER_SIZE,
+    };
+    if (Platform.OS === "android") {
+      recorderOptions.audioSource = 6; // VOICE_RECOGNITION
+    }
+    LiveAudioStream.init(recorderOptions);
+
+    // Subscribe before start so we never miss the first buffers.
+    const subscription = LiveAudioStream.on("data", (data: string) => {
+      if (typeof data !== "string") return;
+      const normalized = data.replace(/\s+/g, "");
+      if (normalized.length === 0) return;
+      chunkCountRef.current += 1;
+      chunkByteLenRef.current += normalized.length;
+      chunksRef.current.push(normalized);
     });
 
     LiveAudioStream.start();
     setIsRecording(true);
-
-    // Collect audio data chunks
-    const subscription = LiveAudioStream.on("data", (data: string) => {
-      chunksRef.current.push(data);
-    });
     streamRef.current = {
       stop: () => {
         LiveAudioStream.stop();
@@ -154,6 +185,9 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const stopRecording = useCallback(async () => {
     if (!isRecording) return null;
 
+    // Let the native queue flush one final frame before stopping.
+    await new Promise<void>((resolve) => setTimeout(() => resolve(), STOP_FLUSH_DELAY_MS));
+
     streamRef.current?.stop();
     streamRef.current = null;
     setIsRecording(false);
@@ -166,10 +200,27 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     const finalDuration = Date.now() - startTimeRef.current;
     setDurationMs(finalDuration);
 
-    if (chunksRef.current.length === 0) return null;
+    if (chunksRef.current.length === 0) {
+      console.warn(
+        `[useAudioRecorder] no chunks captured (durationMs=${finalDuration}, chunkCount=${chunkCountRef.current}, byteLen=${chunkByteLenRef.current})`,
+      );
+      return null;
+    }
 
-    const base64 = pcmToWavBase64(chunksRef.current);
+    const chunks = chunksRef.current.filter((chunk) => chunk.length > 0);
     chunksRef.current = [];
+
+    if (chunks.length === 0) {
+      console.warn(
+        `[useAudioRecorder] chunks were empty after cleanup (durationMs=${finalDuration}, chunkCount=${chunkCountRef.current}, byteLen=${chunkByteLenRef.current})`,
+      );
+      return null;
+    }
+
+    const base64 = pcmToWavBase64(chunks);
+    console.warn(
+      `[useAudioRecorder] captured chunks=${chunks.length} (rawCount=${chunkCountRef.current}, byteLen=${chunkByteLenRef.current}, durationMs=${finalDuration})`,
+    );
 
     return { base64, durationMs: finalDuration };
   }, [isRecording]);

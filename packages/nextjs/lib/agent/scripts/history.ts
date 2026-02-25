@@ -1,8 +1,5 @@
-import {
-  getActivityRecords,
-} from "@cloak-wallet/sdk";
-import { getClient } from "~~/lib/api-client";
 import type { AgentCard, ActivityCardItem } from "~~/lib/agent/types";
+import { listAgentActivity } from "~~/lib/agent/scripts/activity-source";
 
 const MAX_CARD_ITEMS = 5;
 
@@ -17,8 +14,10 @@ export async function runHistoryScript(
   }
 
   try {
-    const client = getClient();
-    const records = await getActivityRecords(walletAddress, MAX_CARD_ITEMS + 1, client);
+    const { records, total } = await listAgentActivity(
+      walletAddress,
+      MAX_CARD_ITEMS + 1,
+    );
 
     if (records.length === 0) {
       return {
@@ -27,7 +26,6 @@ export async function runHistoryScript(
       };
     }
 
-    const total = records.length > MAX_CARD_ITEMS ? records.length : records.length;
     const items: ActivityCardItem[] = records.slice(0, MAX_CARD_ITEMS).map((r) => ({
       txHash: r.tx_hash,
       type: r.type,

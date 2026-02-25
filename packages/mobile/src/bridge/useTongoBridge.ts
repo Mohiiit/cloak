@@ -13,36 +13,112 @@ import type {
 } from "../testing/interfaces/BridgeClient";
 
 const SEPOLIA_RPC = DEFAULT_RPC.sepolia;
+const BACKUP_SEPOLIA_RPCS = [
+  "https://starknet-sepolia-rpc.publicnode.com",
+  "https://rpc.starknet-testnet.lava.build",
+];
 
 class LiveBridgeClient implements BridgeClient {
   readonly isReady = true;
+  private initParams: BridgeInitParams | null = null;
+  private activeRpcUrl = SEPOLIA_RPC;
 
   constructor(private readonly bridge: TongoBridgeRef) {}
 
-  async initialize(params: BridgeInitParams): Promise<any> {
-    return this.bridge.send("init", {
-      rpcUrl: SEPOLIA_RPC,
-      tongoPrivateKey: params.tongoPrivateKey,
+  private rpcCandidates(): string[] {
+    return Array.from(new Set([SEPOLIA_RPC, ...BACKUP_SEPOLIA_RPCS]));
+  }
+
+  private isRecoverableRpcError(error: unknown): boolean {
+    const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    return (
+      message.includes("-32001") ||
+      message.includes("unable to complete request") ||
+      message.includes("network request failed") ||
+      message.includes("failed to fetch") ||
+      message.includes("fetch failed") ||
+      message.includes("bridge timeout") ||
+      message.includes("timeout")
+    );
+  }
+
+  private async initWithRpc(params: BridgeInitParams, rpcUrl: string): Promise<any> {
+    const normalized: BridgeInitParams = {
+      ...params,
       token: params.token || "STRK",
-      starkAddress: params.starkAddress,
-      starkPrivateKey: params.starkPrivateKey,
+    };
+    const result = await this.bridge.send("init", {
+      rpcUrl,
+      tongoPrivateKey: normalized.tongoPrivateKey,
+      token: normalized.token,
+      starkAddress: normalized.starkAddress,
+      starkPrivateKey: normalized.starkPrivateKey,
     });
+    // Warm-up call to detect unhealthy RPCs early.
+    await this.bridge.send("getRate");
+    this.activeRpcUrl = rpcUrl;
+    this.initParams = normalized;
+    return result;
+  }
+
+  private async failoverRpc(): Promise<boolean> {
+    if (!this.initParams) return false;
+    const previousRpc = this.activeRpcUrl;
+    for (const candidate of this.rpcCandidates()) {
+      if (candidate === previousRpc) continue;
+      try {
+        await this.initWithRpc(this.initParams, candidate);
+        console.warn(`[useTongoBridge] Switched RPC provider from ${previousRpc} to ${candidate}`);
+        return true;
+      } catch (err) {
+        console.warn(`[useTongoBridge] RPC candidate failed: ${candidate}`, err);
+      }
+    }
+    return false;
+  }
+
+  private async sendWithRetry<T>(command: string, params?: Record<string, any>): Promise<T> {
+    try {
+      return (await this.bridge.send(command, params)) as T;
+    } catch (err) {
+      if (!this.isRecoverableRpcError(err)) {
+        throw err;
+      }
+      const switched = await this.failoverRpc();
+      if (!switched) {
+        throw err;
+      }
+      return (await this.bridge.send(command, params)) as T;
+    }
+  }
+
+  async initialize(params: BridgeInitParams): Promise<any> {
+    let lastError: unknown;
+    for (const candidate of this.rpcCandidates()) {
+      try {
+        return await this.initWithRpc(params, candidate);
+      } catch (err) {
+        lastError = err;
+        console.warn(`[useTongoBridge] Init failed on ${candidate}`, err);
+      }
+    }
+    throw lastError ?? new Error("Failed to initialize bridge on available RPC providers");
   }
 
   async getState(): Promise<TongoState> {
-    return this.bridge.send("getState");
+    return this.sendWithRetry<TongoState>("getState");
   }
 
   async getRate(): Promise<string> {
-    return this.bridge.send("getRate");
+    return this.sendWithRetry<string>("getRate");
   }
 
   async getTongoAddress(): Promise<string> {
-    return this.bridge.send("getTongoAddress");
+    return this.sendWithRetry<string>("getTongoAddress");
   }
 
   async fund(amount: string, sender: string): Promise<{ txHash: string }> {
-    return this.bridge.send("fund", { amount, sender });
+    return this.sendWithRetry<{ txHash: string }>("fund", { amount, sender });
   }
 
   async transfer(
@@ -50,7 +126,7 @@ class LiveBridgeClient implements BridgeClient {
     recipientBase58: string,
     sender: string,
   ): Promise<{ txHash: string }> {
-    return this.bridge.send("transfer", { amount, recipientBase58, sender });
+    return this.sendWithRetry<{ txHash: string }>("transfer", { amount, recipientBase58, sender });
   }
 
   async withdraw(
@@ -58,15 +134,15 @@ class LiveBridgeClient implements BridgeClient {
     to: string,
     sender: string,
   ): Promise<{ txHash: string }> {
-    return this.bridge.send("withdraw", { amount, to, sender });
+    return this.sendWithRetry<{ txHash: string }>("withdraw", { amount, to, sender });
   }
 
   async rollover(sender: string): Promise<{ txHash: string }> {
-    return this.bridge.send("rollover", { sender });
+    return this.sendWithRetry<{ txHash: string }>("rollover", { sender });
   }
 
   async prepareFund(amount: string, sender: string): Promise<{ calls: any[] }> {
-    return this.bridge.send("prepareFund", { amount, sender });
+    return this.sendWithRetry<{ calls: any[] }>("prepareFund", { amount, sender });
   }
 
   async prepareTransfer(
@@ -74,7 +150,7 @@ class LiveBridgeClient implements BridgeClient {
     recipientBase58: string,
     sender: string,
   ): Promise<{ calls: any[] }> {
-    return this.bridge.send("prepareTransfer", { amount, recipientBase58, sender });
+    return this.sendWithRetry<{ calls: any[] }>("prepareTransfer", { amount, recipientBase58, sender });
   }
 
   async prepareWithdraw(
@@ -82,31 +158,35 @@ class LiveBridgeClient implements BridgeClient {
     to: string,
     sender: string,
   ): Promise<{ calls: any[] }> {
-    return this.bridge.send("prepareWithdraw", { amount, to, sender });
+    return this.sendWithRetry<{ calls: any[] }>("prepareWithdraw", { amount, to, sender });
   }
 
   async prepareRollover(sender: string): Promise<{ calls: any[] }> {
-    return this.bridge.send("prepareRollover", { sender });
+    return this.sendWithRetry<{ calls: any[] }>("prepareRollover", { sender });
   }
 
   async switchToken(tongoPrivateKey: string, token: string): Promise<any> {
-    return this.bridge.send("switchToken", { tongoPrivateKey, token });
+    const result = await this.sendWithRetry<any>("switchToken", { tongoPrivateKey, token });
+    if (this.initParams) {
+      this.initParams = { ...this.initParams, token };
+    }
+    return result;
   }
 
   async generateKeypair(): Promise<{ privateKey: string; publicKey: string }> {
-    return this.bridge.send("generateKeypair");
+    return this.sendWithRetry<{ privateKey: string; publicKey: string }>("generateKeypair");
   }
 
   async derivePublicKey(privateKey: string): Promise<{ x: string; y: string }> {
-    return this.bridge.send("derivePublicKey", { privateKey });
+    return this.sendWithRetry<{ x: string; y: string }>("derivePublicKey", { privateKey });
   }
 
   async queryERC20Balance(token: string, address: string): Promise<string> {
-    return this.bridge.send("queryERC20Balance", { token, address });
+    return this.sendWithRetry<string>("queryERC20Balance", { token, address });
   }
 
   async getTxHistory(fromBlock = 0): Promise<any[]> {
-    return this.bridge.send("getTxHistory", { fromBlock });
+    return this.sendWithRetry<any[]>("getTxHistory", { fromBlock });
   }
 
   async validateBase58(base58: string): Promise<boolean> {
