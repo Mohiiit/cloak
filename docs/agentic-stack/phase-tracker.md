@@ -42,7 +42,7 @@ Legend:
 | 30 | 8004 unit tests | done | packages/nextjs/lib/marketplace/agents-store.test.ts |
 | 31 | 8004 integration tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.8004.integration.test.ts |
 | 32 | 8004 e2e tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.8004.e2e.test.ts |
-| 33 | 8004 security/reliability/perf tests | pending | |
+| 33 | 8004 security/reliability/perf tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.8004.security-reliability.test.ts |
 | 34 | 8004 gate signoff | pending | |
 | 35 | cross-link profile + payment evidence | pending | |
 | 36 | combined funnel tests | pending | |
