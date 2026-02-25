@@ -39,7 +39,7 @@ Legend:
 | 27 | trust summary composition | done | packages/nextjs/lib/marketplace/trust-summary.ts |
 | 28 | abuse controls/rate limits | done | packages/nextjs/lib/marketplace/rate-limit.ts |
 | 29 | 8004 observability/freshness | done | packages/nextjs/app/api/v1/marketplace/metrics/route.ts |
-| 30 | 8004 unit tests | pending | |
+| 30 | 8004 unit tests | done | packages/nextjs/lib/marketplace/agents-store.test.ts |
 | 31 | 8004 integration tests | pending | |
 | 32 | 8004 e2e tests | pending | |
 | 33 | 8004 security/reliability/perf tests | pending | |
