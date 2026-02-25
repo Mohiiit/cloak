@@ -3,6 +3,10 @@ import type {
   AgentProfileStatus,
   RegisterAgentRequest,
 } from "@cloak-wallet/sdk";
+import {
+  clearDiscoveryIndex,
+  ingestAgentDiscoveryProfile,
+} from "./discovery-index";
 
 interface StoredAgentProfile extends AgentProfileResponse {
   endpoint_proofs: RegisterAgentRequest["endpoint_proofs"];
@@ -71,7 +75,9 @@ export function upsertAgentProfile(
   };
 
   inMemoryAgents.set(input.agent_id, profile);
-  return toPublicProfile(profile);
+  const publicProfile = toPublicProfile(profile);
+  ingestAgentDiscoveryProfile(publicProfile);
+  return publicProfile;
 }
 
 export function updateAgentProfile(
@@ -97,7 +103,9 @@ export function updateAgentProfile(
     updated_at: nowIso(),
   };
   inMemoryAgents.set(agentId, updated);
-  return toPublicProfile(updated);
+  const publicProfile = toPublicProfile(updated);
+  ingestAgentDiscoveryProfile(publicProfile);
+  return publicProfile;
 }
 
 export function listAgentProfiles(): AgentProfileResponse[] {
@@ -108,4 +116,5 @@ export function listAgentProfiles(): AgentProfileResponse[] {
 
 export function clearAgentProfiles(): void {
   inMemoryAgents.clear();
+  clearDiscoveryIndex();
 }

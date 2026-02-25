@@ -32,7 +32,7 @@ Legend:
 | 20 | 8004 taxonomy/schema freeze | done | docs/agentic-stack/erc8004-taxonomy-schema-freeze.md |
 | 21 | registry lifecycle APIs | done | packages/nextjs/app/api/v1/marketplace/agents/route.ts |
 | 22 | endpoint ownership verification | done | packages/nextjs/lib/marketplace/endpoint-proof.ts |
-| 23 | discovery index ingestion | pending | |
+| 23 | discovery index ingestion | done | packages/nextjs/lib/marketplace/discovery-index.ts |
 | 24 | discovery query API/ranking | pending | |
 | 25 | SDK 8004 read/write surface | pending | |
 | 26 | marketplace profile adapters | pending | |
