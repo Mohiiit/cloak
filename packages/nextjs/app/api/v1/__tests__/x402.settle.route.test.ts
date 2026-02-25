@@ -44,6 +44,54 @@ describe("POST /api/v1/marketplace/payments/x402/settle", () => {
     expect(json.txHash).toMatch(/^0x/);
   });
 
+  it("is idempotent for repeated settle on same replay key", async () => {
+    const challenge = buildChallenge({
+      recipient: "0xabc123",
+      token: "STRK",
+      minAmount: "11",
+      context: { runId: "2" },
+    });
+    const payment = {
+      version: "1" as const,
+      scheme: "cloak-shielded-x402" as const,
+      challengeId: challenge.challengeId,
+      tongoAddress: "tongo1test",
+      token: "STRK",
+      amount: "11",
+      proof: "proof-blob",
+      replayKey: "rk_settle_idempotent",
+      contextHash: challenge.contextHash,
+      expiresAt: challenge.expiresAt,
+      nonce: "nonce_settle_i",
+      createdAt: new Date().toISOString(),
+    };
+
+    const req1 = new NextRequest(
+      "http://localhost/api/v1/marketplace/payments/x402/settle",
+      {
+        method: "POST",
+        body: JSON.stringify({ challenge, payment }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    const req2 = new NextRequest(
+      "http://localhost/api/v1/marketplace/payments/x402/settle",
+      {
+        method: "POST",
+        body: JSON.stringify({ challenge, payment }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+    const first = await POST(req1);
+    const second = await POST(req2);
+    const firstJson = await first.json();
+    const secondJson = await second.json();
+    expect(firstJson.status).toBe("settled");
+    expect(secondJson.status).toBe("settled");
+    expect(secondJson.txHash).toBe(firstJson.txHash);
+  });
+
   it("returns rejected status for invalid challenge signature", async () => {
     const challenge = buildChallenge({
       recipient: "0xabc123",
@@ -81,4 +129,3 @@ describe("POST /api/v1/marketplace/payments/x402/settle", () => {
     expect(json.reasonCode).toBe("INVALID_PAYLOAD");
   });
 });
-

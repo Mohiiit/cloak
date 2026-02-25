@@ -7,6 +7,7 @@ import type {
   X402VerifyResponse,
 } from "@cloak-wallet/sdk";
 import { verifyChallengeSignature, isChallengeExpired } from "./challenge";
+import { X402ReplayStore } from "./replay-store";
 
 export interface X402PolicyInput {
   payment: X402PaymentPayloadRequest;
@@ -29,8 +30,15 @@ function reject(
 }
 
 export class X402Facilitator {
+  constructor(private readonly replayStore = new X402ReplayStore()) {}
+
   async verify(req: X402VerifyRequest): Promise<X402VerifyResponse> {
     const paymentRef = `pay_${req.payment.replayKey}`;
+    const existing = await this.replayStore.get(req.payment.replayKey);
+    if (existing?.status === "settled") {
+      return reject("REPLAY_DETECTED", paymentRef, false);
+    }
+
     if (!verifyChallengeSignature(req.challenge)) {
       return reject("INVALID_PAYLOAD", paymentRef, false);
     }
@@ -64,8 +72,22 @@ export class X402Facilitator {
 
   async settle(req: X402SettleRequest): Promise<X402SettleResponse> {
     const paymentRef = `pay_${req.payment.replayKey}`;
+    const existing = await this.replayStore.get(req.payment.replayKey);
+    if (existing?.status === "settled") {
+      return {
+        status: "settled",
+        paymentRef: existing.payment_ref || paymentRef,
+        txHash: existing.settlement_tx_hash ?? undefined,
+      };
+    }
+
     const verify = await this.verify(req);
     if (verify.status === "rejected") {
+      await this.replayStore.markRejected(
+        req.payment.replayKey,
+        paymentRef,
+        verify.reasonCode || "INVALID_PAYLOAD",
+      );
       return {
         status: "rejected",
         paymentRef,
@@ -73,11 +95,18 @@ export class X402Facilitator {
       };
     }
 
-    // Phase-08 skeleton: settlement hash is deterministic placeholder.
-    return {
+    await this.replayStore.registerPending(req.payment.replayKey, paymentRef);
+
+    const settled = {
       status: "settled",
       paymentRef,
       txHash: `0x${Buffer.from(paymentRef).toString("hex").slice(0, 62)}`,
     };
+    await this.replayStore.markSettled(
+      req.payment.replayKey,
+      paymentRef,
+      settled.txHash,
+    );
+    return settled;
   }
 }
