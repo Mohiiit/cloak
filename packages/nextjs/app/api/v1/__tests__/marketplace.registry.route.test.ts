@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { clearAgentProfiles } from "~~/lib/marketplace/agents-store";
 import { clearHires } from "~~/lib/marketplace/hires-store";
+import { buildEndpointOwnershipDigest } from "~~/lib/marketplace/endpoint-proof";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -40,8 +41,11 @@ describe("marketplace registry routes", () => {
           {
             endpoint: "https://agents.cloak.local/staking",
             nonce: "nonce_a",
-            digest:
-              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            digest: buildEndpointOwnershipDigest({
+              endpoint: "https://agents.cloak.local/staking",
+              operatorWallet: "0xabc123",
+              nonce: "nonce_a",
+            }),
           },
         ],
         pricing: {
@@ -107,8 +111,11 @@ describe("marketplace registry routes", () => {
           {
             endpoint: "https://agents.cloak.local/swap",
             nonce: "nonce_b",
-            digest:
-              "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            digest: buildEndpointOwnershipDigest({
+              endpoint: "https://agents.cloak.local/swap",
+              operatorWallet: "0xabc123",
+              nonce: "nonce_b",
+            }),
           },
         ],
         pricing: {
@@ -167,4 +174,3 @@ describe("marketplace registry routes", () => {
     expect(patched.status).toBe("paused");
   });
 });
-

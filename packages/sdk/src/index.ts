@@ -190,6 +190,10 @@ export type {
   ERC8004RegistrySet,
   ERC8004ClientOptions,
 } from "./erc8004";
+export {
+  buildEndpointOwnershipDigest,
+  createEndpointOwnershipProof,
+} from "./marketplace-proof";
 
 // x402 helpers
 export {

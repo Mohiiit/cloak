@@ -16,6 +16,7 @@ import {
   listAgentProfiles,
   upsertAgentProfile,
 } from "~~/lib/marketplace/agents-store";
+import { verifyEndpointProofSet } from "~~/lib/marketplace/endpoint-proof";
 
 export const runtime = "nodejs";
 
@@ -70,12 +71,17 @@ export async function POST(req: NextRequest) {
     if (auth.wallet_address.toLowerCase() !== data.operator_wallet.toLowerCase()) {
       return forbidden("operator_wallet must match authenticated wallet");
     }
-    if (
-      data.endpoint_proofs &&
-      data.endpoint_proofs.length > 0 &&
-      data.endpoint_proofs.length !== data.endpoints.length
-    ) {
-      return badRequest("endpoint_proofs length must match endpoints length");
+    if (!data.endpoint_proofs || data.endpoint_proofs.length === 0) {
+      return badRequest("endpoint_proofs are required");
+    }
+
+    const proofCheck = verifyEndpointProofSet({
+      operatorWallet: data.operator_wallet,
+      endpoints: data.endpoints,
+      proofs: data.endpoint_proofs,
+    });
+    if (!proofCheck.ok) {
+      return badRequest(proofCheck.reason || "Invalid endpoint proofs");
     }
 
     const profile = upsertAgentProfile(data);
@@ -88,4 +94,3 @@ export async function POST(req: NextRequest) {
     return serverError("Failed to register agent");
   }
 }
-
