@@ -34,7 +34,7 @@ Legend:
 | 22 | endpoint ownership verification | done | packages/nextjs/lib/marketplace/endpoint-proof.ts |
 | 23 | discovery index ingestion | done | packages/nextjs/lib/marketplace/discovery-index.ts |
 | 24 | discovery query API/ranking | done | packages/nextjs/app/api/v1/marketplace/discover/route.ts |
-| 25 | SDK 8004 read/write surface | pending | |
+| 25 | SDK 8004 read/write surface | done | packages/sdk/src/marketplace.ts |
 | 26 | marketplace profile adapters | pending | |
 | 27 | trust summary composition | pending | |
 | 28 | abuse controls/rate limits | pending | |

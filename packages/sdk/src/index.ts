@@ -194,6 +194,15 @@ export {
   buildEndpointOwnershipDigest,
   createEndpointOwnershipProof,
 } from "./marketplace-proof";
+export {
+  MarketplaceClient,
+  createMarketplaceClient,
+} from "./marketplace";
+export type {
+  MarketplaceClientOptions,
+  UpdateAgentProfileInput,
+  UpdateHireInput,
+} from "./marketplace";
 
 // x402 helpers
 export {
