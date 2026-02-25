@@ -46,7 +46,7 @@ Legend:
 | 34 | 8004 gate signoff | done | docs/agentic-stack/erc8004-gate-signoff.md |
 | 35 | cross-link profile + payment evidence | done | packages/nextjs/app/api/v1/__tests__/marketplace.crosslink.test.ts |
 | 36 | combined funnel tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.funnel.test.ts |
-| 37 | combined security/data-quality tests | pending | |
+| 37 | combined security/data-quality tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.combined.security.test.ts |
 | 38 | unified platform gate signoff | pending | |
 | 39 | staking steward runtime + adapter | pending | |
 | 40 | staking x402 + listing integration | pending | |
