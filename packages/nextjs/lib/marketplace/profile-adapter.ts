@@ -1,5 +1,6 @@
 import { ERC8004Client } from "@cloak-wallet/sdk";
 import type { AgentProfileResponse } from "@cloak-wallet/sdk";
+import { composeTrustSummary } from "./trust-summary";
 
 interface RegistryAdapterOptions {
   network?: "mainnet" | "sepolia";
@@ -66,18 +67,20 @@ export async function adaptAgentProfileWithRegistry(
     parseFreshnessSeconds(reputationSummary),
     parseFreshnessSeconds(validationSummary),
   );
+  const composed = composeTrustSummary({
+    ownerMatch,
+    reputationScore,
+    validationScore,
+    freshnessSeconds: freshness,
+    existingTrustScore: profile.trust_score,
+  });
 
   return {
     ...profile,
     metadata_uri: profile.metadata_uri || tokenUri || null,
     verified: profile.verified || ownerMatch,
-    trust_summary: {
-      owner_match: ownerMatch,
-      reputation_score: reputationScore,
-      validation_score: validationScore,
-      freshness_seconds: freshness,
-    },
+    trust_summary: composed.trustSummary,
+    trust_score: composed.trustScore,
     registry_version: profile.registry_version || "erc8004-v1",
   };
 }
-

@@ -48,6 +48,6 @@ describe("profile adapter", () => {
     expect(adapted.trust_summary?.reputation_score).toBe(70);
     expect(adapted.trust_summary?.validation_score).toBe(60);
     expect(adapted.trust_summary?.freshness_seconds).toBe(30);
+    expect(adapted.trust_score).toBe(76);
   });
 });
-
