@@ -191,6 +191,30 @@ export type {
   ERC8004ClientOptions,
 } from "./erc8004";
 
+// x402 helpers
+export {
+  createContextHash,
+  parseX402Challenge,
+  createShieldedPaymentPayload,
+  encodeX402PaymentHeader,
+  decodeX402PaymentHeader,
+  extractX402PaymentPayload,
+  x402Fetch,
+  payWithX402,
+  assertValidChallenge,
+  assertValidPaymentPayload,
+} from "./x402";
+export type {
+  X402Version,
+  X402Scheme,
+  X402ErrorCode,
+  X402Challenge,
+  X402PaymentPayload,
+  X402VerifyResponse,
+  X402SettleResponse,
+  X402FetchOptions,
+} from "./x402";
+
 // Compliance helpers
 export {
   grantViewingAccess,
