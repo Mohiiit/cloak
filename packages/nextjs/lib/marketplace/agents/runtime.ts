@@ -1,9 +1,15 @@
 import type { AgentType } from "@cloak-wallet/sdk";
 import { stakingStewardRuntime } from "./staking-steward";
-import type { AgentRuntimeInput, AgentRuntimeOutput } from "./types";
+import { treasuryDispatcherRuntime } from "./treasury-dispatcher";
+import type {
+  AgentRuntimeHandler,
+  AgentRuntimeInput,
+  AgentRuntimeOutput,
+} from "./types";
 
-const handlers: Partial<Record<AgentType, typeof stakingStewardRuntime>> = {
+const handlers: Partial<Record<AgentType, AgentRuntimeHandler>> = {
   staking_steward: stakingStewardRuntime,
+  treasury_dispatcher: treasuryDispatcherRuntime,
 };
 
 export function inferAgentType(agentId: string): AgentType | null {
@@ -34,4 +40,3 @@ export async function executeAgentRuntime(
   }
   return handler.execute(input);
 }
-
