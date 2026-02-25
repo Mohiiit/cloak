@@ -1,0 +1,37 @@
+{
+  "created_at": "2026-02-25",
+  "network_defaults": {
+    "starknet": "sepolia"
+  },
+  "sdk_contracts": {
+    "x402": "v1",
+    "erc8004": "v1",
+    "marketplace": "v1"
+  },
+  "dependencies": {
+    "starknet": "8.5.3",
+    "starkzap": "1.0.0"
+  },
+  "error_taxonomy": {
+    "x402": [
+      "INVALID_PAYLOAD",
+      "EXPIRED_PAYMENT",
+      "REPLAY_DETECTED",
+      "CONTEXT_MISMATCH",
+      "POLICY_DENIED",
+      "SETTLEMENT_FAILED",
+      "RPC_FAILURE",
+      "TIMEOUT"
+    ],
+    "erc8004": [
+      "INVALID_REGISTRATION_SCHEMA",
+      "INVALID_SIGNATURE",
+      "ENDPOINT_OWNERSHIP_UNVERIFIED",
+      "CAPABILITY_CLAIM_UNVERIFIED",
+      "REGISTRY_RPC_FAILURE",
+      "INDEXER_STALE",
+      "RATE_LIMITED",
+      "NOT_FOUND"
+    ]
+  }
+}
