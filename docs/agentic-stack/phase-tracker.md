@@ -43,7 +43,7 @@ Legend:
 | 31 | 8004 integration tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.8004.integration.test.ts |
 | 32 | 8004 e2e tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.8004.e2e.test.ts |
 | 33 | 8004 security/reliability/perf tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.8004.security-reliability.test.ts |
-| 34 | 8004 gate signoff | pending | |
+| 34 | 8004 gate signoff | done | docs/agentic-stack/erc8004-gate-signoff.md |
 | 35 | cross-link profile + payment evidence | pending | |
 | 36 | combined funnel tests | pending | |
 | 37 | combined security/data-quality tests | pending | |
