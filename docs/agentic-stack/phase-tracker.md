@@ -57,6 +57,6 @@ Legend:
 | 45 | treasury full test matrix | done | packages/nextjs/lib/marketplace/agents/treasury-dispatcher.matrix.test.ts |
 | 46 | treasury launch gate | done | docs/agentic-stack/treasury-dispatcher-launch-gate.md |
 | 47 | swap runner runtime + adapter | done | packages/nextjs/lib/marketplace/agents/swap-runner.ts |
-| 48 | swap x402 + listing integration | pending | |
+| 48 | swap x402 + listing integration | done | packages/nextjs/app/api/v1/__tests__/swap.runner.integration.test.ts |
 | 49 | swap full test matrix | pending | |
 | 50 | full stack release gate | pending | |
