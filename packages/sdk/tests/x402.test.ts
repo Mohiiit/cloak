@@ -93,6 +93,7 @@ describe("x402 helpers", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     const retryInit = fetchImpl.mock.calls[1][1] as RequestInit;
     const headers = new Headers(retryInit.headers);
+    expect(headers.get("x-x402-challenge")).toBe(JSON.stringify(baseChallenge));
     expect(headers.get("x-x402-payment")).toBeTruthy();
   });
 

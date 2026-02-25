@@ -230,6 +230,7 @@ export async function x402Fetch(
   assertValidPaymentPayload(payload);
 
   const retryHeaders = new Headers(init.headers ?? {});
+  retryHeaders.set(challengeHeader, JSON.stringify(challenge));
   retryHeaders.set(paymentHeader, encodeX402PaymentHeader(payload));
 
   return fetchImpl(input, {
