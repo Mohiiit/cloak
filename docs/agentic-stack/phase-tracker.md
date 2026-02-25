@@ -51,7 +51,7 @@ Legend:
 | 39 | staking steward runtime + adapter | done | packages/nextjs/lib/marketplace/agents/staking-steward.ts |
 | 40 | staking x402 + listing integration | done | packages/nextjs/app/api/v1/__tests__/staking.steward.integration.test.ts |
 | 41 | staking full test matrix | done | packages/nextjs/lib/marketplace/agents/staking-steward.matrix.test.ts |
-| 42 | staking launch gate | pending | |
+| 42 | staking launch gate | done | docs/agentic-stack/staking-steward-launch-gate.md |
 | 43 | treasury dispatcher runtime + adapter | pending | |
 | 44 | treasury x402 + listing integration | pending | |
 | 45 | treasury full test matrix | pending | |
