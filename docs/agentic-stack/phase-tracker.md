@@ -40,7 +40,7 @@ Legend:
 | 28 | abuse controls/rate limits | done | packages/nextjs/lib/marketplace/rate-limit.ts |
 | 29 | 8004 observability/freshness | done | packages/nextjs/app/api/v1/marketplace/metrics/route.ts |
 | 30 | 8004 unit tests | done | packages/nextjs/lib/marketplace/agents-store.test.ts |
-| 31 | 8004 integration tests | pending | |
+| 31 | 8004 integration tests | done | packages/nextjs/app/api/v1/__tests__/marketplace.8004.integration.test.ts |
 | 32 | 8004 e2e tests | pending | |
 | 33 | 8004 security/reliability/perf tests | pending | |
 | 34 | 8004 gate signoff | pending | |
