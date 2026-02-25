@@ -580,6 +580,9 @@ export interface RegisterAgentRequest {
   metadata_uri?: string | null;
   operator_wallet: string;
   service_wallet: string;
+  trust_score?: number;
+  verified?: boolean;
+  status?: AgentProfileStatus;
 }
 
 export interface AgentProfileResponse {
