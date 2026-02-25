@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate, AuthError } from "~~/app/api/v1/_lib/auth";
 import { badRequest, unauthorized, serverError } from "~~/app/api/v1/_lib/errors";
-import { createRun, listRuns } from "~~/lib/marketplace/runs-store";
+import { createRun, listRuns, updateRun } from "~~/lib/marketplace/runs-store";
 import { shieldedPaywall } from "~~/lib/marketplace/x402/paywall";
 import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
 import { getHire } from "~~/lib/marketplace/hires-store";
 import { getAgentProfile } from "~~/lib/marketplace/agents-store";
+import {
+  executeAgentRuntime,
+  inferAgentType,
+} from "~~/lib/marketplace/agents/runtime";
 import {
   consumeRateLimit,
   MARKETPLACE_RATE_LIMITS,
@@ -21,6 +25,7 @@ interface CreateRunBody {
   billable?: boolean;
   token?: string;
   minAmount?: string;
+  execute?: boolean;
 }
 
 export async function GET(req: NextRequest) {
@@ -102,20 +107,38 @@ export async function POST(req: NextRequest) {
       agentTrustSnapshot: agentProfile?.trust_summary || null,
     });
 
+    const shouldExecute = body.execute ?? true;
+    const agentType = agentProfile?.agent_type || inferAgentType(resolvedAgentId);
+    const finalizedRun =
+      shouldExecute && agentType
+        ? (updateRunWithExecution(
+            run,
+            await executeAgentRuntime({
+              agentType,
+              action: body.action,
+              params: body.params || {},
+              operatorWallet: hire?.operator_wallet || auth.wallet_address,
+              serviceWallet:
+                agentProfile?.service_wallet || process.env.CLOAK_AGENT_SERVICE_ADDRESS || auth.wallet_address,
+            }),
+          ) || run)
+        : run;
+
     logAgenticEvent({
       level: "info",
       event: "marketplace.runs.created",
       traceId,
       actor: auth.wallet_address,
       metadata: {
-        runId: run.id,
-        hireId: run.hire_id,
-        billable: run.billable,
-        paymentRef: run.payment_ref,
+        runId: finalizedRun.id,
+        hireId: finalizedRun.hire_id,
+        billable: finalizedRun.billable,
+        paymentRef: finalizedRun.payment_ref,
+        status: finalizedRun.status,
       },
     });
 
-    return NextResponse.json(run, {
+    return NextResponse.json(finalizedRun, {
       status: 201,
       headers: {
         "x-agentic-trace-id": traceId,
@@ -127,4 +150,15 @@ export async function POST(req: NextRequest) {
     console.error("[POST /api/v1/marketplace/runs]", err);
     return serverError("Failed to create run");
   }
+}
+
+function updateRunWithExecution(
+  run: ReturnType<typeof createRun>,
+  execution: Awaited<ReturnType<typeof executeAgentRuntime>>,
+) {
+  return updateRun(run.id, {
+    status: execution.status === "completed" ? "completed" : "failed",
+    execution_tx_hashes: execution.executionTxHashes,
+    result: execution.result,
+  });
 }
