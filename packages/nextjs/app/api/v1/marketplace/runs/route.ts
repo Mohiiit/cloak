@@ -4,6 +4,10 @@ import { badRequest, unauthorized, serverError } from "~~/app/api/v1/_lib/errors
 import { createRun, listRuns } from "~~/lib/marketplace/runs-store";
 import { shieldedPaywall } from "~~/lib/marketplace/x402/paywall";
 import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
+import {
+  consumeRateLimit,
+  MARKETPLACE_RATE_LIMITS,
+} from "~~/lib/marketplace/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -34,6 +38,21 @@ export async function POST(req: NextRequest) {
   const traceId = createTraceId("marketplace-runs-post");
   try {
     const auth = await authenticate(req);
+    const writeLimit = consumeRateLimit(
+      "marketplace:runs:write",
+      auth.wallet_address,
+      MARKETPLACE_RATE_LIMITS.runsWrite,
+    );
+    if (!writeLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retry_after: writeLimit.retryAfterSeconds,
+        },
+        { status: 429 },
+      );
+    }
     const body = (await req.json()) as CreateRunBody;
 
     if (!body.hire_id || !body.agent_id || !body.action) {
@@ -95,4 +114,3 @@ export async function POST(req: NextRequest) {
     return serverError("Failed to create run");
   }
 }
-

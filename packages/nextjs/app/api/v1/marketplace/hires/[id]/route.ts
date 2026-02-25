@@ -13,6 +13,10 @@ import {
   validate,
 } from "~~/app/api/v1/_lib/validation";
 import { getHire, updateHireStatus } from "~~/lib/marketplace/hires-store";
+import {
+  consumeRateLimit,
+  MARKETPLACE_RATE_LIMITS,
+} from "~~/lib/marketplace/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -22,6 +26,21 @@ export async function PATCH(
 ) {
   try {
     const auth = await authenticate(req);
+    const writeLimit = consumeRateLimit(
+      "marketplace:hires:write",
+      auth.wallet_address,
+      MARKETPLACE_RATE_LIMITS.hiresWrite,
+    );
+    if (!writeLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retry_after: writeLimit.retryAfterSeconds,
+        },
+        { status: 429 },
+      );
+    }
     const { id } = await context.params;
     const hire = getHire(id);
     if (!hire) return notFound("Hire not found");
@@ -44,4 +63,3 @@ export async function PATCH(
     return serverError("Failed to update hire");
   }
 }
-

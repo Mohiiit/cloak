@@ -10,12 +10,31 @@ import { getAgentProfile } from "~~/lib/marketplace/agents-store";
 import { selectDiscoveryAgentIds } from "~~/lib/marketplace/discovery-index";
 import { rankDiscoveredAgents } from "~~/lib/marketplace/discovery-ranking";
 import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
+import {
+  consumeRateLimit,
+  MARKETPLACE_RATE_LIMITS,
+} from "~~/lib/marketplace/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    await authenticate(req);
+    const auth = await authenticate(req);
+    const readLimit = consumeRateLimit(
+      "marketplace:discover:read",
+      auth.wallet_address,
+      MARKETPLACE_RATE_LIMITS.discoverRead,
+    );
+    if (!readLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retry_after: readLimit.retryAfterSeconds,
+        },
+        { status: 429 },
+      );
+    }
     const query = validate(
       DiscoverAgentsQuerySchema,
       Object.fromEntries(req.nextUrl.searchParams.entries()),

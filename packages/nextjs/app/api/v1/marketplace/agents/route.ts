@@ -18,12 +18,31 @@ import {
 } from "~~/lib/marketplace/agents-store";
 import { verifyEndpointProofSet } from "~~/lib/marketplace/endpoint-proof";
 import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
+import {
+  consumeRateLimit,
+  MARKETPLACE_RATE_LIMITS,
+} from "~~/lib/marketplace/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    await authenticate(req);
+    const auth = await authenticate(req);
+    const readLimit = consumeRateLimit(
+      "marketplace:agents:read",
+      auth.wallet_address,
+      MARKETPLACE_RATE_LIMITS.agentsRead,
+    );
+    if (!readLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retry_after: readLimit.retryAfterSeconds,
+        },
+        { status: 429 },
+      );
+    }
     const query = validate(
       DiscoverAgentsQuerySchema,
       Object.fromEntries(req.nextUrl.searchParams.entries()),
@@ -79,6 +98,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await authenticate(req);
+    const writeLimit = consumeRateLimit(
+      "marketplace:agents:write",
+      auth.wallet_address,
+      MARKETPLACE_RATE_LIMITS.agentsWrite,
+    );
+    if (!writeLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retry_after: writeLimit.retryAfterSeconds,
+        },
+        { status: 429 },
+      );
+    }
     const body = await req.json();
     const data = validate(RegisterAgentSchema, body);
 

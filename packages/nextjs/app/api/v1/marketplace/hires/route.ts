@@ -12,12 +12,31 @@ import {
 } from "~~/app/api/v1/_lib/validation";
 import { getAgentProfile } from "~~/lib/marketplace/agents-store";
 import { createHire, listHires } from "~~/lib/marketplace/hires-store";
+import {
+  consumeRateLimit,
+  MARKETPLACE_RATE_LIMITS,
+} from "~~/lib/marketplace/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
     const auth = await authenticate(req);
+    const readLimit = consumeRateLimit(
+      "marketplace:hires:read",
+      auth.wallet_address,
+      MARKETPLACE_RATE_LIMITS.hiresRead,
+    );
+    if (!readLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retry_after: readLimit.retryAfterSeconds,
+        },
+        { status: 429 },
+      );
+    }
     const hires = listHires({
       operatorWallet: auth.wallet_address,
       agentId: req.nextUrl.searchParams.get("agent_id") || undefined,
@@ -33,6 +52,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await authenticate(req);
+    const writeLimit = consumeRateLimit(
+      "marketplace:hires:write",
+      auth.wallet_address,
+      MARKETPLACE_RATE_LIMITS.hiresWrite,
+    );
+    if (!writeLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retry_after: writeLimit.retryAfterSeconds,
+        },
+        { status: 429 },
+      );
+    }
     const body = await req.json();
     const data = validate(CreateAgentHireSchema, body);
 
@@ -57,4 +91,3 @@ export async function POST(req: NextRequest) {
     return serverError("Failed to create hire");
   }
 }
-
