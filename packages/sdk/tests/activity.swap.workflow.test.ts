@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { getActivityRecords } from "../src/activity";
-import { SupabaseLite } from "../src/supabase";
+import { CloakApiClient } from "../src/api-client";
 
 describe("activity swap workflow", () => {
   afterEach(() => {
@@ -8,37 +8,31 @@ describe("activity swap workflow", () => {
   });
 
   it("attaches typed swap payload for shielded_swap transactions", async () => {
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
-    const selectSpy = vi.spyOn(sb, "select");
-
-    selectSpy.mockImplementation(async (table: string, filters?: string) => {
-      if (table === "transactions" && filters === "wallet_address=eq.0xabc") {
-        return [
-          {
-            wallet_address: "0xabc",
-            tx_hash: "0xswap",
-            type: "shielded_swap",
-            token: "STRK",
-            amount: "2",
-            amount_unit: "tongo_units",
-            status: "pending",
-            account_type: "normal",
-            network: "sepolia",
-            created_at: "2026-02-21T00:00:00.000Z",
-          },
-        ] as any;
-      }
-      if (table === "transactions" && filters === "ward_address=eq.0xabc") {
-        return [] as any;
-      }
-      if (table === "ward_configs") {
-        return [] as any;
-      }
-      if (table === "swap_executions" && filters === "wallet_address=eq.0xabc") {
-        return [
-          {
-            tx_hash: "0xswap",
-            wallet_address: "0xabc",
+    const client = new CloakApiClient("https://example.com", "test-key");
+    const getActivitySpy = vi.spyOn(client, "getActivity").mockResolvedValue({
+      records: [
+        {
+          id: "0xswap",
+          source: "transaction" as const,
+          wallet_address: "0xabc",
+          tx_hash: "0xswap",
+          type: "shielded_swap",
+          token: "STRK",
+          amount: "2",
+          amount_unit: "tongo_units" as const,
+          recipient: null,
+          recipient_name: null,
+          note: null,
+          status: "pending" as const,
+          error_message: null,
+          account_type: "normal" as const,
+          ward_address: null,
+          fee: null,
+          network: "sepolia",
+          platform: null,
+          created_at: "2026-02-21T00:00:00.000Z",
+          swap: {
+            execution_id: "swap_1",
             provider: "avnu",
             sell_token: "STRK",
             buy_token: "ETH",
@@ -46,21 +40,17 @@ describe("activity swap workflow", () => {
             estimated_buy_amount_wei: "50",
             min_buy_amount_wei: "45",
             buy_actual_amount_wei: null,
+            tx_hashes: null,
+            primary_tx_hash: "0xswap",
             status: "pending",
-            created_at: "2026-02-21T00:00:00.000Z",
           },
-        ] as any;
-      }
-      if (table === "swap_executions" && filters === "ward_address=eq.0xabc") {
-        return [] as any;
-      }
-      if (table === "ward_approval_requests") {
-        return [] as any;
-      }
-      return [] as any;
+        },
+      ],
+      total: 1,
+      has_more: false,
     });
 
-    const rows = await getActivityRecords("0xabc", 20, sb);
+    const rows = await getActivityRecords("0xabc", 20, client);
     expect(rows).toHaveLength(1);
     expect(rows[0].type).toBe("shielded_swap");
     expect(rows[0].swap).toEqual(
@@ -70,5 +60,6 @@ describe("activity swap workflow", () => {
         buy_token: "ETH",
       }),
     );
+    expect(getActivitySpy).toHaveBeenCalledWith("0xabc", { limit: 20 });
   });
 });

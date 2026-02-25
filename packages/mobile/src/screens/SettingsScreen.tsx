@@ -14,7 +14,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
-import { Plus, Trash2, Users, Shield, Wallet2, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Gem, Download, Smartphone, LogOut, LockOpen, TriangleAlert, ChevronRight } from "lucide-react-native";
+import { Plus, Trash2, Users, Shield, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Download, Smartphone, LogOut, LockOpen, TriangleAlert, ChevronRight, Mic } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
 import { useContacts } from "../hooks/useContacts";
@@ -550,20 +550,6 @@ function CopyRow({ label, value, displayValue }: { label: string; value: string;
   );
 }
 
-function InlineQR({ value, glowColor }: { value: string; glowColor: "blue" | "violet" }) {
-  return (
-    <View style={styles.qrContainer}>
-      <View style={[
-        styles.qrGlow,
-        glowColor === "blue" ? styles.qrGlowBlue : styles.qrGlowViolet
-      ]} />
-      <View style={styles.qrInlineWrapper}>
-        <QRCode value={value} size={100} backgroundColor="transparent" color="rgba(148, 163, 184, 0.7)" />
-      </View>
-    </View>
-  );
-}
-
 function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; label: string; value: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -615,16 +601,91 @@ function FullScreenQR({ visible, label, value, onClose }: { visible: boolean; la
   );
 }
 
+const VOICE_LANGUAGES: Array<{ code: string; label: string }> = [
+  { code: "en-IN", label: "English (India)" },
+  { code: "hi-IN", label: "Hindi" },
+  { code: "bn-IN", label: "Bengali" },
+  { code: "ta-IN", label: "Tamil" },
+  { code: "te-IN", label: "Telugu" },
+  { code: "kn-IN", label: "Kannada" },
+  { code: "ml-IN", label: "Malayalam" },
+  { code: "mr-IN", label: "Marathi" },
+  { code: "gu-IN", label: "Gujarati" },
+  { code: "pa-IN", label: "Punjabi" },
+  { code: "en", label: "English (Global)" },
+  { code: "es", label: "Spanish" },
+  { code: "fr", label: "French" },
+];
+
+const VOICE_LANG_KEY = "cloak_voice_language";
+
+function VoiceSettingsSection() {
+  const [lang, setLang] = useState("en-IN");
+  const [showPicker, setShowPicker] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(VOICE_LANG_KEY).then((v) => {
+      if (v) setLang(v);
+    });
+  }, []);
+
+  const currentLabel = VOICE_LANGUAGES.find((l) => l.code === lang)?.label ?? lang;
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Mic size={18} color={colors.primary} />
+        <Text style={styles.sectionTitle}>Voice</Text>
+      </View>
+      <TouchableOpacity
+        style={styles.settingsRow}
+        onPress={() => setShowPicker(true)}
+      >
+        <Text style={styles.settingsLabel}>Language</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Text style={styles.settingsValue}>{currentLabel}</Text>
+          <ChevronRight size={14} color={colors.textMuted} />
+        </View>
+      </TouchableOpacity>
+
+      <Modal visible={showPicker} transparent animationType="slide">
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowPicker(false)}
+        >
+          <View style={styles.pickerModal}>
+            <Text style={styles.pickerTitle}>Voice Language</Text>
+            {VOICE_LANGUAGES.map((item) => (
+              <TouchableOpacity
+                key={item.code}
+                style={[styles.pickerOption, item.code === lang && styles.pickerOptionActive]}
+                onPress={() => {
+                  setLang(item.code);
+                  AsyncStorage.setItem(VOICE_LANG_KEY, item.code);
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={[styles.pickerOptionText, item.code === lang && styles.pickerOptionTextActive]}>
+                  {item.label}
+                </Text>
+                {item.code === lang && <Check size={16} color={colors.primary} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
 export default function SettingsScreen({ navigation }: any) {
   const wallet = useWallet();
   const modal = useThemedModal();
   const { showToast } = useToast();
   const twoFactor = useTwoFactor();
   const ward = useWardContext();
-  const { contacts, addContact, removeContact } = useContacts();
-  const [showAddContact, setShowAddContact] = useState(false);
-  const [newContactName, setNewContactName] = useState("");
-  const [newContactAddr, setNewContactAddr] = useState("");
+  const { contacts, removeContact } = useContacts();
   const [qrModal, setQrModal] = useState<{ label: string; value: string } | null>(null);
 
   // 2FA state
@@ -844,49 +905,25 @@ export default function SettingsScreen({ navigation }: any) {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-      {/* Cloak Address */}
-      <View style={[styles.section, styles.addressSection]}>
-        <View style={styles.sectionHeader}>
-          <Gem size={18} color={colors.primary} />
-          <Text style={styles.sectionTitle}>Your Cloak Address</Text>
+      {/* Address Info */}
+      <TouchableOpacity
+        style={[styles.section, styles.addressInfoCard]}
+        activeOpacity={0.7}
+        onPress={() => navigation.getParent("root")?.navigate("AddressInfo" as never)}
+      >
+        <View style={styles.addressInfoRow}>
+          <View style={styles.addressInfoLeft}>
+            <View style={styles.sectionHeader}>
+              <Globe size={18} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Address Info</Text>
+            </View>
+            <Text style={styles.addressInfoDesc}>
+              View and share your Tongo and Starknet addresses.
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.textMuted} />
         </View>
-        <Text style={styles.sectionDesc}>
-          Share this with others so they can send you shielded payments.
-        </Text>
-        <TouchableOpacity
-          {...testProps(testIDs.settings.cloakQrOpen)}
-          onPress={() => setQrModal({ label: "Cloak Address", value: wallet.keys!.tongoAddress })}
-        >
-          <CopyRow
-            label="TONGO ADDRESS"
-            value={wallet.keys.tongoAddress}
-            displayValue={shortenMiddle(wallet.keys.tongoAddress, 12, 6)}
-          />
-          <InlineQR value={wallet.keys.tongoAddress} glowColor="blue" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Account Info */}
-      <View style={[styles.section, styles.addressSectionViolet]}>
-        <View style={styles.sectionHeader}>
-          <Wallet2 size={18} color={colors.secondary} />
-          <Text style={styles.sectionTitle}>Starknet Address</Text>
-        </View>
-        <Text style={styles.sectionDesc}>
-          Your public Starknet wallet address.
-        </Text>
-        <TouchableOpacity
-          {...testProps(testIDs.settings.starkQrOpen)}
-          onPress={() => setQrModal({ label: "Starknet Address", value: wallet.keys!.starkAddress })}
-        >
-          <CopyRow
-            label="STARKNET ADDRESS"
-            value={wallet.keys.starkAddress}
-            displayValue={shortenMiddle(wallet.keys.starkAddress, 10, 6)}
-          />
-          <InlineQR value={wallet.keys.starkAddress} glowColor="violet" />
-        </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
 
       {/* Manage Wards (Guardian features) */}
       {!ward.isWard && (
@@ -1010,55 +1047,13 @@ export default function SettingsScreen({ navigation }: any) {
           <TouchableOpacity
             {...testProps(testIDs.settings.contactsAddToggle)}
             style={styles.contactsAddBtn}
-            onPress={() => setShowAddContact(!showAddContact)}
+            onPress={() => navigation.getParent("root")?.navigate("AddContact" as never)}
           >
             <Plus size={14} color="#fff" />
             <Text style={styles.contactsAddBtnText}>Add</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.sectionDesc}>Save addresses for quick transfers.</Text>
-
-        {showAddContact && (
-          <View style={styles.addContactForm}>
-            <TextInput
-              style={styles.addContactInput}
-              placeholder="Nickname"
-              placeholderTextColor={colors.textMuted}
-              value={newContactName}
-              onChangeText={setNewContactName}
-            />
-            <TextInput
-              style={styles.addContactInput}
-              placeholder="Starknet address (0x...)"
-              placeholderTextColor={colors.textMuted}
-              value={newContactAddr}
-              onChangeText={setNewContactAddr}
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              autoComplete="off"
-            />
-            <TouchableOpacity
-              {...testProps(testIDs.settings.contactsAddSubmit)}
-              style={[styles.addContactBtn, !newContactAddr.trim() && { opacity: 0.4 }]}
-              disabled={!newContactAddr.trim()}
-              onPress={async () => {
-                await addContact({
-                  tongoAddress: newContactAddr.trim(),
-                  starknetAddress: newContactAddr.trim(),
-                  nickname: newContactName.trim() || undefined,
-                  isFavorite: false,
-                  lastInteraction: Date.now(),
-                });
-                setNewContactName("");
-                setNewContactAddr("");
-                setShowAddContact(false);
-              }}
-            >
-              <Text style={styles.addContactBtnText}>Add Contact</Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         <View style={styles.contactsList}>
           {contactItems.map((c: any, idx: number) => {
@@ -1170,6 +1165,9 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.infoValueMuted}>{appVersionLabel}</Text>
         </View>
       </View>
+
+      {/* Voice Settings */}
+      <VoiceSettingsSection />
 
       {/* Danger Zone */}
       <View style={[styles.section, styles.dangerZoneCard]}>
@@ -1480,6 +1478,23 @@ const styles = StyleSheet.create({
   addressSectionViolet: {
     borderLeftWidth: 3,
     borderLeftColor: "rgba(139, 92, 246, 0.4)",
+  },
+  addressInfoCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  addressInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  addressInfoLeft: {
+    flex: 1,
+  },
+  addressInfoDesc: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontFamily: typography.secondary,
   },
 
   copyRow: { marginBottom: spacing.md },
@@ -2351,6 +2366,67 @@ const styles = StyleSheet.create({
   dangerZoneBtnText: {
     color: colors.error,
     fontSize: fontSize.sm,
+    fontFamily: typography.secondarySemibold,
+  },
+
+  // ─── Voice Settings ───
+  settingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  settingsLabel: {
+    color: colors.text,
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondary,
+  },
+  settingsValue: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "flex-end",
+  },
+  pickerModal: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.lg,
+    borderTopRightRadius: borderRadius.lg,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  pickerTitle: {
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontFamily: typography.primarySemibold,
+    marginBottom: spacing.md,
+  },
+  pickerOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
+  },
+  pickerOptionActive: {
+    backgroundColor: colors.primaryDim,
+  },
+  pickerOptionText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    fontFamily: typography.secondary,
+  },
+  pickerOptionTextActive: {
+    color: colors.primary,
     fontFamily: typography.secondarySemibold,
   },
 });

@@ -1,6 +1,6 @@
 /**
  * twoFactor.ts — 2FA utilities: biometrics, secondary key management,
- * Supabase REST operations for approval_requests and two_factor_configs.
+ * API operations for approval_requests and two_factor_configs.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -19,10 +19,9 @@ import {
   signTransactionHash,
   combinedSignature,
   deserializeCalls,
-  DEFAULT_SUPABASE_URL,
-  DEFAULT_SUPABASE_KEY,
-  SupabaseLite as SdkSupabaseLite,
+  CloakApiClient,
 } from "@cloak-wallet/sdk";
+import { getApiClient } from "./apiClient";
 import { getRuntimeMode, isMockMode } from "../testing/runtimeConfig";
 import { MockApprovalBackend } from "../testing/mocks/MockApprovalBackend";
 import { loadActiveScenarioFixture } from "../testing/fixtures/loadScenarioFixture";
@@ -30,7 +29,6 @@ import type {
   ApprovalBackend,
   ApprovalRequestRecord,
   ApprovalStatus as BackendApprovalStatus,
-  SupabaseLiteLike,
   TwoFactorConfigRecord,
 } from "../testing/interfaces/ApprovalBackend";
 
@@ -103,8 +101,6 @@ export class DualSignSigner implements SignerInterface {
 // ─── Storage Keys ────────────────────────────────────────────────────────────
 
 const STORAGE_KEYS = {
-  SUPABASE_URL: "cloak_2fa_supabase_url",
-  SUPABASE_KEY: "cloak_2fa_supabase_key",
   SECONDARY_PK: "cloak_2fa_secondary_pk",
 };
 
@@ -116,32 +112,6 @@ export type ApprovalStatus = BackendApprovalStatus;
 export interface TwoFactorConfig extends TwoFactorConfigRecord {}
 
 export interface ApprovalRequest extends ApprovalRequestRecord {}
-
-// ─── Supabase Config ─────────────────────────────────────────────────────────
-
-export async function getSupabaseConfig(): Promise<{
-  url: string;
-  key: string;
-}> {
-  const [url, key] = await AsyncStorage.multiGet([
-    STORAGE_KEYS.SUPABASE_URL,
-    STORAGE_KEYS.SUPABASE_KEY,
-  ]);
-  return {
-    url: url[1] || DEFAULT_SUPABASE_URL,
-    key: key[1] || DEFAULT_SUPABASE_KEY,
-  };
-}
-
-export async function saveSupabaseConfig(
-  url: string,
-  key: string,
-): Promise<void> {
-  await AsyncStorage.multiSet([
-    [STORAGE_KEYS.SUPABASE_URL, url],
-    [STORAGE_KEYS.SUPABASE_KEY, key],
-  ]);
-}
 
 // ─── Biometrics ──────────────────────────────────────────────────────────────
 
@@ -175,7 +145,6 @@ export async function promptBiometric(message: string): Promise<boolean> {
       require("react-native-biometrics").default ||
       require("react-native-biometrics");
     const rnBiometrics = new ReactNativeBiometrics();
-    // Check if biometrics are available first
     const { available } = await rnBiometrics.isSensorAvailable();
     if (!available) {
       console.warn("[twoFactor] Biometrics not available (simulator?), auto-approving");
@@ -218,19 +187,12 @@ export function generateSecondaryKey(): {
   privateKey: string;
   publicKey: string;
 } {
-  // Use crypto.getRandomValues directly (polyfilled by react-native-get-random-values)
-  // instead of ec.starkCurve.utils.randomPrivateKey() which fails on iOS
-  // because @noble/curves' internal RNG lookup doesn't find the polyfill.
-  //
-  // The Stark curve order is ~2^251, so we generate 32 bytes (256 bits) and
-  // mask the top byte to ensure the value fits within the valid range.
   const bytes = new Uint8Array(32);
   const cryptoApi = (globalThis as any)?.crypto;
   if (!cryptoApi?.getRandomValues) {
     throw new Error("crypto.getRandomValues is unavailable");
   }
   cryptoApi.getRandomValues(bytes);
-  // Mask top byte to keep value < 2^251 (well within Stark curve order)
   bytes[0] = bytes[0] & 0x07;
   const privateKeyHex =
     "0x" +
@@ -266,24 +228,21 @@ export async function getSecondaryPublicKey(): Promise<string | null> {
   }
 }
 
-// ─── Supabase Backend Selection ──────────────────────────────────────────────
+// ─── API Backend Selection ───────────────────────────────────────────────────
 
 class LiveApprovalBackend implements ApprovalBackend {
   readonly mode = getRuntimeMode();
 
-  async getSupabaseLite(): Promise<SupabaseLiteLike> {
-    const { url, key } = await getSupabaseConfig();
-    return new SdkSupabaseLite(url, key);
+  private async getClient(): Promise<CloakApiClient> {
+    return getApiClient();
   }
 
   async fetchPendingRequests(
     walletAddress: string,
   ): Promise<ApprovalRequestRecord[]> {
-    const sb = await this.getSupabaseLite();
-    return sb.select<ApprovalRequestRecord>(
-      "approval_requests",
-      `status=eq.pending&wallet_address=eq.${walletAddress}&order=created_at.desc`,
-    );
+    const client = await this.getClient();
+    const approvals = await client.getPendingApprovals(walletAddress);
+    return approvals as unknown as ApprovalRequestRecord[];
   }
 
   async updateRequestStatus(
@@ -292,67 +251,52 @@ class LiveApprovalBackend implements ApprovalBackend {
     finalTxHash?: string,
     errorMessage?: string,
   ): Promise<any> {
-    const sb = await this.getSupabaseLite();
+    const client = await this.getClient();
     const body: any = {
       status,
       responded_at: new Date().toISOString(),
     };
     if (finalTxHash) body.final_tx_hash = finalTxHash;
     if (errorMessage) body.error_message = errorMessage;
-    return sb.update("approval_requests", `id=eq.${id}`, body);
+    await client.updateApproval(id, body);
+    return body;
   }
 
   async enableTwoFactorConfig(
     walletAddress: string,
     secondaryPubKey: string,
   ): Promise<any> {
-    // Use upsert with on_conflict so re-enabling doesn't fail
-    // if a row already exists for this wallet address.
-    // SDK's SupabaseLite doesn't expose upsert, so use raw fetch with config from storage.
-    const { url, key } = await getSupabaseConfig();
-    const upsertHeaders = {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation,resolution=merge-duplicates",
-    };
-
-    const res = await fetch(
-      `${url}/rest/v1/two_factor_configs?on_conflict=wallet_address`,
-      {
-        method: "POST",
-        headers: upsertHeaders,
-        body: JSON.stringify({
-          wallet_address: walletAddress,
-          secondary_public_key: secondaryPubKey,
-          is_enabled: true,
-        }),
-      },
-    );
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text);
-    }
-
-    return res.json();
+    const client = await this.getClient();
+    await client.enableTwoFactor({
+      wallet_address: walletAddress,
+      secondary_public_key: secondaryPubKey,
+    });
+    return null;
   }
 
   async disableTwoFactorConfig(walletAddress: string): Promise<any> {
-    const sb = await this.getSupabaseLite();
-    await sb.delete("two_factor_configs", `wallet_address=eq.${walletAddress}`);
+    const client = await this.getClient();
+    await client.disableTwoFactor(walletAddress);
     return null;
   }
 
   async isTwoFactorConfigured(
     walletAddress: string,
   ): Promise<TwoFactorConfigRecord | null> {
-    const sb = await this.getSupabaseLite();
-    const data = await sb.select<TwoFactorConfigRecord>(
-      "two_factor_configs",
-      `wallet_address=eq.${walletAddress}&limit=1`,
-    );
-    return data[0] ?? null;
+    const client = await this.getClient();
+    try {
+      const status = await client.getTwoFactorStatus(walletAddress);
+      if (!status || !status.enabled) return null;
+      return {
+        id: "",
+        wallet_address: status.wallet_address || walletAddress,
+        secondary_public_key: status.secondary_public_key || "",
+        is_enabled: status.enabled,
+        created_at: "",
+      } as TwoFactorConfigRecord;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -368,13 +312,7 @@ function getApprovalBackend(): ApprovalBackend {
   return backendCache;
 }
 
-// ─── Supabase REST Client ────────────────────────────────────────────────────
-
-export async function getSupabaseLite(): Promise<SupabaseLiteLike> {
-  return getApprovalBackend().getSupabaseLite();
-}
-
-// ─── Supabase CRUD Operations ────────────────────────────────────────────────
+// ─── API CRUD Operations ─────────────────────────────────────────────────────
 
 export async function fetchPendingRequests(
   walletAddress: string,

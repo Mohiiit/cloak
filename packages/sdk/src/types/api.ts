@@ -28,6 +28,7 @@ export interface AuthVerifyResponse {
 
 export interface TwoFactorStatusResponse {
   enabled: boolean;
+  wallet_address?: string;
   secondary_public_key?: string;
 }
 
@@ -187,6 +188,7 @@ export interface UpdateWardApprovalRequest {
   guardian_2fa_sig_json?: string | null;
   final_tx_hash?: string | null;
   error_message?: string | null;
+  responded_at?: string | null;
 }
 
 // ─── Transactions ────────────────────────────────────────────────────────────

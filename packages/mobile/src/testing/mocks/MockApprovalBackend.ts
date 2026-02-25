@@ -2,7 +2,6 @@ import type {
   ApprovalBackend,
   ApprovalRequestRecord,
   ApprovalStatus,
-  SupabaseLiteLike,
   TwoFactorConfigRecord,
 } from "../interfaces/ApprovalBackend";
 import { loadActiveScenarioFixture } from "../fixtures/loadScenarioFixture";
@@ -145,7 +144,7 @@ function applyOrder(rows: Record<string, any>[], order?: string): Record<string,
   return [...rows].sort((a, b) => compareValues(a[field], String(b[field])) * dir);
 }
 
-class InMemorySupabaseLite implements SupabaseLiteLike {
+class InMemoryTableStore {
   constructor(private readonly tables: Tables) {}
 
   async insert<T = any>(table: string, data: Record<string, any>): Promise<T[]> {
@@ -236,7 +235,7 @@ class InMemorySupabaseLite implements SupabaseLiteLike {
 export class MockApprovalBackend implements ApprovalBackend {
   readonly mode = "e2e-mock" as const;
 
-  private readonly supabase: InMemorySupabaseLite;
+  private readonly store: InMemoryTableStore;
 
   constructor() {
     const fixture =
@@ -247,15 +246,11 @@ export class MockApprovalBackend implements ApprovalBackend {
       ward_configs: fixture.ward_configs ?? [],
       ward_approval_requests: fixture.ward_approval_requests ?? [],
     }) as Tables;
-    this.supabase = new InMemorySupabaseLite(tables);
-  }
-
-  async getSupabaseLite(): Promise<SupabaseLiteLike> {
-    return this.supabase;
+    this.store = new InMemoryTableStore(tables);
   }
 
   async fetchPendingRequests(walletAddress: string): Promise<ApprovalRequestRecord[]> {
-    return this.supabase.select<ApprovalRequestRecord>(
+    return this.store.select<ApprovalRequestRecord>(
       "approval_requests",
       `status=eq.pending&wallet_address=eq.${walletAddress}&order=created_at.desc`,
     );
@@ -274,7 +269,7 @@ export class MockApprovalBackend implements ApprovalBackend {
     if (finalTxHash) body.final_tx_hash = finalTxHash;
     if (errorMessage) body.error_message = errorMessage;
 
-    const updated = await this.supabase.update(
+    const updated = await this.store.update(
       "approval_requests",
       `id=eq.${id}`,
       body,
@@ -287,13 +282,13 @@ export class MockApprovalBackend implements ApprovalBackend {
     walletAddress: string,
     secondaryPubKey: string,
   ): Promise<any> {
-    const existing = await this.supabase.select<TwoFactorConfigRecord>(
+    const existing = await this.store.select<TwoFactorConfigRecord>(
       "two_factor_configs",
       `wallet_address=eq.${walletAddress}&limit=1`,
     );
 
     if (existing.length > 0) {
-      return this.supabase.update(
+      return this.store.update(
         "two_factor_configs",
         `wallet_address=eq.${walletAddress}`,
         {
@@ -303,7 +298,7 @@ export class MockApprovalBackend implements ApprovalBackend {
       );
     }
 
-    return this.supabase.insert("two_factor_configs", {
+    return this.store.insert("two_factor_configs", {
       wallet_address: walletAddress,
       secondary_public_key: secondaryPubKey,
       is_enabled: true,
@@ -312,7 +307,7 @@ export class MockApprovalBackend implements ApprovalBackend {
   }
 
   async disableTwoFactorConfig(walletAddress: string): Promise<any> {
-    await this.supabase.delete(
+    await this.store.delete(
       "two_factor_configs",
       `wallet_address=eq.${walletAddress}`,
     );
@@ -322,7 +317,7 @@ export class MockApprovalBackend implements ApprovalBackend {
   async isTwoFactorConfigured(
     walletAddress: string,
   ): Promise<TwoFactorConfigRecord | null> {
-    const data = await this.supabase.select<TwoFactorConfigRecord>(
+    const data = await this.store.select<TwoFactorConfigRecord>(
       "two_factor_configs",
       `wallet_address=eq.${walletAddress}&limit=1`,
     );

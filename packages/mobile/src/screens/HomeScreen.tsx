@@ -1087,7 +1087,7 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               {...testProps(testIDs.home.quickSend)}
               style={[styles.actionButton, styles.actionSend]}
-              onPress={() => navigation.navigate("Send")}
+              onPress={() => navigation.getParent("root")?.navigate("Send")}
               disabled={isWardFrozen}
               activeOpacity={isWardFrozen ? 0.35 : 0.72}
             >
@@ -1097,7 +1097,7 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               {...testProps(testIDs.home.quickShield)}
               style={[styles.actionButton, styles.actionShield]}
-              onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
+              onPress={() => navigation.getParent("root")?.navigate("Shield")}
               disabled={isWardFrozen}
               activeOpacity={isWardFrozen ? 0.35 : 0.72}
             >
@@ -1107,7 +1107,7 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               {...testProps(testIDs.home.quickUnshield)}
               style={[styles.actionButton, styles.actionUnshield]}
-              onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
+              onPress={() => navigation.getParent("root")?.navigate("Unshield")}
               disabled={isWardFrozen}
               activeOpacity={isWardFrozen ? 0.35 : 0.72}
             >
@@ -1174,7 +1174,7 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               {...testProps(testIDs.home.quickSend)}
               style={[styles.actionButton, styles.actionSend]}
-              onPress={() => navigation.navigate("Send")}
+              onPress={() => navigation.getParent("root")?.navigate("Send")}
               disabled={isWardFrozen}
               activeOpacity={isWardFrozen ? 0.35 : 0.72}
             >
@@ -1184,7 +1184,7 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               {...testProps(testIDs.home.quickShield)}
               style={[styles.actionButton, styles.actionShield]}
-              onPress={() => navigation.navigate("Wallet", { mode: "shield" })}
+              onPress={() => navigation.getParent("root")?.navigate("Shield")}
               disabled={isWardFrozen}
               activeOpacity={isWardFrozen ? 0.35 : 0.72}
             >
@@ -1194,7 +1194,7 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               {...testProps(testIDs.home.quickUnshield)}
               style={[styles.actionButton, styles.actionUnshield]}
-              onPress={() => navigation.navigate("Wallet", { mode: "unshield" })}
+              onPress={() => navigation.getParent("root")?.navigate("Unshield")}
               disabled={isWardFrozen}
               activeOpacity={isWardFrozen ? 0.35 : 0.72}
             >
@@ -1204,7 +1204,7 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               {...testProps(testIDs.home.quickSwap)}
               style={[styles.actionButton, styles.actionSwap]}
-              onPress={() => navigation.navigate("Swap")}
+              onPress={() => navigation.getParent("root")?.navigate("Swap")}
               activeOpacity={0.72}
             >
               <Repeat size={28} color={colors.warning} style={styles.actionIconSpacing} />

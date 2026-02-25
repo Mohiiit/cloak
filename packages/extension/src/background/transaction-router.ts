@@ -6,7 +6,7 @@
  *   1. Ward account →
  *      - ward 2FA OFF: sign locally in extension, then guardian stage (if required)
  *      - ward 2FA ON: ward-mobile stage first, then guardian stage (if required)
- *   2. 2FA enabled  → request2FAApproval (Supabase + mobile signing)
+ *   2. 2FA enabled  → request2FAApproval (API + mobile signing)
  *   3. Otherwise    → direct SDK execution
  *
  * Gas estimation/retry for ward + guardian handoff is handled by SDK helpers.

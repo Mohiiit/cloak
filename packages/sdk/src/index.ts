@@ -95,8 +95,6 @@ export {
   DEFAULT_RPC,
   CLOAK_WARD_CLASS_HASH,
   STRK_ADDRESS,
-  DEFAULT_SUPABASE_URL,
-  DEFAULT_SUPABASE_KEY,
 } from "./config";
 
 // Wallet utilities
@@ -172,9 +170,6 @@ export type {
   TwoFAApprovalResult,
 } from "./two-factor";
 
-// Supabase client
-export { SupabaseLite } from "./supabase";
-
 // Starknet ID helpers
 export {
   StarknetIdClient,
@@ -209,7 +204,6 @@ export type {
   ViewingGrantStatus,
   ViewingKeyGrant,
   InnocenceProof,
-  ComplianceTables,
 } from "./compliance";
 
 // Ward utilities

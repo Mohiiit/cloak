@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -384,6 +385,7 @@ export default function ActivityScreen({ navigation }: any) {
   const wallet = useWallet();
   const { wards } = useWardContext();
   const [history, setHistory] = useState<TxMetadataExtended[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
 
@@ -400,6 +402,7 @@ export default function ActivityScreen({ navigation }: any) {
     const walletAddress = wallet.keys?.starkAddress;
     if (!walletAddress) {
       setHistory([]);
+      setIsLoading(false);
       return;
     }
     try {
@@ -407,6 +410,8 @@ export default function ActivityScreen({ navigation }: any) {
       setHistory(rows as TxMetadataExtended[]);
     } catch {
       setHistory([]);
+    } finally {
+      setIsLoading(false);
     }
   }, [wallet.keys?.starkAddress]);
 
@@ -475,7 +480,12 @@ export default function ActivityScreen({ navigation }: any) {
         })}
       </View>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.emptyText}>Loading activity...</Text>
+        </View>
+      ) : filtered.length === 0 ? (
         <View style={styles.emptyContainer}>
           <RefreshCw size={28} color={colors.textMuted} />
           <Text style={styles.emptyText}>No matching transactions</Text>

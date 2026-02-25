@@ -1,4 +1,4 @@
-import type { SupabaseLite } from "../supabase";
+import type { CloakApiClient } from "../api-client";
 import {
   getSwapExecutionSteps,
   getSwapExecutions,
@@ -19,14 +19,14 @@ export interface UpsertSwapExecutionStepInput
   extends Omit<SwapExecutionStepRecord, "id" | "created_at" | "updated_at"> {}
 
 export class SwapsRepository {
-  private readonly supabase: SupabaseLite;
+  private readonly client: CloakApiClient;
 
-  constructor(supabase: SupabaseLite) {
-    this.supabase = supabase;
+  constructor(client: CloakApiClient) {
+    this.client = client;
   }
 
   async save(record: SaveSwapExecutionInput): Promise<SwapExecutionRecord | null> {
-    return saveSwapExecution(record, this.supabase);
+    return saveSwapExecution(record, this.client);
   }
 
   async update(
@@ -35,14 +35,14 @@ export class SwapsRepository {
       Omit<SwapExecutionRecord, "id" | "wallet_address" | "tx_hash" | "execution_id" | "created_at">
     >,
   ): Promise<void> {
-    return updateSwapExecution(txHash, update, this.supabase);
+    return updateSwapExecution(txHash, update, this.client);
   }
 
   async updateByExecutionId(
     executionId: string,
     update: Partial<Omit<SwapExecutionRecord, "id" | "wallet_address" | "execution_id" | "created_at">>,
   ): Promise<void> {
-    return updateSwapExecutionByExecutionId(executionId, update, this.supabase);
+    return updateSwapExecutionByExecutionId(executionId, update, this.client);
   }
 
   async updateStatus(
@@ -61,20 +61,20 @@ export class SwapsRepository {
         failure_step_key: failureStepKey || null,
         failure_reason: errorMessage || null,
       },
-      this.supabase,
+      this.client,
     );
   }
 
   async listByWallet(walletAddress: string, limit = 100): Promise<SwapExecutionRecord[]> {
-    return getSwapExecutions(walletAddress, limit, this.supabase);
+    return getSwapExecutions(walletAddress, limit, this.client);
   }
 
   async listSteps(executionIds: string[]): Promise<SwapExecutionStepRecord[]> {
-    return getSwapExecutionSteps(executionIds, this.supabase);
+    return getSwapExecutionSteps(executionIds, this.client);
   }
 
   async upsertStep(step: UpsertSwapExecutionStepInput): Promise<SwapExecutionStepRecord | null> {
-    return upsertSwapExecutionStep(step, this.supabase);
+    return upsertSwapExecutionStep(step, this.client);
   }
 
   async updateStepStatus(

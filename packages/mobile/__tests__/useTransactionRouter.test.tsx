@@ -11,7 +11,7 @@ const mockCreateCloakRuntime = jest.fn(() => ({
 
 jest.mock('@cloak-wallet/sdk', () => ({
   createCloakRuntime: (...args: any[]) => mockCreateCloakRuntime(...args),
-  SupabaseLite: class MockSupabaseLite {},
+  CloakApiClient: class MockCloakApiClient {},
   DEFAULT_RPC: { sepolia: 'http://localhost:5050' },
   TOKENS: {
     STRK: {
@@ -24,8 +24,8 @@ jest.mock('@cloak-wallet/sdk', () => ({
   parseTokenAmount: (value: string) => BigInt(value || '0'),
 }));
 
-jest.mock('../src/lib/twoFactor', () => ({
-  getSupabaseConfig: jest.fn(async () => ({ url: 'https://example.supabase.co', key: 'anon-key' })),
+jest.mock('../src/lib/apiClient', () => ({
+  getApiClient: jest.fn(async () => ({})),
 }));
 
 jest.mock('../src/lib/WalletContext', () => ({

@@ -1,6 +1,6 @@
-// ─── 2FA approval system via Supabase + on-chain ─────────────────────
+// ─── 2FA approval system via API client + on-chain ─────────────────────
 
-import { getSupabaseLite } from "./supabase-config";
+import { getApiClient } from "./api-config";
 import {
   request2FAApproval as sdkRequest2FAApproval,
   normalizeAddress,
@@ -14,19 +14,18 @@ import type {
 export { normalizeAddress };
 export type { TwoFAApprovalResult };
 
-// ─── Check if a wallet has 2FA enabled (on-chain first, Supabase fallback) ──
+// ─── Check if a wallet has 2FA enabled (on-chain first, API fallback) ──
 
 export async function check2FAEnabled(walletAddress: string): Promise<boolean> {
   // Try on-chain check first (CloakAccount contract)
   const onChain = await check2FAEnabledOnChain(walletAddress);
   if (onChain) return true;
 
-  // Fallback to Supabase check (for OZ accounts or if on-chain check fails)
+  // Fallback to API check (for OZ accounts or if on-chain check fails)
   try {
-    const normalizedAddr = normalizeAddress(walletAddress);
-    const sb = await getSupabaseLite();
-    const rows = await sb.select("two_factor_configs", `wallet_address=eq.${normalizedAddr}&is_enabled=eq.true`);
-    return rows.length > 0;
+    const client = await getApiClient();
+    const result = await client.getTwoFactorStatus(walletAddress);
+    return result.enabled;
   } catch (err) {
     console.warn("[2FA] Failed to check 2FA status:", err);
     return false;
@@ -72,9 +71,9 @@ export interface TwoFAApprovalParams {
 export async function request2FAApproval(
   params: TwoFAApprovalParams,
 ): Promise<TwoFAApprovalResult> {
-  const sb = await getSupabaseLite();
+  const client = await getApiClient();
   return sdkRequest2FAApproval(
-    sb,
+    client,
     {
       walletAddress: params.walletAddress,
       action: params.action,

@@ -31,7 +31,7 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, "TransactionDetail">;
 
-/** Extended metadata including Supabase-sourced fields */
+/** Extended metadata including backend API-sourced fields */
 interface TxMetadataExtended extends Omit<ActivityFeedItem, "type"> {
   type: TxMetadata["type"] | string;
   status?: string;

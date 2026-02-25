@@ -3,7 +3,7 @@
  *
  * Manages:
  * - Detecting if the current wallet is a ward account (on-chain check)
- * - Guardian's ward list (from Supabase)
+ * - Guardian's ward list (from backend API)
  * - Ward info display (read-only settings from on-chain)
  * - Ward creation flow (for guardians)
  * - Ward approval flow (reuses approval_requests infrastructure)
@@ -20,7 +20,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { RpcProvider, Account, ec, CallData, hash, num, transaction } from "starknet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  SupabaseLite as SdkSupabaseLite,
+  CloakApiClient,
   checkIfWardAccount as sdkCheckIfWardAccount,
   fetchWardApprovalNeeds as sdkFetchWardApprovalNeeds,
   fetchWardInfo as sdkFetchWardInfo,
@@ -51,12 +51,11 @@ import { useWallet } from "./WalletContext";
 import { useToast } from "../components/Toast";
 import {
   normalizeAddress,
-  getSupabaseLite,
-  getSupabaseConfig,
   getSecondaryPrivateKey,
   deserializeCalls,
   DualSignSigner,
 } from "./twoFactor";
+import { getApiClient } from "./apiClient";
 import { isMockMode } from "../testing/runtimeConfig";
 
 const STORAGE_KEY_IS_WARD = "cloak_is_ward";
@@ -346,26 +345,22 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           info.spendingLimitPerTx = "0";
         }
 
-        // maxPerTx has no on-chain entrypoint — fetch from Supabase
+        // maxPerTx has no on-chain entrypoint — fetch from API
         try {
-          const sb = await getSupabaseLite();
+          const client = await getApiClient();
           const normalizedAddr = normalizeAddress(wallet.keys.starkAddress);
-          const rows = await sb.select(
-            "ward_configs",
-            `ward_address=eq.${normalizedAddr}`
-          );
-          if (rows && rows.length > 0) {
-            const row = rows[0];
-            if (row.max_per_tx) {
-              info.maxPerTx = row.max_per_tx;
+          const wardConfig = await client.getWard(normalizedAddr);
+          if (wardConfig) {
+            if ((wardConfig as any).max_per_tx) {
+              info.maxPerTx = (wardConfig as any).max_per_tx;
             }
-            // Fallback: if on-chain limit was 0 but Supabase has it, use Supabase
-            if (info.spendingLimitPerTx === "0" && row.spending_limit_per_tx) {
-              info.spendingLimitPerTx = row.spending_limit_per_tx;
+            // Fallback: if on-chain limit was 0 but API has it, use API
+            if (info.spendingLimitPerTx === "0" && (wardConfig as any).spending_limit_per_tx) {
+              info.spendingLimitPerTx = (wardConfig as any).spending_limit_per_tx;
             }
           }
         } catch {
-          // Non-critical — Supabase limits are supplementary
+          // Non-critical — API limits are supplementary
         }
         setWardInfo(info);
         wardInfoRef.current = info;
@@ -377,18 +372,15 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     }
   }, [wallet.keys?.starkAddress]);
 
-  // ── Load guardian's ward list from Supabase ──
+  // ── Load guardian's ward list from backend API ──
 
   const refreshWards = useCallback(async () => {
     if (!wallet.keys?.starkAddress) return;
     setIsLoadingWards(true);
     try {
-      const sb = await getSupabaseLite();
+      const client = await getApiClient();
       const normalizedAddr = normalizeAddress(wallet.keys.starkAddress);
-      const data = await sb.select(
-        "ward_configs",
-        `guardian_address=eq.${normalizedAddr}&status=neq.removed&order=created_at.desc`
-      );
+      const data = await client.listWards(normalizedAddr);
       const entries: WardEntry[] = (data || []).map((r: any) => ({
         wardAddress: r.ward_address,
         wardPublicKey: r.ward_public_key,
@@ -400,7 +392,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       }));
 
       // Overlay on-chain frozen state as source-of-truth.
-      // Supabase status can be stale if updates fail or devices are out of sync.
+      // Backend status can be stale if updates fail or devices are out of sync.
       try {
         const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
         const frozenFlags = await Promise.all(
@@ -467,21 +459,23 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         await provider.waitForTransaction(fundTx.transaction_hash);
 
         // Track fund transaction
-        saveTransaction({
-          wallet_address: guardianAccount.address,
-          tx_hash: fundTx.transaction_hash,
-          type: "fund_ward",
-          token: "STRK",
-          amount: fundingAmountDisplay,
-          amount_unit: "erc20_display",
-          recipient: paddedWardAddress,
-          status: "confirmed",
-          account_type: "guardian",
-          ward_address: paddedWardAddress,
-          network: "sepolia",
-          platform: "mobile",
-          note: `Funded ward with ${fundingAmountDisplay} STRK`,
-        }).catch(() => {});
+        getApiClient().then(txClient =>
+          saveTransaction({
+            wallet_address: guardianAccount.address,
+            tx_hash: fundTx.transaction_hash,
+            type: "fund_ward",
+            token: "STRK",
+            amount: fundingAmountDisplay,
+            amount_unit: "erc20_display",
+            recipient: paddedWardAddress,
+            status: "confirmed",
+            account_type: "guardian",
+            ward_address: paddedWardAddress,
+            network: "sepolia",
+            platform: "mobile",
+            note: `Funded ward with ${fundingAmountDisplay} STRK`,
+          }, txClient)
+        ).catch(() => {});
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
           wardAddress: paddedWardAddress,
@@ -531,21 +525,23 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         await provider.waitForTransaction(addTokenTx.transaction_hash);
 
         // Track configure transaction
-        saveTransaction({
-          wallet_address: guardianAccount.address,
-          tx_hash: addTokenTx.transaction_hash,
-          type: "configure_ward",
-          token: "STRK",
-          amount_unit: "erc20_display",
-          status: "confirmed",
-          account_type: "guardian",
-          ward_address: paddedWardAddress,
-          network: "sepolia",
-          platform: "mobile",
-          note: normalizedOptions.dailyLimit && normalizedOptions.dailyLimit !== "0"
-            ? `Configured ward: known token + ${normalizedOptions.dailyLimit} STRK limit`
-            : "Added STRK as known token on ward",
-        }).catch(() => {});
+        getApiClient().then(txClient =>
+          saveTransaction({
+            wallet_address: guardianAccount.address,
+            tx_hash: addTokenTx.transaction_hash,
+            type: "configure_ward",
+            token: "STRK",
+            amount_unit: "erc20_display",
+            status: "confirmed",
+            account_type: "guardian",
+            ward_address: paddedWardAddress,
+            network: "sepolia",
+            platform: "mobile",
+            note: normalizedOptions.dailyLimit && normalizedOptions.dailyLimit !== "0"
+              ? `Configured ward: known token + ${normalizedOptions.dailyLimit} STRK limit`
+              : "Added STRK as known token on ward",
+          }, txClient)
+        ).catch(() => {});
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
           wardAddress: paddedWardAddress,
@@ -569,12 +565,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Step 6: Register in Supabase
+    // Step 6: Register in backend API
     if (startFromStep <= 6) {
       onProgress?.(6, WARD_CREATION_TOTAL_STEPS, "Registering ward in database...");
       try {
-        const sb = await getSupabaseLite();
-        await sb.insert("ward_configs", {
+        const client = await getApiClient();
+        await client.createWardConfig({
           ward_address: normalizeAddress(paddedWardAddress),
           guardian_address: normalizeAddress(wallet.keys!.starkAddress),
           ward_public_key: wardPublicKey,
@@ -584,7 +580,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           spending_limit_per_tx: normalizedOptions.dailyLimit || "0",
           max_per_tx: normalizedOptions.maxPerTx || "0",
           pseudo_name: normalizedOptions.pseudoName || null,
-        });
+        } as any);
       } catch (err) {
         await AsyncStorage.setItem(STORAGE_KEY_PARTIAL_WARD, JSON.stringify({
           wardAddress: paddedWardAddress,
@@ -679,8 +675,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         onProgress?.(step, WARD_CREATION_TOTAL_STEPS, stepMessage);
       }
 
-      const sb = await getSupabaseLite();
-      await sb.insert("ward_configs", {
+      const client = await getApiClient();
+      await client.createWardConfig({
         ward_address: normalizeAddress(wardAddress),
         guardian_address: normalizeAddress(wallet.keys.starkAddress),
         ward_public_key: wardPublicKey,
@@ -690,7 +686,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         spending_limit_per_tx: normalizedOptions.dailyLimit || "0",
         max_per_tx: normalizedOptions.maxPerTx || "0",
         pseudo_name: normalizedOptions.pseudoName || null,
-      });
+      } as any);
 
       await AsyncStorage.removeItem(STORAGE_KEY_PARTIAL_WARD);
       setPartialWard(null);
@@ -750,17 +746,19 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     await provider.waitForTransaction(deployResult.transaction_hash);
 
     // Track deploy transaction
-    saveTransaction({
-      wallet_address: wallet.keys.starkAddress,
-      tx_hash: deployResult.transaction_hash,
-      type: "deploy_ward",
-      token: "STRK",
-      status: "confirmed",
-      account_type: "guardian",
-      network: "sepolia",
-      platform: "mobile",
-      note: `Deployed ward contract`,
-    }).catch(() => {});
+    getApiClient().then(txClient =>
+      saveTransaction({
+        wallet_address: wallet.keys!.starkAddress,
+        tx_hash: deployResult.transaction_hash,
+        type: "deploy_ward",
+        token: "STRK",
+        status: "confirmed",
+        account_type: "guardian",
+        network: "sepolia",
+        platform: "mobile",
+        note: `Deployed ward contract`,
+      }, txClient)
+    ).catch(() => {});
 
     const wardAddress =
       deployResult.contract_address && deployResult.contract_address.length > 0
@@ -848,16 +846,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const freezeWard = useCallback(
     async (wardAddress: string) => {
       await executeGuardianAction(wardAddress, "freeze", []);
-      // Keep Supabase status in sync so guardian UI can reliably show Unfreeze.
+      // Keep API status in sync so guardian UI can reliably show Unfreeze.
       try {
-        const sb = await getSupabaseLite();
-        await sb.update(
-          "ward_configs",
-          `ward_address=eq.${normalizeAddress(wardAddress)}`,
-          { status: "frozen" },
-        );
+        const client = await getApiClient();
+        await client.updateWard(normalizeAddress(wardAddress), { status: "frozen" });
       } catch (err) {
-        console.warn("[WardContext] Failed to update ward status=frozen in Supabase:", err);
+        console.warn("[WardContext] Failed to update ward status=frozen:", err);
       }
 
       // Optimistic local update (avoids UI flip-flop while refreshWards is in-flight).
@@ -877,16 +871,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const unfreezeWard = useCallback(
     async (wardAddress: string) => {
       await executeGuardianAction(wardAddress, "unfreeze", []);
-      // Keep Supabase status in sync so guardian UI can reliably show Freeze/Unfreeze.
+      // Keep API status in sync so guardian UI can reliably show Freeze/Unfreeze.
       try {
-        const sb = await getSupabaseLite();
-        await sb.update(
-          "ward_configs",
-          `ward_address=eq.${normalizeAddress(wardAddress)}`,
-          { status: "active" },
-        );
+        const client = await getApiClient();
+        await client.updateWard(normalizeAddress(wardAddress), { status: "active" });
       } catch (err) {
-        console.warn("[WardContext] Failed to update ward status=active in Supabase:", err);
+        console.warn("[WardContext] Failed to update ward status=active:", err);
       }
 
       // Optimistic local update (avoids UI flip-flop while refreshWards is in-flight).
@@ -908,14 +898,10 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       await executeGuardianAction(wardAddress, "set_spending_limit", [
         limitPerTx,
       ]);
-      // Update Supabase
+      // Update API
       try {
-        const sb = await getSupabaseLite();
-        await sb.update(
-          "ward_configs",
-          `ward_address=eq.${normalizeAddress(wardAddress)}`,
-          { spending_limit_per_tx: limitPerTx }
-        );
+        const client = await getApiClient();
+        await client.updateWard(normalizeAddress(wardAddress), { spending_limit_per_tx: limitPerTx } as any);
       } catch {
         // Non-critical
       }
@@ -931,14 +917,10 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         "set_require_guardian_for_all",
         [required ? "0x1" : "0x0"]
       );
-      // Update Supabase
+      // Update API
       try {
-        const sb = await getSupabaseLite();
-        await sb.update(
-          "ward_configs",
-          `ward_address=eq.${normalizeAddress(wardAddress)}`,
-          { require_guardian_for_all: required }
-        );
+        const client = await getApiClient();
+        await client.updateWard(normalizeAddress(wardAddress), { require_guardian_for_all: required } as any);
       } catch {
         // Non-critical
       }
@@ -960,16 +942,17 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const fetchWardSignRequests = useCallback(async () => {
     if (!wallet.keys?.starkAddress || !isWard) return;
     try {
-      const sb = await getSupabaseLite();
+      const client = await getApiClient();
       const myAddr = normalizeAddress(wallet.keys.starkAddress);
-      const now = new Date().toISOString();
-      const data = await sb.select(
-        "ward_approval_requests",
-        `ward_address=eq.${myAddr}&status=eq.pending_ward_sig&expires_at=gt.${now}&order=created_at.desc`,
-      );
+      const data = await client.getPendingWardApprovals({ ward: myAddr });
       if (data) {
-        const filtered = data.filter(
-          (row: any) => !suppressWardPromptIdsRef.current.has(row.id),
+        // Filter to pending_ward_sig status and non-expired
+        const now = new Date().toISOString();
+        const filtered = (data as any[]).filter(
+          (row: any) =>
+            row.status === "pending_ward_sig" &&
+            (!row.expires_at || row.expires_at > now) &&
+            !suppressWardPromptIdsRef.current.has(row.id),
         );
         setPendingWard2faRequests(filtered);
       }
@@ -981,15 +964,18 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const fetchGuardianRequests = useCallback(async () => {
     if (!wallet.keys?.starkAddress || isWard || wards.length === 0) return;
     try {
-      const sb = await getSupabaseLite();
+      const client = await getApiClient();
       const myAddr = normalizeAddress(wallet.keys.starkAddress);
-      const now = new Date().toISOString();
-      const data = await sb.select(
-        "ward_approval_requests",
-        `guardian_address=eq.${myAddr}&status=eq.pending_guardian&expires_at=gt.${now}&order=created_at.desc`,
-      );
+      const data = await client.getPendingWardApprovals({ guardian: myAddr });
       if (data) {
-        setPendingGuardianRequests(data);
+        // Filter to pending_guardian status and non-expired
+        const now = new Date().toISOString();
+        const filtered = (data as any[]).filter(
+          (row: any) =>
+            row.status === "pending_guardian" &&
+            (!row.expires_at || row.expires_at > now),
+        );
+        setPendingGuardianRequests(filtered);
       }
     } catch (e) {
       console.warn("[WardContext] Guardian poll error:", e);
@@ -1064,7 +1050,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const approveAsWard = useCallback(async (request: WardApprovalRequest) => {
     if (!wallet.keys) throw new Error("No wallet keys");
     if (isMockMode()) {
-      const sb = await getSupabaseLite();
+      const client = await getApiClient();
       const txHash = createDeterministicHex(`ward_tx_${Date.now()}`);
       const updateBody: Record<string, any> = {
         nonce: "1",
@@ -1082,7 +1068,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         updateBody.ward_2fa_sig_json = JSON.stringify(["0x3", "0x4"]);
       }
 
-      await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+      await client.updateWardApproval(request.id, updateBody as any);
       await fetchWardSignRequests();
       await fetchGuardianRequests();
       showToast(
@@ -1105,7 +1091,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       if (!secondaryPk) throw new Error("Ward 2FA key not found");
     }
 
-    const sb = await getSupabaseLite();
+    const client = await getApiClient();
     const chainId = await provider.getChainId();
     let safetyMultiplier = 1.5;
 
@@ -1163,7 +1149,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           const receipt = await provider.waitForTransaction(txResponse.transaction_hash);
           if ((receipt as any).execution_status === "REVERTED") {
             const revertReason = (receipt as any).revert_reason || "Transaction reverted on-chain";
-            await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+            await client.updateWardApproval(request.id, {
               status: "failed",
               error_message: revertReason,
               final_tx_hash: txResponse.transaction_hash,
@@ -1172,7 +1158,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
             throw new Error(`Transaction reverted: ${revertReason}`);
           }
 
-          await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+          await client.updateWardApproval(request.id, {
             nonce: nonce.toString(),
             resource_bounds_json: rbJson,
             tx_hash: txHash,
@@ -1212,7 +1198,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         if (ward2faSig) {
           updateBody.ward_2fa_sig_json = JSON.stringify(ward2faSig);
         }
-        await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+        await client.updateWardApproval(request.id, updateBody as any);
 
         await fetchWardSignRequests();
         showToast("Ward signature submitted", "success");
@@ -1226,9 +1212,9 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const approveAsGuardian = useCallback(async (request: WardApprovalRequest) => {
     if (!wallet.keys) throw new Error("No wallet keys");
     if (isMockMode()) {
-      const sb = await getSupabaseLite();
+      const client = await getApiClient();
       const txHash = createDeterministicHex(`guardian_tx_${Date.now()}`);
-      await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+      await client.updateWardApproval(request.id, {
         guardian_sig_json: JSON.stringify(["0x5", "0x6"]),
         guardian_2fa_sig_json: request.needs_guardian_2fa
           ? JSON.stringify(["0x7", "0x8"])
@@ -1265,7 +1251,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     // Parse resource bounds via SDK (hex strings → BigInt)
     const resourceBounds = deserializeResourceBounds(request.resource_bounds_json);
 
-    const sb = await getSupabaseLite();
+    const client = await getApiClient();
 
     try {
       const txResponse = await account.execute(calls, {
@@ -1278,7 +1264,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       const receipt = await provider.waitForTransaction(txResponse.transaction_hash);
       if ((receipt as any).execution_status === "REVERTED") {
         const revertReason = (receipt as any).revert_reason || "Transaction reverted on-chain";
-        await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+        await client.updateWardApproval(request.id, {
           guardian_sig_json: JSON.stringify(guardianSig),
           guardian_2fa_sig_json: guardian2faSig ? JSON.stringify(guardian2faSig) : null,
           status: "failed",
@@ -1305,7 +1291,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           ward_address: request.ward_address,
           network: "sepolia",
           platform: "mobile",
-        }).catch(() => {});
+        }, client).catch(() => {});
 
         await fetchGuardianRequests();
         throw new Error(`Transaction reverted: ${revertReason}`);
@@ -1320,7 +1306,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       if (guardian2faSig) {
         updateBody.guardian_2fa_sig_json = JSON.stringify(guardian2faSig);
       }
-      await sb.update("ward_approval_requests", `id=eq.${request.id}`, updateBody);
+      await client.updateWardApproval(request.id, updateBody as any);
 
       // Look up ward name from guardian's ward list
       const normalizedWardAddr = normalizeAddress(request.ward_address);
@@ -1342,7 +1328,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         ward_address: request.ward_address,
         network: "sepolia",
         platform: "mobile",
-      }).catch(() => {});
+      }, client).catch(() => {});
 
       await fetchGuardianRequests();
       showToast("Guardian approval confirmed on-chain", "success");
@@ -1352,7 +1338,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
       if (gasInfo) {
         // Gas error — set status to gas_error so the extension can auto-retry
-        await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+        await client.updateWardApproval(request.id, {
           guardian_sig_json: JSON.stringify(guardianSig),
           guardian_2fa_sig_json: guardian2faSig ? JSON.stringify(guardian2faSig) : null,
           status: "gas_error",
@@ -1370,7 +1356,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
       // Non-gas error — mark as failed (if not already marked by revert check)
       if (!errMsg.includes("Transaction reverted:")) {
-        await sb.update("ward_approval_requests", `id=eq.${request.id}`, {
+        await client.updateWardApproval(request.id, {
           status: "failed",
           error_message: errMsg,
           responded_at: new Date().toISOString(),
@@ -1383,7 +1369,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   }, [wallet.keys, wards, fetchGuardianRequests, showToast]);
 
   // ── Initiate a ward transaction (for ward users on mobile) ──
-  // Inserts a request into Supabase, then polls for completion.
+  // Inserts a request into backend API, then polls for completion.
   // The WardApprovalModal auto-detects pending_ward_sig and prompts the user.
 
   const initiateWardTransaction = useCallback(async (params: {
@@ -1403,7 +1389,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       throw new Error("No wallet connected");
     }
     if (isMockMode()) {
-      const sb = await getSupabaseLite();
+      const mockClient = await getApiClient();
       const now = new Date();
       const txHash = createDeterministicHex(`mock_ward_request_${now.getTime()}`);
       const requestId = `mock-ward-${now.getTime()}`;
@@ -1422,8 +1408,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         (await AsyncStorage.getItem(STORAGE_KEY_GUARDIAN_ADDR)) ||
         wallet.keys.starkAddress;
 
-      await sb.insert("ward_approval_requests", {
-        id: requestId,
+      await mockClient.createWardApproval({
         ward_address: normalizeAddress(wallet.keys.starkAddress),
         guardian_address: normalizeAddress(guardianAddress),
         action: params.action,
@@ -1445,10 +1430,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         status,
         final_tx_hash: null,
         error_message: null,
-        created_at: now.toISOString(),
         expires_at: new Date(now.getTime() + 10 * 60 * 1000).toISOString(),
-        responded_at: null,
-      });
+      } as any);
 
       await fetchWardSignRequests();
       await fetchGuardianRequests();
@@ -1475,12 +1458,11 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       : await sdkFetchWardApprovalNeeds(provider as any, wallet.keys.starkAddress);
     if (!needs) throw new Error("Failed to read ward config from chain");
 
-    // Serialize calls for Supabase
+    // Serialize calls for API
     const callsJson = serializeCalls(params.calls);
 
-    // Construct SDK SupabaseLite from mobile's stored config
-    const { url, key } = await getSupabaseConfig();
-    const sdkSb = new SdkSupabaseLite(url, key);
+    // Get API client for SDK ward approval flow
+    const sdkClient = await getApiClient();
 
     const requestAmount = params.amount
       ? formatWardAmount(params.amount, params.token, params.action)
@@ -1495,7 +1477,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const result = await sdkRequestWardApproval(
-        sdkSb,
+        sdkClient,
         {
           wardAddress: wallet.keys.starkAddress,
           guardianAddress: needs.guardianAddress,
@@ -1559,8 +1541,8 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const rejectWardRequest = useCallback(async (requestId: string) => {
-    const sb = await getSupabaseLite();
-    await sb.update("ward_approval_requests", `id=eq.${requestId}`, {
+    const client = await getApiClient();
+    await client.updateWardApproval(requestId, {
       status: "rejected",
       responded_at: new Date().toISOString(),
     });

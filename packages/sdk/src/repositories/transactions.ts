@@ -1,5 +1,5 @@
 import type { RpcProvider } from "starknet";
-import type { SupabaseLite } from "../supabase";
+import type { CloakApiClient } from "../api-client";
 import {
   saveTransaction,
   updateTransactionStatus,
@@ -23,11 +23,11 @@ export interface SaveTransactionInput
 }
 
 export class TransactionsRepository {
-  private readonly supabase: SupabaseLite;
+  private readonly client: CloakApiClient;
   private readonly provider: RpcProvider;
 
-  constructor(supabase: SupabaseLite, provider: RpcProvider) {
-    this.supabase = supabase;
+  constructor(client: CloakApiClient, provider: RpcProvider) {
+    this.client = client;
     this.provider = provider;
   }
 
@@ -39,7 +39,7 @@ export class TransactionsRepository {
       amount_unit: amount?.unit ?? null,
       note: note ?? amount?.display ?? null,
     };
-    return saveTransaction(record, this.supabase);
+    return saveTransaction(record, this.client);
   }
 
   async updateStatus(
@@ -53,15 +53,15 @@ export class TransactionsRepository {
       status,
       errorMessage,
       fee,
-      this.supabase,
+      this.client,
     );
   }
 
   async listByWallet(walletAddress: string, limit = 100): Promise<TransactionRecord[]> {
-    return getTransactions(walletAddress, limit, this.supabase);
+    return getTransactions(walletAddress, limit, this.client);
   }
 
   async confirm(txHash: string): Promise<void> {
-    await confirmTransaction(this.provider, txHash, this.supabase);
+    await confirmTransaction(this.provider, txHash, this.client);
   }
 }

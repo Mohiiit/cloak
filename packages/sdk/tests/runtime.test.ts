@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { SupabaseLite } from "../src/supabase";
+import { CloakApiClient } from "../src/api-client";
 import { MemoryStorage } from "../src/storage/memory";
 import { createCloakRuntime } from "../src/runtime/createRuntime";
 import * as twoFactor from "../src/two-factor";
@@ -17,15 +17,15 @@ describe("createCloakRuntime", () => {
 
     expect(runtime.config.network).toBe("sepolia");
     expect(runtime.deps.provider).toBeDefined();
-    expect(runtime.deps.supabase).toBeDefined();
+    expect(runtime.deps.apiClient).toBeDefined();
     expect(runtime.deps.storage).toBeInstanceOf(MemoryStorage);
     expect(typeof runtime.deps.now()).toBe("number");
   });
 
   it("wires approval methods to the shared supabase client", async () => {
     const provider = {} as any;
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
-    const runtime = createCloakRuntime({ provider, supabase: sb });
+    const client = new CloakApiClient("https://example.com", "test-key");
+    const runtime = createCloakRuntime({ provider, apiClient: client });
 
     const twoFASpy = vi
       .spyOn(twoFactor, "request2FAApproval")
@@ -65,13 +65,13 @@ describe("createCloakRuntime", () => {
     });
 
     expect(twoFASpy).toHaveBeenCalledWith(
-      sb,
+      client,
       expect.objectContaining({ walletAddress: "0x123" }),
       undefined,
       undefined,
     );
     expect(wardSpy).toHaveBeenCalledWith(
-      sb,
+      client,
       expect.objectContaining({ wardAddress: "0xward" }),
       undefined,
       undefined,
@@ -81,8 +81,8 @@ describe("createCloakRuntime", () => {
 
   it("wires transaction and ward methods with shared provider/supabase", async () => {
     const provider = { waitForTransaction: vi.fn() } as any;
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
-    const runtime = createCloakRuntime({ provider, supabase: sb });
+    const client = new CloakApiClient("https://example.com", "test-key");
+    const runtime = createCloakRuntime({ provider, apiClient: client });
 
     const saveSpy = vi.spyOn(transactions, "saveTransaction").mockResolvedValue(null);
     const updateSpy = vi
@@ -172,22 +172,22 @@ describe("createCloakRuntime", () => {
 
     expect(saveSpy).toHaveBeenCalledWith(
       expect.objectContaining({ tx_hash: "0xtx" }),
-      sb,
+      client,
     );
     expect(saveSpy).toHaveBeenCalledWith(
       expect.objectContaining({ tx_hash: "0xrouter" }),
-      sb,
+      client,
     );
     expect(updateSpy).toHaveBeenCalledWith(
       "0xtx",
       "confirmed",
       undefined,
       undefined,
-      sb,
+      client,
     );
-    expect(listSpy).toHaveBeenCalledWith("0x1", 10, sb);
-    expect(confirmSpy).toHaveBeenCalledWith(provider, "0xtx", sb);
-    expect(confirmSpy).toHaveBeenCalledWith(provider, "0xrouter", sb);
+    expect(listSpy).toHaveBeenCalledWith("0x1", 10, client);
+    expect(confirmSpy).toHaveBeenCalledWith(provider, "0xtx", client);
+    expect(confirmSpy).toHaveBeenCalledWith(provider, "0xrouter", client);
 
     expect(snapshotSpy).toHaveBeenCalledWith(provider, "0xward");
     expect(evaluateSpy).toHaveBeenCalledWith(
@@ -203,7 +203,7 @@ describe("createCloakRuntime", () => {
 
   it("wires swap module through configured adapter", async () => {
     const provider = {} as any;
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
+    const client = new CloakApiClient("https://example.com", "test-key");
     const quote = {
       id: "q1",
       provider: "avnu" as const,
@@ -236,7 +236,7 @@ describe("createCloakRuntime", () => {
     };
     const runtime = createCloakRuntime({
       provider,
-      supabase: sb,
+      apiClient: client,
       swapsAdapter: adapter,
     });
 
@@ -273,7 +273,7 @@ describe("createCloakRuntime", () => {
 
   it("runs executeComposed on runtime swap module", async () => {
     const provider = {} as any;
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
+    const client = new CloakApiClient("https://example.com", "test-key");
     const quote = {
       id: "q2",
       provider: "avnu" as const,
@@ -306,7 +306,7 @@ describe("createCloakRuntime", () => {
     };
     const runtime = createCloakRuntime({
       provider,
-      supabase: sb,
+      apiClient: client,
       swapsAdapter: adapter,
     });
 

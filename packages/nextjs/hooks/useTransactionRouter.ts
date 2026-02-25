@@ -5,7 +5,7 @@
  *
  * Wraps `account.execute(calls)` with ward/2FA checks.
  * If the connected wallet is a ward or has 2FA enabled, transactions
- * are routed through Supabase approval pipelines (signed by mobile app).
+ * are routed through backend API approval pipelines (signed by mobile app).
  * Otherwise, transactions execute directly via the connected wallet.
  */
 import { useCallback } from "react";

@@ -1,4 +1,4 @@
-import type { SupabaseLite } from "../supabase";
+import type { CloakApiClient } from "../api-client";
 import {
   request2FAApproval,
   type TwoFAApprovalParams,
@@ -46,10 +46,10 @@ export interface WardApprovalPollOptions extends ApprovalPollOptions {
 }
 
 export class ApprovalsRepository {
-  private readonly supabase: SupabaseLite;
+  private readonly client: CloakApiClient;
 
-  constructor(supabase: SupabaseLite) {
-    this.supabase = supabase;
+  constructor(client: CloakApiClient) {
+    this.client = client;
   }
 
   async requestTwoFactor(
@@ -57,7 +57,7 @@ export class ApprovalsRepository {
     options: ApprovalPollOptions = {},
   ): Promise<TwoFAApprovalResult> {
     return request2FAApproval(
-      this.supabase,
+      this.client,
       params,
       options.onStatusChange,
       options.signal,
@@ -69,7 +69,7 @@ export class ApprovalsRepository {
     options: WardApprovalPollOptions = {},
   ): Promise<WardApprovalResult> {
     return requestWardApproval(
-      this.supabase,
+      this.client,
       params,
       options.onStatusChange,
       options.signal,
@@ -81,18 +81,18 @@ export class ApprovalsRepository {
     params: WardApprovalParams,
     options?: WardApprovalRequestOptions,
   ): Promise<WardApprovalRequest> {
-    return createWardApprovalRequest(this.supabase, params, options);
+    return createWardApprovalRequest(this.client, params, options);
   }
 
   async getWardRequest(requestId: string): Promise<WardApprovalRequest | null> {
-    return getWardApprovalRequestById(this.supabase, requestId);
+    return getWardApprovalRequestById(this.client, requestId);
   }
 
   async updateWardRequest(
     requestId: string,
     update: WardApprovalUpdate,
   ): Promise<WardApprovalRequest | null> {
-    return updateWardApprovalRequest(this.supabase, requestId, update);
+    return updateWardApprovalRequest(this.client, requestId, update);
   }
 
   async listGuardianWardRequests(
@@ -100,7 +100,7 @@ export class ApprovalsRepository {
     statuses?: WardApprovalStatus[],
     limit?: number,
   ): Promise<WardApprovalRequest[]> {
-    return listWardApprovalRequestsForGuardian(this.supabase, guardianAddress, statuses, limit);
+    return listWardApprovalRequestsForGuardian(this.client, guardianAddress, statuses, limit);
   }
 
   async listWardRequests(
@@ -108,7 +108,7 @@ export class ApprovalsRepository {
     statuses?: WardApprovalStatus[],
     limit?: number,
   ): Promise<WardApprovalRequest[]> {
-    return listWardApprovalRequestsForWard(this.supabase, wardAddress, statuses, limit);
+    return listWardApprovalRequestsForWard(this.client, wardAddress, statuses, limit);
   }
 
   toWardRequestView(request: WardApprovalRequest): WardApprovalUiModel {

@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, ActivityIndicator, Animated, Easing, TouchableOpacity } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { AlertTriangle, Check, ChevronsUpDown, Pencil, RefreshCw, Repeat, X } from "lucide-react-native";
+import { AlertTriangle, ArrowLeft, Check, ChevronsUpDown, Pencil, RefreshCw, Repeat, X } from "lucide-react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import { Account, RpcProvider, num, transaction } from "starknet";
 import {
   createCloakRuntime,
-  SupabaseLite,
   DEFAULT_RPC,
   padAddress,
   buildResourceBoundsFromEstimate,
@@ -19,7 +19,7 @@ import { TOKENS, type TokenKey } from "../lib/tokens";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useDualSigExecutor } from "../hooks/useDualSigExecutor";
-import { getSupabaseConfig } from "../lib/twoFactor";
+import { getApiClient } from "../lib/apiClient";
 import { bringRateAndQuote, type QuoteBreakdown } from "../lib/swapQuote";
 import { Confetti } from "../components/Confetti";
 
@@ -285,15 +285,14 @@ export default function SwapScreen() {
     let cancelled = false;
     const timeout = setTimeout(async () => {
       try {
-        const { url, key } = await getSupabaseConfig();
+        const apiClient = await getApiClient();
         const breakdown = await bringRateAndQuote({
           walletAddress,
           fromToken,
           toToken,
           sentUnits: quantizedUnits,
           slippageBps,
-          supabaseUrl: url,
-          supabaseKey: key,
+          apiClient,
         });
         if (cancelled) return;
         setQuoteBreakdown(breakdown);
@@ -481,11 +480,11 @@ export default function SwapScreen() {
     try {
       const walletAddress = padAddress(wallet.keys.starkAddress);
       const sentUnits = (quoteBreakdown?.sentUnits ?? 0n).toString();
-      const { url, key } = await getSupabaseConfig();
+      const swapApiClient = await getApiClient();
       const runtime = createCloakRuntime({
         network: "sepolia",
         provider: new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia }) as any,
-        supabase: new SupabaseLite(url, key),
+        apiClient: swapApiClient,
       });
       runtimeSwapsRepo = runtime.repositories.swaps;
       executionId = `swap_${Date.now()}_${walletAddress.slice(-6)}`;
@@ -733,6 +732,15 @@ export default function SwapScreen() {
   };
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      {/* Header */}
+      <View style={styles.screenHeader}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={20} color={colors.text} />
+        </Pressable>
+        <Text style={styles.screenHeaderTitle}>Swap</Text>
+        <View style={styles.backBtn} />
+      </View>
     <View style={styles.container}>
       <ScrollView
         style={styles.scroll}
@@ -1044,7 +1052,7 @@ export default function SwapScreen() {
               {...testProps(testIDs.swap.completeViewDetails)}
               onPress={() => {
                 setSwapOverlayMode("none");
-                navigation.getParent()?.navigate("SwapDetail", {
+                navigation.navigate("SwapDetail", {
                   pair: `${fromToken} → ${toToken}`,
                   sentUnits: (quoteBreakdown?.sentUnits ?? 0n).toString(),
                   receivedUnits: (quoteBreakdown?.minimumUnits ?? 0n).toString(),
@@ -1147,10 +1155,35 @@ export default function SwapScreen() {
         </View>
       </Modal>
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  screenHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  screenHeaderTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.bg,

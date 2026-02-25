@@ -187,7 +187,7 @@ function normalizeWardAmountUnit(row: WardApprovalRow): string | null {
 }
 
 /** Fan-out query pattern: direct + ward + managed wards, deduplicated. */
-async function fanOutQuery<T extends Record<string, unknown>>(
+async function fanOutQuery<T extends object>(
   sb: SupabaseClient,
   table: string,
   normalized: string,
@@ -230,7 +230,7 @@ async function fanOutQuery<T extends Record<string, unknown>>(
   const seen = new Set<string>();
   const all: T[] = [];
   for (const row of [...byWallet, ...byWard, ...byManagedWards]) {
-    const key = (row[deduplicateKey] as string) || "";
+    const key = ((row as Record<string, unknown>)[deduplicateKey] as string) || "";
     if (key && !seen.has(key)) {
       seen.add(key);
       all.push(row);

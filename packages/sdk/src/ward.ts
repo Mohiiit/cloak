@@ -3,10 +3,16 @@
  *
  * All functions are platform-agnostic (no React, no browser/mobile APIs).
  * On-chain reads use starknet.js RpcProvider.
- * Supabase operations accept a SupabaseLite instance from the caller.
+ * API operations accept a CloakApiClient instance from the caller.
  */
 import { ec, num, hash, transaction, RpcProvider } from "starknet";
-import type { SupabaseLite } from "./supabase";
+import type { CloakApiClient } from "./api-client";
+import { CloakApiError } from "./api-client";
+import type {
+  WardApprovalResponse,
+  CreateWardApprovalRequest as ApiCreateWardApprovalRequest,
+  UpdateWardApprovalRequest as ApiUpdateWardApprovalRequest,
+} from "./types/api";
 import { TOKENS, formatTokenAmount } from "./tokens";
 import type { TokenKey } from "./types";
 import { DEFAULT_RPC } from "./config";
@@ -980,13 +986,13 @@ export function toWardApprovalUiModel(request: WardApprovalRequest): WardApprova
 }
 
 export async function createWardApprovalRequest(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   params: WardApprovalParams,
   options?: WardApprovalRequestOptions,
 ): Promise<WardApprovalRequest> {
   const normalizedWard = normalizeAddress(params.wardAddress);
   const normalizedGuardian = normalizeAddress(params.guardianAddress);
-  const rows = await sb.insert("ward_approval_requests", {
+  const body: ApiCreateWardApprovalRequest = {
     ward_address: normalizedWard,
     guardian_address: normalizedGuardian,
     action: params.action,
@@ -1002,28 +1008,31 @@ export async function createWardApprovalRequest(
     needs_ward_2fa: params.needsWard2fa,
     needs_guardian: params.needsGuardian,
     needs_guardian_2fa: params.needsGuardian2fa,
-    status: options?.initialStatus || "pending_ward_sig",
-  });
-  const row = Array.isArray(rows) ? rows[0] : rows;
-  if (!row) throw new Error("Failed to create ward approval request");
-  return toWardApprovalRequest(row);
+    initial_status: options?.initialStatus || "pending_ward_sig",
+  };
+  const response = await client.createWardApproval(body);
+  return toWardApprovalRequest(response);
 }
 
 export async function getWardApprovalRequestById(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   requestId: string,
 ): Promise<WardApprovalRequest | null> {
-  const rows = await sb.select("ward_approval_requests", `id=eq.${requestId}`);
-  if (!rows || rows.length === 0) return null;
-  return toWardApprovalRequest(rows[0]);
+  try {
+    const response = await client.getWardApproval(requestId);
+    return toWardApprovalRequest(response);
+  } catch (err) {
+    if (err instanceof CloakApiError && err.statusCode === 404) return null;
+    throw err;
+  }
 }
 
 export async function updateWardApprovalRequest(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   requestId: string,
   update: WardApprovalUpdate,
 ): Promise<WardApprovalRequest | null> {
-  const body: Record<string, any> = { status: update.status };
+  const body: ApiUpdateWardApprovalRequest = { status: update.status };
   if (update.nonce !== undefined) body.nonce = update.nonce;
   if (update.resourceBoundsJson !== undefined) body.resource_bounds_json = update.resourceBoundsJson;
   if (update.txHash !== undefined) body.tx_hash = update.txHash;
@@ -1033,54 +1042,53 @@ export async function updateWardApprovalRequest(
   if (update.guardian2faSigJson !== undefined) body.guardian_2fa_sig_json = update.guardian2faSigJson;
   if (update.finalTxHash !== undefined) body.final_tx_hash = update.finalTxHash;
   if (update.errorMessage !== undefined) body.error_message = update.errorMessage;
-  if (update.respondedAt !== undefined) {
-    body.responded_at = update.respondedAt;
-  } else if (TERMINAL_WARD_STATUSES.has(update.status)) {
-    body.responded_at = new Date().toISOString();
-  }
-  const rows = await sb.update("ward_approval_requests", `id=eq.${requestId}`, body);
-  if (rows && rows.length > 0) return toWardApprovalRequest(rows[0]);
-  return getWardApprovalRequestById(sb, requestId);
+  await client.updateWardApproval(requestId, body);
+  return getWardApprovalRequestById(client, requestId);
 }
 
+const PENDING_WARD_STATUSES = new Set<WardApprovalStatus>([
+  "pending_ward_sig",
+  "pending_guardian",
+]);
+
 export async function listWardApprovalRequestsForGuardian(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   guardianAddress: string,
   statuses?: WardApprovalStatus[],
   limit = 50,
 ): Promise<WardApprovalRequest[]> {
   const normalizedGuardian = normalizeAddress(guardianAddress);
-  const filters = [`guardian_address=eq.${normalizedGuardian}`];
-  if (statuses && statuses.length > 0) {
-    filters.push(`status=in.(${statuses.join(",")})`);
+  let responses: WardApprovalResponse[];
+  if (statuses && statuses.length > 0 && statuses.every((s) => PENDING_WARD_STATUSES.has(s))) {
+    responses = await client.getPendingWardApprovals({ guardian: normalizedGuardian });
+  } else {
+    responses = await client.getWardApprovalHistory({ guardian: normalizedGuardian, limit });
   }
-  filters.push(`limit=${Math.max(limit, 1)}`);
-  const rows = await sb.select("ward_approval_requests", filters.join("&"), "created_at.desc");
-  return rows.map(toWardApprovalRequest);
+  return responses.map(toWardApprovalRequest);
 }
 
 export async function listWardApprovalRequestsForWard(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   wardAddress: string,
   statuses?: WardApprovalStatus[],
   limit = 50,
 ): Promise<WardApprovalRequest[]> {
   const normalizedWard = normalizeAddress(wardAddress);
-  const filters = [`ward_address=eq.${normalizedWard}`];
-  if (statuses && statuses.length > 0) {
-    filters.push(`status=in.(${statuses.join(",")})`);
+  let responses: WardApprovalResponse[];
+  if (statuses && statuses.length > 0 && statuses.every((s) => PENDING_WARD_STATUSES.has(s))) {
+    responses = await client.getPendingWardApprovals({ ward: normalizedWard });
+  } else {
+    responses = await client.getWardApprovalHistory({ ward: normalizedWard, limit });
   }
-  filters.push(`limit=${Math.max(limit, 1)}`);
-  const rows = await sb.select("ward_approval_requests", filters.join("&"), "created_at.desc");
-  return rows.map(toWardApprovalRequest);
+  return responses.map(toWardApprovalRequest);
 }
 
 /**
- * Insert a ward approval request into Supabase and poll for completion.
- * Platform-agnostic — accepts a SupabaseLite instance from the caller.
+ * Insert a ward approval request via the API and poll for completion.
+ * Platform-agnostic — accepts a CloakApiClient instance from the caller.
  */
 export async function requestWardApproval(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   params: WardApprovalParams,
   onStatusChange?: (status: string) => void,
   signal?: AbortSignal,
@@ -1090,7 +1098,7 @@ export async function requestWardApproval(
 
   let createdRequest: WardApprovalRequest;
   try {
-    createdRequest = await createWardApprovalRequest(sb, params, options);
+    createdRequest = await createWardApprovalRequest(client, params, options);
   } catch (err: any) {
     return { approved: false, error: `Failed to submit ward approval: ${err.message}` };
   }
@@ -1128,7 +1136,7 @@ export async function requestWardApproval(
       }
 
       try {
-        const row = await getWardApprovalRequestById(sb, requestId);
+        const row = await getWardApprovalRequestById(client, requestId);
 
         if (!row) {
           resolve({ approved: false, error: "Ward approval request not found" });

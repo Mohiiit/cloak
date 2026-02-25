@@ -1,4 +1,7 @@
+import { CloakApiClient } from "@cloak-wallet/sdk";
 import { bringRateAndQuote, formatQuoteError } from "../src/lib/swapQuote";
+
+const mockApiClient = new CloakApiClient("http://localhost:3000", "test-key");
 
 describe("swapQuote", () => {
   it("formats raw api errors", () => {
@@ -14,8 +17,7 @@ describe("swapQuote", () => {
         toToken: "ETH",
         sentUnits: 100n,
         slippageBps: 50,
-        supabaseUrl: "https://example.supabase.co",
-        supabaseKey: "sb_publishable_x",
+        apiClient: mockApiClient,
       },
       {
         quoteViaSdk: async () => ({
@@ -44,8 +46,7 @@ describe("swapQuote", () => {
         toToken: "ETH",
         sentUnits: 20n,
         slippageBps: 50,
-        supabaseUrl: "https://example.supabase.co",
-        supabaseKey: "sb_publishable_x",
+        apiClient: mockApiClient,
       },
       {
         quoteViaSdk: async () => {
@@ -79,8 +80,7 @@ describe("swapQuote", () => {
         toToken: "USDC",
         sentUnits: 100n,
         slippageBps: 50,
-        supabaseUrl: "https://example.supabase.co",
-        supabaseKey: "sb_publishable_x",
+        apiClient: mockApiClient,
       },
       {
         quoteViaSdk: async () => ({

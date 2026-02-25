@@ -1,4 +1,5 @@
-import type { SupabaseLite } from "./supabase";
+import type { CloakApiClient } from "./api-client";
+import type { ViewingGrantResponse, InnocenceProofResponse } from "./types/api";
 import { normalizeAddress } from "./ward";
 
 export type ViewingGrantStatus = "active" | "revoked" | "expired";
@@ -26,120 +27,100 @@ export interface InnocenceProof {
   created_at?: string;
 }
 
-export interface ComplianceTables {
-  viewingKeyGrants?: string;
-  innocenceProofs?: string;
-}
+// ─── Mappers ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_TABLES: Required<ComplianceTables> = {
-  viewingKeyGrants: "viewing_key_grants",
-  innocenceProofs: "innocence_proofs",
-};
-
-function tables(custom?: ComplianceTables): Required<ComplianceTables> {
+function toViewingKeyGrant(res: ViewingGrantResponse): ViewingKeyGrant {
   return {
-    viewingKeyGrants: custom?.viewingKeyGrants ?? DEFAULT_TABLES.viewingKeyGrants,
-    innocenceProofs: custom?.innocenceProofs ?? DEFAULT_TABLES.innocenceProofs,
+    id: res.id,
+    owner_address: res.owner_address,
+    viewer_address: res.viewer_address,
+    encrypted_viewing_key: res.encrypted_viewing_key,
+    scope: res.scope,
+    expires_at: res.expires_at,
+    status: res.status as ViewingGrantStatus,
+    created_at: res.created_at,
+    revoked_at: res.revoked_at,
+    revocation_reason: res.revocation_reason,
   };
 }
 
-function normalizeGrant(input: ViewingKeyGrant): ViewingKeyGrant {
+function toInnocenceProof(res: InnocenceProofResponse): InnocenceProof {
   return {
-    ...input,
-    owner_address: normalizeAddress(input.owner_address),
-    viewer_address: normalizeAddress(input.viewer_address),
-    status: input.status ?? "active",
+    id: res.id,
+    owner_address: res.owner_address,
+    proof_hash: res.proof_hash,
+    circuit_version: res.circuit_version,
+    nullifier_hash: res.nullifier_hash,
+    note: res.note,
+    created_at: res.created_at,
   };
 }
+
+// ─── Public API ─────────────────────────────────────────────────────────────
 
 export async function grantViewingAccess(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   input: ViewingKeyGrant,
-  customTables?: ComplianceTables,
 ): Promise<ViewingKeyGrant> {
-  const payload = normalizeGrant(input);
-  const [row] = await sb.insert<ViewingKeyGrant>(
-    tables(customTables).viewingKeyGrants,
-    payload,
-  );
-  return row;
+  const res = await client.createViewingGrant({
+    viewer_address: normalizeAddress(input.viewer_address),
+    encrypted_viewing_key: input.encrypted_viewing_key,
+    scope: input.scope,
+    expires_at: input.expires_at ?? null,
+  });
+  return toViewingKeyGrant(res);
 }
 
 export async function revokeViewingAccess(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   grantId: string,
   reason?: string,
-  customTables?: ComplianceTables,
 ): Promise<ViewingKeyGrant | null> {
-  const [row] = await sb.update<ViewingKeyGrant>(
-    tables(customTables).viewingKeyGrants,
-    `id=eq.${grantId}`,
-    {
-      status: "revoked",
-      revoked_at: new Date().toISOString(),
-      revocation_reason: reason ?? null,
-    },
-  );
-  return row ?? null;
+  await client.revokeViewingGrant(grantId, reason);
+  return null;
 }
 
 export async function listViewingGrantsForOwner(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   ownerAddress: string,
   includeRevoked = false,
-  customTables?: ComplianceTables,
 ): Promise<ViewingKeyGrant[]> {
-  const owner = normalizeAddress(ownerAddress);
-  const filters = includeRevoked
-    ? `owner_address=eq.${owner}`
-    : `owner_address=eq.${owner}&status=eq.active`;
-  return sb.select<ViewingKeyGrant>(
-    tables(customTables).viewingKeyGrants,
-    filters,
-    "created_at.desc",
-  );
+  const results = await client.listViewingGrants({
+    role: "owner",
+    include_revoked: includeRevoked,
+  });
+  return results.map(toViewingKeyGrant);
 }
 
 export async function listViewingGrantsForViewer(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   viewerAddress: string,
   includeRevoked = false,
-  customTables?: ComplianceTables,
 ): Promise<ViewingKeyGrant[]> {
-  const viewer = normalizeAddress(viewerAddress);
-  const filters = includeRevoked
-    ? `viewer_address=eq.${viewer}`
-    : `viewer_address=eq.${viewer}&status=eq.active`;
-  return sb.select<ViewingKeyGrant>(
-    tables(customTables).viewingKeyGrants,
-    filters,
-    "created_at.desc",
-  );
+  const results = await client.listViewingGrants({
+    role: "viewer",
+    include_revoked: includeRevoked,
+  });
+  return results.map(toViewingKeyGrant);
 }
 
 export async function submitInnocenceProof(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   proof: InnocenceProof,
-  customTables?: ComplianceTables,
 ): Promise<InnocenceProof> {
-  const [row] = await sb.insert<InnocenceProof>(
-    tables(customTables).innocenceProofs,
-    {
-      ...proof,
-      owner_address: normalizeAddress(proof.owner_address),
-    },
-  );
-  return row;
+  const res = await client.submitInnocenceProof({
+    proof_hash: proof.proof_hash,
+    circuit_version: proof.circuit_version,
+    nullifier_hash: proof.nullifier_hash ?? null,
+    note: proof.note ?? null,
+  });
+  return toInnocenceProof(res);
 }
 
 export async function listInnocenceProofs(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   ownerAddress: string,
-  customTables?: ComplianceTables,
 ): Promise<InnocenceProof[]> {
-  return sb.select<InnocenceProof>(
-    tables(customTables).innocenceProofs,
-    `owner_address=eq.${normalizeAddress(ownerAddress)}`,
-    "created_at.desc",
-  );
+  const results = await client.listInnocenceProofs();
+  return results.map(toInnocenceProof);
 }

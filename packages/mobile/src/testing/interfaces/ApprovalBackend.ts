@@ -38,27 +38,9 @@ export interface ApprovalRequestRecord {
   responded_at: string | null;
 }
 
-export interface SupabaseLiteLike {
-  insert<T = any>(table: string, data: Record<string, any>): Promise<T[]>;
-  select<T = any>(table: string, filters?: string, orderBy?: string): Promise<T[]>;
-  update<T = any>(
-    table: string,
-    filters: string,
-    data: Record<string, any>,
-  ): Promise<T[]>;
-  delete(table: string, filters: string): Promise<void>;
-  poll(
-    table: string,
-    filters: string,
-    intervalMs: number,
-    callback: (rows: any[]) => void,
-  ): () => void;
-}
-
 export interface ApprovalBackend {
   readonly mode: RuntimeMode;
 
-  getSupabaseLite(): Promise<SupabaseLiteLike>;
   fetchPendingRequests(walletAddress: string): Promise<ApprovalRequestRecord[]>;
   updateRequestStatus(
     id: string,

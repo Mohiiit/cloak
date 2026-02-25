@@ -26,6 +26,97 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/anthropic@npm:3.0.6":
+  version: 3.0.6
+  resolution: "@ai-sdk/anthropic@npm:3.0.6"
+  dependencies:
+    "@ai-sdk/provider": 3.0.1
+    "@ai-sdk/provider-utils": 4.0.3
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: bd0ef1b29026b5443c0d74b1a29a481b681e8e5f841ecda8e0e5c5b588fa06361b9ff10e2fe9c3b9e9d9bfaaa2c3460aff858ab9a5a1131465d17a9c93ea42df
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/gateway@npm:3.0.53":
+  version: 3.0.53
+  resolution: "@ai-sdk/gateway@npm:3.0.53"
+  dependencies:
+    "@ai-sdk/provider": 3.0.8
+    "@ai-sdk/provider-utils": 4.0.15
+    "@vercel/oidc": 3.1.0
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 3a1be3a7cdbdda2266495a5848c390630e59a9a19ef82620938df87b709dc8580e42ca969dd5edd9d62a5a5c99568831b0ac97574faad646c27b76bd394f0ed3
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:4.0.15":
+  version: 4.0.15
+  resolution: "@ai-sdk/provider-utils@npm:4.0.15"
+  dependencies:
+    "@ai-sdk/provider": 3.0.8
+    "@standard-schema/spec": ^1.1.0
+    eventsource-parser: ^3.0.6
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: dcafd291134748b01f52b79e60b3d62fd057fc3dba5bdb5971e4109d27bb6de13ec0b5c796934a924d6236c3f2da06533934d5225a501ac777de6d7e5710f09f
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:4.0.3":
+  version: 4.0.3
+  resolution: "@ai-sdk/provider-utils@npm:4.0.3"
+  dependencies:
+    "@ai-sdk/provider": 3.0.1
+    "@standard-schema/spec": ^1.1.0
+    eventsource-parser: ^3.0.6
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: efad5c1a03460fc09ecac4d6848bdce59ee8d0c5ce7f3bdab8e14aab378bdb2f473ca4be9a927a6a6a777d3bba89c8f2927d8e1791994ab676bf167d970bda71
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:4.0.4":
+  version: 4.0.4
+  resolution: "@ai-sdk/provider-utils@npm:4.0.4"
+  dependencies:
+    "@ai-sdk/provider": 3.0.2
+    "@standard-schema/spec": ^1.1.0
+    eventsource-parser: ^3.0.6
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 55fc7acb48043101ad1f075dd8b17a6810090e6d8c265d925db4ff68445ad33197b8211910bd025f152e08c4386b58c1d24ef9874b61fea157342af9dbdb1833
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider@npm:3.0.1":
+  version: 3.0.1
+  resolution: "@ai-sdk/provider@npm:3.0.1"
+  dependencies:
+    json-schema: ^0.4.0
+  checksum: 6ddcf51bf9dca3988b498a93324b065653631909577be0d6dc43ea3756ab43d53406e8de04c16cbe2b9f275c79f868ee0a9c5436a85be71fab8e8b488adef859
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider@npm:3.0.2":
+  version: 3.0.2
+  resolution: "@ai-sdk/provider@npm:3.0.2"
+  dependencies:
+    json-schema: ^0.4.0
+  checksum: 8f4b9822f27995bd5f72f9d4eed7c183f2430c344002375626796743a3b3a7ed08b7a913f3789625f5f7300797b038b04088ae455992e6346a190660c593033f
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider@npm:3.0.8":
+  version: 3.0.8
+  resolution: "@ai-sdk/provider@npm:3.0.8"
+  dependencies:
+    json-schema: ^0.4.0
+  checksum: cdc55caa9ab7836f03c8100ffe359ca57c6e22263238ac89181eaa6dfe6e1011f0c40652eed7ba597f127e1c09b0ab12a4bf6b19343621e5e74ed097c3c7125c
+  languageName: node
+  linkType: hard
+
 "@alloc/quick-lru@npm:^5.2.0":
   version: 5.2.0
   resolution: "@alloc/quick-lru@npm:5.2.0"
@@ -4143,6 +4234,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentelemetry/api@npm:1.9.0":
+  version: 1.9.0
+  resolution: "@opentelemetry/api@npm:1.9.0"
+  checksum: 9e88e59d53ced668f3daaecfd721071c5b85a67dd386f1c6f051d1be54375d850016c881f656ffbe9a03bedae85f7e89c2f2b635313f9c9b195ad033cdc31020
+  languageName: node
+  linkType: hard
+
 "@pkgjs/parseargs@npm:^0.11.0":
   version: 0.11.0
   resolution: "@pkgjs/parseargs@npm:0.11.0"
@@ -6543,6 +6641,7 @@ __metadata:
     "@vitest/coverage-istanbul": ^2.1.1
     "@vitest/coverage-v8": ^2.1.1
     abi-wan-kanabi: ^2.2.4
+    ai: ^6.0.97
     blo: ^1.1.1
     daisyui: latest
     eslint: ^8
@@ -6573,10 +6672,12 @@ __metadata:
     typescript: ^5
     usehooks-ts: ^2.13.0
     vercel: ^33.7.1
+    vercel-minimax-ai-provider: ^0.0.2
     vite: ^6.2.3
     vitest: ^3.0.9
     webpack: ^5.97.1
     webpack-cli: ^6.0.1
+    zod: ^4.3.6
     zustand: ^4.1.2
   peerDependencies:
     "@babel/core": ^7.0.0
@@ -6610,6 +6711,13 @@ __metadata:
     eslint: ^8.0.0
   languageName: unknown
   linkType: soft
+
+"@standard-schema/spec@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "@standard-schema/spec@npm:1.1.0"
+  checksum: 6245ebef5e698bb04752a22e996a7cc40406a404d9f68a9d4e1a7a10f2422da287247508e7b495a2f32bb38f3d57b4daf2c9ab4bf22d9bca13e20a3dc5ec575e
+  languageName: node
+  linkType: hard
 
 "@starknet-io/starknet-types-08@npm:@starknet-io/types-js@~0.8.4, @starknet-io/types-js@npm:^0.8.4":
   version: 0.8.4
@@ -8120,6 +8228,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@vercel/oidc@npm:3.1.0":
+  version: 3.1.0
+  resolution: "@vercel/oidc@npm:3.1.0"
+  checksum: 28de72808d86ba5bd6e4d9d1264a365de8a6f494afae451141fb75328c4aee660b2b545fd374f28c35997469eceed96640ca736c4a1e783f385bac84d423a0a4
+  languageName: node
+  linkType: hard
+
 "@vercel/python@npm:4.1.1":
   version: 4.1.1
   resolution: "@vercel/python@npm:4.1.1"
@@ -8771,6 +8886,20 @@ __metadata:
   version: 7.1.4
   resolution: "agent-base@npm:7.1.4"
   checksum: 86a7f542af277cfbd77dd61e7df8422f90bac512953709003a1c530171a9d019d072e2400eab2b59f84b49ab9dd237be44315ca663ac73e82b3922d10ea5eafa
+  languageName: node
+  linkType: hard
+
+"ai@npm:^6.0.97":
+  version: 6.0.97
+  resolution: "ai@npm:6.0.97"
+  dependencies:
+    "@ai-sdk/gateway": 3.0.53
+    "@ai-sdk/provider": 3.0.8
+    "@ai-sdk/provider-utils": 4.0.15
+    "@opentelemetry/api": 1.9.0
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 84869fc4b991ca49417cbd1f7c53a5534def55265d53228ef4b1fba8db0dd0899555f261d69d8a3a035d6fe5b336cb090c78c81bb1287fee3e8b4cf31448e772
   languageName: node
   linkType: hard
 
@@ -12473,6 +12602,13 @@ __metadata:
   version: 3.3.0
   resolution: "events@npm:3.3.0"
   checksum: f6f487ad2198aa41d878fa31452f1a3c00958f46e9019286ff4787c84aac329332ab45c9cdc8c445928fc6d7ded294b9e005a7fce9426488518017831b272780
+  languageName: node
+  linkType: hard
+
+"eventsource-parser@npm:^3.0.6":
+  version: 3.0.6
+  resolution: "eventsource-parser@npm:3.0.6"
+  checksum: b90ec27f8d992afa7df171db202faaedb1782214f64e50690cbf78bc2629f7751575aa27a72d8ae447e5a7094938406b1a3ea1d89e5f0f2d6916cc8a694b6587
   languageName: node
   linkType: hard
 
@@ -21060,6 +21196,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"vercel-minimax-ai-provider@npm:^0.0.2":
+  version: 0.0.2
+  resolution: "vercel-minimax-ai-provider@npm:0.0.2"
+  dependencies:
+    "@ai-sdk/anthropic": 3.0.6
+    "@ai-sdk/provider": 3.0.2
+    "@ai-sdk/provider-utils": 4.0.4
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 56a8dccb1a91c12eb72f8afdd4d268e17af436dfa30de0a7c51fcacf31cf9b28c187e8cc90d32e213cb4f86a9a83bade9bc55e509acaafc308c42e173ae95aee
+  languageName: node
+  linkType: hard
+
 "vercel@npm:^33.7.1":
   version: 33.7.1
   resolution: "vercel@npm:33.7.1"
@@ -22279,7 +22428,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.25.0 || ^4.0.0":
+"zod@npm:^3.25.0 || ^4.0.0, zod@npm:^4.3.6":
   version: 4.3.6
   resolution: "zod@npm:4.3.6"
   checksum: 19cec761b46bae4b6e7e861ea740f3f248e50a6671825afc8a5758e27b35d6f20ccde9942422fd5cf6f8b697f18bd05ef8bb33f5f2db112ab25cc628de2fae47

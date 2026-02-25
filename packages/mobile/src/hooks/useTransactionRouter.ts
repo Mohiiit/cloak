@@ -3,18 +3,17 @@
  *
  * ALL on-chain transactions go through this hook's `execute()` method.
  * It checks ward status and 2FA status, routing accordingly:
- *   1. Ward account → ward.initiateWardTransaction (Supabase + guardian pipeline)
+ *   1. Ward account → ward.initiateWardTransaction (backend API + guardian pipeline)
  *   2. 2FA enabled  → executeDualSig (biometric + dual-key signing)
  *   3. Otherwise    → direct SDK execution via wallet context
  *
- * After every successful execute(), the transaction is persisted to Supabase
+ * After every successful execute(), the transaction is persisted to the backend API
  * via `saveTransaction()` and confirmed in the background via `confirmTransaction()`.
  */
 import { useCallback } from "react";
 import { Account, RpcProvider, CallData, uint256 } from "starknet";
 import {
   createCloakRuntime,
-  SupabaseLite,
   DEFAULT_RPC,
   TOKENS,
   parseTokenAmount,
@@ -24,7 +23,7 @@ import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
 import { useDualSigExecutor } from "./useDualSigExecutor";
 import { setTransactionRouterPath } from "../testing/transactionRouteTrace";
-import { getSupabaseConfig } from "../lib/twoFactor";
+import { getApiClient } from "../lib/apiClient";
 
 type Action = "fund" | "transfer" | "withdraw" | "rollover" | "erc20_transfer";
 
@@ -76,11 +75,11 @@ export function useTransactionRouter() {
   );
 
   const buildRuntime = useCallback(async () => {
-    const { url, key } = await getSupabaseConfig();
+    const apiClient = await getApiClient();
     return createCloakRuntime({
       network: "sepolia",
-      provider: new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia }),
-      supabase: new SupabaseLite(url, key),
+      provider: new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia }) as any,
+      apiClient,
     });
   }, []);
 
@@ -120,7 +119,7 @@ export function useTransactionRouter() {
         }
       };
 
-      // 1. Ward path — insert Supabase request + poll for guardian approval
+      // 1. Ward path — insert backend request + poll for guardian approval
       if (ward.isWard) {
         const routed = await runtime.router.execute({
           walletAddress,

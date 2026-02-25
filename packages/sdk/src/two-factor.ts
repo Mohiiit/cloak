@@ -1,5 +1,6 @@
 import { ec, num } from "starknet";
-import type { SupabaseLite } from "./supabase";
+import type { CloakApiClient } from "./api-client";
+import type { ApprovalResponse } from "./types/api";
 import { normalizeAddress } from "./ward";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -117,11 +118,11 @@ export interface TwoFAApprovalResult {
 }
 
 /**
- * Insert a 2FA approval request into Supabase and poll for completion.
- * Platform-agnostic — accepts a SupabaseLite instance from the caller.
+ * Insert a 2FA approval request via the Cloak API and poll for completion.
+ * Platform-agnostic — accepts a CloakApiClient instance from the caller.
  */
 export async function request2FAApproval(
-  sb: SupabaseLite,
+  client: CloakApiClient,
   params: TwoFAApprovalParams,
   onStatusChange?: (status: string) => void,
   signal?: AbortSignal,
@@ -130,9 +131,9 @@ export async function request2FAApproval(
 
   onStatusChange?.("Submitting approval request...");
 
-  let rows: any[];
+  let response: ApprovalResponse;
   try {
-    rows = await sb.insert("approval_requests", {
+    response = await client.createApproval({
       wallet_address: normalizedAddr,
       action: params.action,
       token: params.token,
@@ -143,13 +144,12 @@ export async function request2FAApproval(
       nonce: params.nonce,
       resource_bounds_json: params.resourceBoundsJson,
       tx_hash: params.txHash,
-      status: "pending",
     });
   } catch (err: any) {
     return { approved: false, error: `Failed to submit approval: ${err.message}` };
   }
 
-  const requestId = Array.isArray(rows) ? rows[0]?.id : (rows as any)?.id;
+  const requestId = response.id;
   if (!requestId) {
     return { approved: false, error: "Failed to get approval request ID" };
   }
@@ -171,8 +171,7 @@ export async function request2FAApproval(
       }
 
       try {
-        const results = await sb.select("approval_requests", `id=eq.${requestId}`);
-        const row = results[0];
+        const row = await client.getApproval(requestId);
 
         if (!row) {
           resolve({ approved: false, error: "Approval request not found" });

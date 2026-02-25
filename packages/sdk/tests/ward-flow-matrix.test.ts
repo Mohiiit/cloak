@@ -114,44 +114,43 @@ function makeApprovalParams(): WardApprovalParams {
 
 describe("requestWardApproval defaults", () => {
   it("inserts pending_ward_sig by default", async () => {
-    const inserted: any[] = [];
-    const sb = {
-      insert: vi.fn(async (_table: string, body: any) => {
-        inserted.push(body);
-        return [{ id: "req-1", ...body }];
+    const created: any[] = [];
+    const client = {
+      createWardApproval: vi.fn(async (body: any) => {
+        const row = { id: "req-1", ...body, status: body.initial_status || "pending_ward_sig", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString(), responded_at: null, ward_2fa_sig_json: null, guardian_sig_json: null, guardian_2fa_sig_json: null, final_tx_hash: null, error_message: null };
+        created.push(row);
+        return row;
       }),
-      select: vi.fn(async () => [{ id: "req-1", status: "approved", final_tx_hash: "0xabc", tx_hash: "0xabc" }]),
-    };
+      getWardApproval: vi.fn(async () => ({ id: "req-1", status: "approved", final_tx_hash: "0xabc", tx_hash: "0xabc", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })),
+    } as any;
 
-    const result = await requestWardApproval(sb as any, makeApprovalParams());
+    const result = await requestWardApproval(client, makeApprovalParams());
 
-    expect(inserted[0].status).toBe("pending_ward_sig");
+    expect(created[0].status).toBe("pending_ward_sig");
     expect(result).toEqual({ approved: true, txHash: "0xabc" });
   });
 
   it("supports initialStatus override and onRequestCreated hook", async () => {
-    const inserted: any[] = [];
+    const created: any[] = [];
     const onCreated = vi.fn(async () => {});
-    const sb = {
-      insert: vi.fn(async (_table: string, body: any) => {
-        inserted.push(body);
-        return [{ id: "req-2", ...body }];
+    const client = {
+      createWardApproval: vi.fn(async (body: any) => {
+        const row = { id: "req-2", ...body, status: body.initial_status || "pending_ward_sig", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString(), responded_at: null, ward_2fa_sig_json: null, guardian_sig_json: null, guardian_2fa_sig_json: null, final_tx_hash: null, error_message: null };
+        created.push(row);
+        return row;
       }),
-      select: vi.fn(async () => [{ id: "req-2", status: "approved", final_tx_hash: "0xdef", tx_hash: "0xdef" }]),
-    };
+      getWardApproval: vi.fn(async () => ({ id: "req-2", status: "approved", final_tx_hash: "0xdef", tx_hash: "0xdef", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 600000).toISOString() })),
+    } as any;
 
     const result = await requestWardApproval(
-      sb as any,
+      client,
       makeApprovalParams(),
       undefined,
       undefined,
-      {
-        initialStatus: "pending_guardian",
-        onRequestCreated: onCreated,
-      },
+      { initialStatus: "pending_guardian", onRequestCreated: onCreated },
     );
 
-    expect(inserted[0].status).toBe("pending_guardian");
+    expect(created[0].status).toBe("pending_guardian");
     expect(onCreated).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ approved: true, txHash: "0xdef" });
   });

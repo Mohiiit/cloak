@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { getActivityRecords, type ActivityRecord } from "@cloak-wallet/sdk";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
-import { getSupabaseLite } from "@/shared/supabase-config";
+import { getApiClient } from "@/shared/api-config";
 
 export interface TxEvent {
   txHash: string;
@@ -56,9 +56,9 @@ export function useTxHistory(walletAddress?: string) {
     setIsLoading(true);
     setError(null);
     try {
-      // Primary: Supabase unified activity feed
-      const sb = await getSupabaseLite();
-      const records = await getActivityRecords(walletAddress, 200, sb);
+      // Primary: API-backed unified activity feed
+      const client = await getApiClient();
+      const records = await getActivityRecords(walletAddress, 200, client);
       if (records.length > 0) {
         setEvents(records.map(recordToEvent));
         setIsLoading(false);

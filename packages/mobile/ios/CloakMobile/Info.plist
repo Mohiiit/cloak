@@ -55,6 +55,8 @@
 	<string>Cloak uses Face ID to authenticate transactions</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Cloak uses the camera to scan ward invite QR codes during onboarding</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Cloak uses your microphone for voice commands</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Geist-Regular.ttf</string>

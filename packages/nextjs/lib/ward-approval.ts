@@ -2,11 +2,10 @@
  * Ward approval pipeline for Cloak web app.
  *
  * Thin wrapper around the SDK ward module.
- * Constructs a SupabaseLite from localStorage config and delegates to SDK.
+ * Uses CloakApiClient from api-client.ts and delegates to SDK.
  */
 
 import {
-  SupabaseLite,
   fetchWardApprovalNeeds,
   requestWardApproval as sdkRequestWardApproval,
   normalizeAddress,
@@ -17,17 +16,10 @@ import type {
   WardApprovalParams,
   WardApprovalResult,
 } from "@cloak-wallet/sdk";
-import { getSupabaseConfig } from "~~/lib/two-factor";
+import { getClient } from "~~/lib/api-client";
 
 export type { WardApprovalNeeds, WardApprovalParams, WardApprovalResult };
 export { normalizeAddress };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getClient(): SupabaseLite {
-  const { url, key } = getSupabaseConfig();
-  return new SupabaseLite(url, key);
-}
 
 // ─── Ward checks ─────────────────────────────────────────────────────────────
 

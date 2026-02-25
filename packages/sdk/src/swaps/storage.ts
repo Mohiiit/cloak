@@ -1,5 +1,5 @@
-import { DEFAULT_SUPABASE_KEY, DEFAULT_SUPABASE_URL } from "../config";
-import { SupabaseLite } from "../supabase";
+import type { CloakApiClient } from "../api-client";
+import type { SwapResponse, SwapStepResponse } from "../types/api";
 import { normalizeAddress } from "../ward";
 
 export type SwapExecutionStatus = "pending" | "running" | "confirmed" | "failed";
@@ -54,15 +54,6 @@ export interface SwapExecutionStepRecord {
   finished_at?: string | null;
   created_at?: string;
   updated_at?: string;
-}
-
-let _sharedSb: SupabaseLite | null = null;
-
-function getDefaultSb(): SupabaseLite {
-  if (!_sharedSb) {
-    _sharedSb = new SupabaseLite(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY);
-  }
-  return _sharedSb;
 }
 
 function createExecutionId(): string {
@@ -129,41 +120,76 @@ function normalizeSwapRow(row: SwapExecutionRecord): SwapExecutionRecord {
   };
 }
 
+function toSwapExecutionRecord(res: SwapResponse): SwapExecutionRecord {
+  return {
+    id: res.id,
+    execution_id: res.execution_id,
+    wallet_address: res.wallet_address,
+    ward_address: res.ward_address,
+    tx_hash: res.tx_hash,
+    primary_tx_hash: res.primary_tx_hash,
+    tx_hashes: res.tx_hashes,
+    provider: res.provider as "avnu",
+    sell_token: res.sell_token,
+    buy_token: res.buy_token,
+    sell_amount_wei: res.sell_amount_wei,
+    estimated_buy_amount_wei: res.estimated_buy_amount_wei,
+    min_buy_amount_wei: res.min_buy_amount_wei,
+    buy_actual_amount_wei: res.buy_actual_amount_wei,
+    failure_step_key: res.failure_step_key as SwapExecutionStepKey | null,
+    failure_reason: res.failure_reason,
+    route_meta: res.route_meta,
+    status: res.status,
+    error_message: res.error_message,
+    created_at: res.created_at,
+  };
+}
+
+function toSwapStepRecord(res: SwapStepResponse): SwapExecutionStepRecord {
+  return {
+    id: res.id,
+    execution_id: res.execution_id,
+    step_key: res.step_key as SwapExecutionStepKey,
+    step_order: res.step_order,
+    attempt: res.attempt,
+    status: res.status as SwapExecutionStepStatus,
+    tx_hash: res.tx_hash,
+    message: res.message,
+    metadata: res.metadata,
+    started_at: res.started_at,
+    finished_at: res.finished_at,
+    created_at: res.created_at,
+  };
+}
+
 export async function saveSwapExecution(
   record: Omit<SwapExecutionRecord, "id" | "created_at" | "updated_at">,
-  sb?: SupabaseLite,
+  client: CloakApiClient,
 ): Promise<SwapExecutionRecord | null> {
-  const client = sb || getDefaultSb();
   const row = normalizeRecord(record);
   try {
-    const rows = await client.insert<SwapExecutionRecord>("swap_executions", row);
-    return rows[0] ? normalizeSwapRow(rows[0]) : null;
+    const res = await client.saveSwap({
+      execution_id: row.execution_id as string,
+      wallet_address: row.wallet_address as string,
+      ward_address: row.ward_address as string | null,
+      tx_hash: row.tx_hash as string | null,
+      primary_tx_hash: row.primary_tx_hash as string | null,
+      tx_hashes: row.tx_hashes as string[] | null,
+      provider: row.provider as string,
+      sell_token: row.sell_token as string,
+      buy_token: row.buy_token as string,
+      sell_amount_wei: row.sell_amount_wei as string,
+      estimated_buy_amount_wei: row.estimated_buy_amount_wei as string,
+      min_buy_amount_wei: row.min_buy_amount_wei as string,
+      buy_actual_amount_wei: row.buy_actual_amount_wei as string | null,
+      failure_step_key: row.failure_step_key as string | null,
+      failure_reason: row.failure_reason as string | null,
+      route_meta: row.route_meta as Record<string, unknown> | null,
+      status: row.status as SwapExecutionStatus,
+      error_message: row.error_message as string | null,
+    });
+    return toSwapExecutionRecord(res);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const missingExecutionIdColumn = message.includes("execution_id")
-      && message.includes("swap_executions");
-    if (missingExecutionIdColumn && row.tx_hash) {
-      try {
-        const legacyRow = {
-          wallet_address: row.wallet_address,
-          ward_address: row.ward_address,
-          tx_hash: row.tx_hash,
-          provider: row.provider,
-          sell_token: row.sell_token,
-          buy_token: row.buy_token,
-          sell_amount_wei: row.sell_amount_wei,
-          estimated_buy_amount_wei: row.estimated_buy_amount_wei,
-          min_buy_amount_wei: row.min_buy_amount_wei,
-          buy_actual_amount_wei: row.buy_actual_amount_wei,
-          status: row.status === "running" ? "pending" : row.status,
-          error_message: row.error_message,
-        };
-        const rows = await client.insert<SwapExecutionRecord>("swap_executions", legacyRow);
-        return rows[0] ? normalizeSwapRow(rows[0]) : null;
-      } catch (legacyErr) {
-        console.warn("[swaps] saveSwapExecution legacy fallback failed:", legacyErr);
-      }
-    }
     console.warn("[swaps] saveSwapExecution failed:", err);
     return null;
   }
@@ -174,9 +200,8 @@ export async function updateSwapExecution(
   update: Partial<
     Omit<SwapExecutionRecord, "id" | "wallet_address" | "tx_hash" | "execution_id" | "created_at">
   >,
-  sb?: SupabaseLite,
+  client: CloakApiClient,
 ): Promise<void> {
-  const client = sb || getDefaultSb();
   const body: Record<string, unknown> = { ...update };
   if (Array.isArray(body.tx_hashes)) {
     body.tx_hashes = parseTxHashes(body.tx_hashes) || null;
@@ -186,7 +211,16 @@ export async function updateSwapExecution(
   }
   if (Object.keys(body).length === 0) return;
   try {
-    await client.update("swap_executions", `tx_hash=eq.${txHash}`, body);
+    await client.updateSwap(txHash, {
+      status: body.status as SwapExecutionStatus | undefined,
+      tx_hash: body.tx_hash as string | null | undefined,
+      primary_tx_hash: body.primary_tx_hash as string | null | undefined,
+      tx_hashes: body.tx_hashes as string[] | null | undefined,
+      buy_actual_amount_wei: body.buy_actual_amount_wei as string | null | undefined,
+      failure_step_key: body.failure_step_key as string | null | undefined,
+      failure_reason: body.failure_reason as string | null | undefined,
+      error_message: body.error_message as string | null | undefined,
+    });
   } catch (err) {
     console.warn("[swaps] updateSwapExecution failed:", err);
   }
@@ -195,9 +229,8 @@ export async function updateSwapExecution(
 export async function updateSwapExecutionByExecutionId(
   executionId: string,
   update: Partial<Omit<SwapExecutionRecord, "id" | "wallet_address" | "execution_id" | "created_at">>,
-  sb?: SupabaseLite,
+  client: CloakApiClient,
 ): Promise<void> {
-  const client = sb || getDefaultSb();
   const body: Record<string, unknown> = { ...update };
   if (Array.isArray(body.tx_hashes)) {
     body.tx_hashes = parseTxHashes(body.tx_hashes) || null;
@@ -207,7 +240,16 @@ export async function updateSwapExecutionByExecutionId(
   }
   if (Object.keys(body).length === 0) return;
   try {
-    await client.update("swap_executions", `execution_id=eq.${executionId}`, body);
+    await client.updateSwapByExecutionId(executionId, {
+      status: body.status as SwapExecutionStatus | undefined,
+      tx_hash: body.tx_hash as string | null | undefined,
+      primary_tx_hash: body.primary_tx_hash as string | null | undefined,
+      tx_hashes: body.tx_hashes as string[] | null | undefined,
+      buy_actual_amount_wei: body.buy_actual_amount_wei as string | null | undefined,
+      failure_step_key: body.failure_step_key as string | null | undefined,
+      failure_reason: body.failure_reason as string | null | undefined,
+      error_message: body.error_message as string | null | undefined,
+    });
   } catch (err) {
     console.warn("[swaps] updateSwapExecutionByExecutionId failed:", err);
   }
@@ -216,83 +258,28 @@ export async function updateSwapExecutionByExecutionId(
 export async function getSwapExecutions(
   walletAddress: string,
   limit = 100,
-  sb?: SupabaseLite,
+  client: CloakApiClient,
 ): Promise<SwapExecutionRecord[]> {
-  const client = sb || getDefaultSb();
   const normalized = normalizeAddress(walletAddress);
-
-  const [byWallet, byWard] = await Promise.all([
-    client.select<SwapExecutionRecord>(
-      "swap_executions",
-      `wallet_address=eq.${normalized}`,
-      "created_at.desc",
-    ),
-    client.select<SwapExecutionRecord>(
-      "swap_executions",
-      `ward_address=eq.${normalized}`,
-      "created_at.desc",
-    ),
-  ]);
-
-  let byManagedWards: SwapExecutionRecord[] = [];
   try {
-    const wardRows = await client.select<{ ward_address: string }>(
-      "ward_configs",
-      `guardian_address=eq.${normalized}`,
-    );
-    const managedWards = Array.from(
-      new Set(
-        wardRows
-          .map((row) => normalizeAddress(row.ward_address))
-          .filter((addr) => addr !== "0x0"),
-      ),
-    );
-    if (managedWards.length > 0) {
-      const inClause = managedWards.join(",");
-      byManagedWards = await client.select<SwapExecutionRecord>(
-        "swap_executions",
-        `wallet_address=in.(${inClause})`,
-        "created_at.desc",
-      );
-    }
+    const swaps = await client.getSwaps(normalized, { limit });
+    return swaps.map(toSwapExecutionRecord);
   } catch (err) {
-    console.warn("[swaps] managed ward lookup failed:", err);
+    console.warn("[swaps] getSwapExecutions failed:", err);
+    return [];
   }
-
-  const seen = new Set<string>();
-  const all: SwapExecutionRecord[] = [];
-  for (const row of [...byWallet, ...byWard, ...byManagedWards]) {
-    const normalizedRow = normalizeSwapRow(row);
-    const key = normalizedRow.execution_id || normalizedRow.tx_hash || normalizedRow.id || "";
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    all.push(normalizedRow);
-  }
-
-  all.sort((a, b) => {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return tb - ta;
-  });
-
-  return all.slice(0, limit);
 }
 
 export async function getSwapExecutionSteps(
   executionIds: string[],
-  sb?: SupabaseLite,
+  client: CloakApiClient,
 ): Promise<SwapExecutionStepRecord[]> {
   if (executionIds.length === 0) return [];
-  const client = sb || getDefaultSb();
   const unique = Array.from(new Set(executionIds.filter(Boolean)));
   if (unique.length === 0) return [];
   try {
-    const filters = `execution_id=in.(${unique.join(",")})`;
-    return await client.select<SwapExecutionStepRecord>(
-      "swap_execution_steps",
-      filters,
-      "created_at.asc",
-    );
+    const steps = await client.getSwapSteps(unique);
+    return steps.map(toSwapStepRecord);
   } catch (err) {
     console.warn("[swaps] getSwapExecutionSteps failed:", err);
     return [];
@@ -301,28 +288,23 @@ export async function getSwapExecutionSteps(
 
 export async function upsertSwapExecutionStep(
   step: Omit<SwapExecutionStepRecord, "id" | "created_at" | "updated_at">,
-  sb?: SupabaseLite,
+  client: CloakApiClient,
 ): Promise<SwapExecutionStepRecord | null> {
-  const client = sb || getDefaultSb();
   const row = normalizeStepRecord(step);
-  const filters = `execution_id=eq.${step.execution_id}&step_key=eq.${step.step_key}&attempt=eq.${step.attempt}`;
-
   try {
-    const existing = await client.select<SwapExecutionStepRecord>(
-      "swap_execution_steps",
-      filters,
-      "updated_at.desc",
-    );
-    if (existing[0]?.id) {
-      const updated = await client.update<SwapExecutionStepRecord>(
-        "swap_execution_steps",
-        `id=eq.${existing[0].id}`,
-        row,
-      );
-      return updated[0] || existing[0];
-    }
-    const inserted = await client.insert<SwapExecutionStepRecord>("swap_execution_steps", row);
-    return inserted[0] || null;
+    const res = await client.upsertSwapStep({
+      execution_id: row.execution_id as string,
+      step_key: row.step_key as string,
+      step_order: row.step_order as number,
+      attempt: row.attempt as number,
+      status: row.status as SwapExecutionStepStatus,
+      tx_hash: row.tx_hash as string | null,
+      message: row.message as string | null,
+      metadata: row.metadata as Record<string, unknown> | null,
+      started_at: row.started_at as string | null,
+      finished_at: row.finished_at as string | null,
+    });
+    return toSwapStepRecord(res);
   } catch (err) {
     console.warn("[swaps] upsertSwapExecutionStep failed:", err);
     return null;

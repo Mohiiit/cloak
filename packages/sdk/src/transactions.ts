@@ -1,14 +1,14 @@
 /**
- * Transaction tracking — persistent history in Supabase.
+ * Transaction tracking — persistent history via CloakApiClient.
  *
  * All three frontends (web, extension, mobile) use these functions to save
  * and query transaction records. Records survive app reinstalls and are
- * available cross-device since they live in Supabase rather than local storage.
+ * available cross-device since they live server-side rather than in local storage.
  */
 
-import { SupabaseLite } from "./supabase";
 import { normalizeAddress } from "./ward";
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY } from "./config";
+import type { CloakApiClient } from "./api-client";
+import type { TransactionResponse } from "./types/api";
 import type { AmountUnit } from "./token-convert";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -40,51 +40,48 @@ export interface TransactionRecord {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-let _sharedSb: SupabaseLite | null = null;
-
-function getDefaultSb(): SupabaseLite {
-  if (!_sharedSb) {
-    _sharedSb = new SupabaseLite(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY);
-  }
-  return _sharedSb;
+function toTransactionRecord(res: TransactionResponse): TransactionRecord {
+  return {
+    id: res.id,
+    wallet_address: res.wallet_address,
+    tx_hash: res.tx_hash,
+    type: res.type as TransactionType,
+    token: res.token,
+    amount: res.amount,
+    amount_unit: res.amount_unit,
+    recipient: res.recipient,
+    recipient_name: res.recipient_name,
+    note: res.note,
+    status: res.status,
+    error_message: res.error_message,
+    account_type: res.account_type,
+    ward_address: res.ward_address,
+    fee: res.fee,
+    network: res.network,
+    platform: res.platform,
+    created_at: res.created_at,
+  };
 }
 
 // ─── Core Functions ─────────────────────────────────────────────────────────
 
 /**
- * Save a transaction record to Supabase.
+ * Save a transaction record via the backend API.
  * Normalizes wallet_address and ward_address.
  * Fire-and-forget safe — callers should `.catch(() => {})`.
  */
 export async function saveTransaction(
   record: Omit<TransactionRecord, "id" | "created_at">,
-  sb?: SupabaseLite,
+  client: CloakApiClient,
 ): Promise<TransactionRecord | null> {
-  const client = sb || getDefaultSb();
-  const row: Record<string, any> = {
-    ...record,
-    wallet_address: normalizeAddress(record.wallet_address),
-    ward_address: record.ward_address ? normalizeAddress(record.ward_address) : null,
-  };
-  // Remove undefined fields
-  for (const key of Object.keys(row)) {
-    if (row[key] === undefined) row[key] = null;
-  }
   try {
-    const rows = await client.insert<TransactionRecord>("transactions", row);
-    return rows[0] || null;
+    const res = await client.saveTransaction({
+      ...record,
+      wallet_address: normalizeAddress(record.wallet_address),
+      ward_address: record.ward_address ? normalizeAddress(record.ward_address) : null,
+    });
+    return toTransactionRecord(res);
   } catch (err) {
-    // Retry without amount_unit if column doesn't exist yet (migration not applied)
-    if (row.amount_unit != null && String(err).includes("amount_unit")) {
-      try {
-        const { amount_unit: _, ...rowWithout } = row;
-        const rows = await client.insert<TransactionRecord>("transactions", rowWithout as any);
-        return rows[0] || null;
-      } catch (retryErr) {
-        console.warn("[transactions] saveTransaction retry failed:", retryErr);
-        return null;
-      }
-    }
     console.warn("[transactions] saveTransaction failed:", err);
     return null;
   }
@@ -99,14 +96,14 @@ export async function updateTransactionStatus(
   status: TransactionStatus,
   errorMessage?: string,
   fee?: string,
-  sb?: SupabaseLite,
+  client?: CloakApiClient,
 ): Promise<void> {
-  const client = sb || getDefaultSb();
-  const data: Record<string, any> = { status };
-  if (errorMessage !== undefined) data.error_message = errorMessage;
-  if (fee !== undefined) data.fee = fee;
+  if (!client) return;
+  const update: { status: TransactionStatus; error_message?: string | null; fee?: string | null } = { status };
+  if (errorMessage !== undefined) update.error_message = errorMessage;
+  if (fee !== undefined) update.fee = fee;
   try {
-    await client.update("transactions", `tx_hash=eq.${txHash}`, data);
+    await client.updateTransaction(txHash, update);
   } catch (err) {
     console.warn("[transactions] updateTransactionStatus failed:", err);
   }
@@ -114,78 +111,22 @@ export async function updateTransactionStatus(
 
 /**
  * Fetch transactions for a wallet address.
- * Queries by wallet_address OR ward_address, deduplicates by tx_hash,
- * and returns sorted by created_at DESC.
+ * The backend API handles fan-out (wallet + ward + managed wards) and dedup.
  */
 export async function getTransactions(
   walletAddress: string,
   limit = 100,
-  sb?: SupabaseLite,
+  client?: CloakApiClient,
 ): Promise<TransactionRecord[]> {
-  const client = sb || getDefaultSb();
+  if (!client) return [];
   const normalized = normalizeAddress(walletAddress);
-
-  // Fetch direct rows for this wallet and linked ward rows
-  const [byWallet, byWard] = await Promise.all([
-    client.select<TransactionRecord>(
-      "transactions",
-      `wallet_address=eq.${normalized}`,
-      "created_at.desc",
-    ),
-    client.select<TransactionRecord>(
-      "transactions",
-      `ward_address=eq.${normalized}`,
-      "created_at.desc",
-    ),
-  ]);
-
-  // Guardian activity should include transactions initiated directly by managed wards.
-  // We derive managed wards via ward_configs.guardian_address -> ward_address.
-  let byManagedWards: TransactionRecord[] = [];
   try {
-    const wardRows = await client.select<{ ward_address: string }>(
-      "ward_configs",
-      `guardian_address=eq.${normalized}`,
-    );
-    const managedWards = Array.from(
-      new Set(
-        wardRows
-          .map((row) => normalizeAddress(row.ward_address))
-          .filter((addr) => addr !== "0x0"),
-      ),
-    );
-    if (managedWards.length > 0) {
-      const inClause = managedWards.join(",");
-      byManagedWards = await client.select<TransactionRecord>(
-        "transactions",
-        `wallet_address=in.(${inClause})`,
-        "created_at.desc",
-      );
-    }
+    const rows = await client.getTransactions(normalized, { limit });
+    return rows.map(toTransactionRecord);
   } catch (err) {
-    console.warn("[transactions] managed ward lookup failed:", err);
+    console.warn("[transactions] getTransactions failed:", err);
+    return [];
   }
-
-  // Deduplicate by tx_hash — prefer byWallet (user's own record) over byWard (other user's record)
-  const seen = new Set<string>();
-  const all: TransactionRecord[] = [];
-  for (const tx of [...byWallet, ...byWard, ...byManagedWards]) {
-    if (!seen.has(tx.tx_hash)) {
-      seen.add(tx.tx_hash);
-      all.push(tx);
-    }
-  }
-  // If a tx_hash appears in BOTH byWallet and byWard, ensure byWallet version wins
-  // (byWallet is iterated first, so this is already guaranteed by the loop above)
-
-  // Sort descending by created_at
-  all.sort((a, b) => {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return tb - ta;
-  });
-
-  return all.slice(0, limit);
 }
 
 /**
@@ -195,7 +136,7 @@ export async function getTransactions(
 export async function confirmTransaction(
   provider: any,
   txHash: string,
-  sb?: SupabaseLite,
+  client?: CloakApiClient,
 ): Promise<void> {
   try {
     const receipt = await provider.waitForTransaction(txHash);
@@ -210,11 +151,11 @@ export async function confirmTransaction(
     }
 
     if (isReverted) {
-      await updateTransactionStatus(txHash, "failed", revertReason || "Transaction reverted", fee, sb);
+      await updateTransactionStatus(txHash, "failed", revertReason || "Transaction reverted", fee, client);
     } else {
-      await updateTransactionStatus(txHash, "confirmed", undefined, fee, sb);
+      await updateTransactionStatus(txHash, "confirmed", undefined, fee, client);
     }
   } catch (err: any) {
-    await updateTransactionStatus(txHash, "failed", err?.message || "Confirmation failed", undefined, sb);
+    await updateTransactionStatus(txHash, "failed", err?.message || "Confirmation failed", undefined, client);
   }
 }

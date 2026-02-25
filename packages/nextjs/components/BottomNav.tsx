@@ -7,6 +7,7 @@ import {
   Home,
   Send,
   Settings,
+  Bot,
 } from "lucide-react";
 import { CloakIcon } from "~~/components/CloakIcon";
 
@@ -17,6 +18,7 @@ const WalletIcon = ({ className }: { className?: string }) => (
 const navItems = [
   { href: "/", icon: Home, label: "Home" },
   { href: "/send", icon: Send, label: "Send" },
+  { href: "/agent", icon: Bot, label: "Agent" },
   { href: "/wallet", icon: WalletIcon, label: "Wallet" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];

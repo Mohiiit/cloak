@@ -1,7 +1,7 @@
 import { RpcProvider } from "starknet";
-import { DEFAULT_RPC, DEFAULT_SUPABASE_KEY, DEFAULT_SUPABASE_URL } from "../config";
+import { DEFAULT_RPC } from "../config";
+import { CloakApiClient } from "../api-client";
 import { MemoryStorage } from "../storage/memory";
-import { SupabaseLite } from "../supabase";
 import { convertAmount } from "../token-convert";
 import {
   checkIfWardAccount,
@@ -51,11 +51,11 @@ function resolveProvider(config: CloakRuntimeConfig): RpcProvider {
   return new RpcProvider({ nodeUrl: rpcUrl });
 }
 
-function resolveSupabase(config: CloakRuntimeConfig): SupabaseLite {
-  if (config.supabase) return config.supabase;
-  const url = config.supabaseUrl ?? DEFAULT_SUPABASE_URL;
-  const key = config.supabaseKey ?? DEFAULT_SUPABASE_KEY;
-  return new SupabaseLite(url, key);
+function resolveApiClient(config: CloakRuntimeConfig): CloakApiClient {
+  if (config.apiClient) return config.apiClient;
+  const url = config.apiUrl ?? "";
+  const key = config.apiKey ?? "";
+  return new CloakApiClient(url, key);
 }
 
 export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntime {
@@ -63,17 +63,17 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
 
   const deps: CloakRuntimeDeps = Object.freeze({
     provider: resolveProvider(config),
-    supabase: resolveSupabase(config),
+    apiClient: resolveApiClient(config),
     storage: config.storage ?? new MemoryStorage(),
     logger: config.logger ?? NOOP_LOGGER,
     now: config.now ?? (() => Date.now()),
   });
-  const approvalsRepo = new ApprovalsRepository(deps.supabase);
+  const approvalsRepo = new ApprovalsRepository(deps.apiClient);
   const transactionsRepo = new TransactionsRepository(
-    deps.supabase,
+    deps.apiClient,
     deps.provider,
   );
-  const swapsRepo = new SwapsRepository(deps.supabase);
+  const swapsRepo = new SwapsRepository(deps.apiClient);
   const avnuAdapter = createAvnuSwapAdapter({ network });
   const runtimeSwapAdapter = config.swapsAdapter ?? {
     quote: avnuAdapter.quote,
@@ -195,7 +195,7 @@ export function createCloakRuntime(config: CloakRuntimeConfig = {}): CloakRuntim
         return transactionsRepo.save(record);
       },
       saveLegacy(record) {
-        return saveTransaction(record, deps.supabase);
+        return saveTransaction(record, deps.apiClient);
       },
       updateStatus(txHash, status, errorMessage, fee) {
         return transactionsRepo.updateStatus(txHash, status, errorMessage, fee);

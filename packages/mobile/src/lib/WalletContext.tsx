@@ -257,7 +257,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setTxHistory(history || []);
     } catch {
       // Silenced — on-chain getTxHistory fails in WebView bridge.
-      // Will be replaced with Supabase reads.
+      // Will be replaced with backend API reads.
     }
   }, [bridge, isInitialized]);
 

@@ -1,92 +1,109 @@
 import { describe, expect, it, vi } from "vitest";
 import { getActivityRecords, type ActivityRecord } from "../src/activity";
-import type { TransactionRecord } from "../src/transactions";
-
-function tx(
-  txHash: string,
-  walletAddress: string,
-  createdAt: string,
-): TransactionRecord {
-  return {
-    wallet_address: walletAddress,
-    tx_hash: txHash,
-    type: "transfer",
-    token: "STRK",
-    amount: "5",
-    amount_unit: "tongo_units",
-    status: "confirmed",
-    account_type: "ward",
-    network: "sepolia",
-    created_at: createdAt,
-  };
-}
-
-function wardRequest(overrides: Record<string, any>): Record<string, any> {
-  return {
-    id: "req-1",
-    ward_address: "0xward1",
-    guardian_address: "0xguardian",
-    action: "transfer",
-    token: "STRK",
-    amount: "3",
-    amount_unit: "tongo_units",
-    recipient: "0xrecipient",
-    status: "pending_guardian",
-    tx_hash: "",
-    final_tx_hash: null,
-    error_message: null,
-    created_at: "2026-02-21T15:00:00.000Z",
-    responded_at: null,
-    ...overrides,
-  };
-}
 
 describe("activity.getActivityRecords", () => {
   it("merges guardian ward requests with transaction history and deduplicates by tx hash", async () => {
-    const select = vi.fn(async (table: string, filters?: string) => {
-      if (table === "transactions" && filters?.startsWith("wallet_address=eq.")) {
-        return [tx("0xown", "0xguardian", "2026-02-21T12:00:00.000Z")];
-      }
-      if (table === "transactions" && filters?.startsWith("ward_address=eq.")) {
-        return [];
-      }
-      if (table === "ward_configs") {
-        return [{ ward_address: "0xward1" }];
-      }
-      if (table === "transactions" && filters?.startsWith("wallet_address=in.")) {
-        return [tx("0xapproved", "0xward1", "2026-02-21T13:00:00.000Z")];
-      }
-      if (table === "ward_approval_requests") {
-        return [
-          wardRequest({
-            id: "req-approved",
-            status: "approved",
-            tx_hash: "0xapproved",
-            final_tx_hash: "0xapproved",
-            created_at: "2026-02-21T13:10:00.000Z",
-          }),
-          wardRequest({
-            id: "req-rejected",
-            status: "rejected",
-            amount: "1.25",
-            amount_unit: "erc20_display",
-            tx_hash: "0xrejected",
-            created_at: "2026-02-21T14:00:00.000Z",
-          }),
-          wardRequest({
-            id: "req-pending",
-            status: "pending_guardian",
-            amount: "2",
-            amount_unit: "tongo_units",
-            tx_hash: "",
-            created_at: "2026-02-21T15:00:00.000Z",
-          }),
-        ];
-      }
-      return [];
+    const client = { getActivity: vi.fn() } as any;
+    client.getActivity.mockResolvedValue({
+      records: [
+        {
+          id: "req-pending",
+          source: "ward_request",
+          wallet_address: "0xguardian",
+          tx_hash: "",
+          type: "transfer",
+          token: "STRK",
+          amount: "2",
+          amount_unit: "tongo_units",
+          recipient: "0xrecipient",
+          recipient_name: null,
+          note: "Waiting for guardian approval",
+          status: "pending",
+          status_detail: "pending_guardian",
+          error_message: null,
+          account_type: "guardian",
+          ward_address: "0xward1",
+          fee: null,
+          network: "sepolia",
+          platform: "approval",
+          created_at: "2026-02-21T15:00:00.000Z",
+          responded_at: null,
+          swap: null,
+        },
+        {
+          id: "req-rejected",
+          source: "ward_request",
+          wallet_address: "0xguardian",
+          tx_hash: "0xrejected",
+          type: "transfer",
+          token: "STRK",
+          amount: "1.25",
+          amount_unit: "erc20_display",
+          recipient: "0xrecipient",
+          recipient_name: null,
+          note: "Request rejected",
+          status: "rejected",
+          status_detail: "rejected",
+          error_message: null,
+          account_type: "guardian",
+          ward_address: "0xward1",
+          fee: null,
+          network: "sepolia",
+          platform: "approval",
+          created_at: "2026-02-21T14:00:00.000Z",
+          responded_at: null,
+          swap: null,
+        },
+        {
+          id: "0xapproved",
+          source: "transaction",
+          wallet_address: "0xguardian",
+          tx_hash: "0xapproved",
+          type: "transfer",
+          token: "STRK",
+          amount: "5",
+          amount_unit: "tongo_units",
+          recipient: null,
+          recipient_name: null,
+          note: null,
+          status: "confirmed",
+          error_message: null,
+          account_type: "ward",
+          ward_address: null,
+          fee: null,
+          network: "sepolia",
+          platform: null,
+          created_at: "2026-02-21T13:00:00.000Z",
+          swap: null,
+        },
+        {
+          id: "0xown",
+          source: "transaction",
+          wallet_address: "0xguardian",
+          tx_hash: "0xown",
+          type: "transfer",
+          token: "STRK",
+          amount: "5",
+          amount_unit: "tongo_units",
+          recipient: null,
+          recipient_name: null,
+          note: null,
+          status: "confirmed",
+          error_message: null,
+          account_type: "ward",
+          ward_address: null,
+          fee: null,
+          network: "sepolia",
+          platform: null,
+          created_at: "2026-02-21T12:00:00.000Z",
+          swap: null,
+        },
+      ],
+      total: 4,
+      has_more: false,
     });
 
-    const rows = await getActivityRecords("0xguardian", 20, { select } as any);
+    const rows = await getActivityRecords("0xguardian", 20, client);
 
     expect(rows.map((row) => row.id)).toEqual([
       "req-pending",
@@ -107,23 +124,37 @@ describe("activity.getActivityRecords", () => {
   });
 
   it("returns transactions even when ward request query fails", async () => {
-    const select = vi.fn(async (table: string, filters?: string) => {
-      if (table === "transactions" && filters?.startsWith("wallet_address=eq.")) {
-        return [tx("0xown", "0xguardian", "2026-02-21T12:00:00.000Z")];
-      }
-      if (table === "transactions" && filters?.startsWith("ward_address=eq.")) {
-        return [];
-      }
-      if (table === "ward_configs") {
-        return [];
-      }
-      if (table === "ward_approval_requests") {
-        throw new Error("ward table unavailable");
-      }
-      return [];
+    const client = { getActivity: vi.fn() } as any;
+    client.getActivity.mockResolvedValue({
+      records: [
+        {
+          id: "0xown",
+          source: "transaction",
+          wallet_address: "0xguardian",
+          tx_hash: "0xown",
+          type: "transfer",
+          token: "STRK",
+          amount: "5",
+          amount_unit: "tongo_units",
+          recipient: null,
+          recipient_name: null,
+          note: null,
+          status: "confirmed",
+          error_message: null,
+          account_type: "ward",
+          ward_address: null,
+          fee: null,
+          network: "sepolia",
+          platform: null,
+          created_at: "2026-02-21T12:00:00.000Z",
+          swap: null,
+        },
+      ],
+      total: 1,
+      has_more: false,
     });
 
-    const rows = await getActivityRecords("0xguardian", 20, { select } as any);
+    const rows = await getActivityRecords("0xguardian", 20, client);
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe("0xown");
     expect(rows[0].source).toBe("transaction");

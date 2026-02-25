@@ -2,15 +2,17 @@ import type { NavigatorScreenParams } from "@react-navigation/native";
 
 export type AppTabParamList = {
   Home: undefined;
-  Send: { openScanner?: boolean } | undefined;
-  Wallet: { mode?: "shield" | "unshield" } | undefined;
-  Swap: undefined;
+  Agent: undefined;
   Activity: undefined;
   Settings: undefined;
 };
 
 export type RootStackParamList = {
   AppTabs: NavigatorScreenParams<AppTabParamList>;
+  Send: { openScanner?: boolean } | undefined;
+  Shield: undefined;
+  Unshield: undefined;
+  Swap: undefined;
   SettingsHub: undefined;
   ImportAccount: undefined;
   ImportWard: undefined;
@@ -33,6 +35,8 @@ export type RootStackParamList = {
     qrPayload?: string;
     maxPerTx?: string;
   };
+  AddressInfo: undefined;
+  AddContact: { scannedContact?: { tongoAddress: string; starknetAddress?: string } } | undefined;
   SwapDetail:
     | {
         pair: string;

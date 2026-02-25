@@ -11,9 +11,15 @@ import WardCreatedScreen from "../screens/settings/WardCreatedScreen";
 import WardDetailScreen from "../screens/settings/WardDetailScreen";
 import ImportAccountScreen from "../screens/onboarding/ImportAccountScreen";
 import ImportWardScreen from "../screens/onboarding/ImportWardScreen";
+import AddressInfoScreen from "../screens/AddressInfoScreen";
+import AddContactScreen from "../screens/AddContactScreen";
 import SplashScreen from "../screens/SplashScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import SwapDetailScreen from "../screens/swap/SwapDetailScreen";
+import SendScreen from "../screens/SendScreen";
+import ShieldScreen from "../screens/ShieldScreen";
+import UnshieldScreen from "../screens/UnshieldScreen";
+import SwapScreen from "../screens/SwapScreen";
 import { useWallet } from "../lib/WalletContext";
 import { colors } from "../lib/theme";
 import { isE2E } from "../testing/runtimeConfig";
@@ -85,6 +91,36 @@ export default function RootNavigator() {
           <Stack.Screen
             name="ImportWard"
             component={ImportWardScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="AddressInfo"
+            component={AddressInfoScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="AddContact"
+            component={AddContactScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Send"
+            component={SendScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Shield"
+            component={ShieldScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Unshield"
+            component={UnshieldScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Swap"
+            component={SwapScreen}
             options={{ headerShown: false }}
           />
         </Stack.Navigator>

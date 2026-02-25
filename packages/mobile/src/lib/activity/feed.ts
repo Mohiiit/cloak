@@ -1,11 +1,11 @@
 import {
   getActivityRecords,
-  SupabaseLite,
+  CloakApiClient,
   type ActivityRecord,
   type AmountUnit,
 } from "@cloak-wallet/sdk";
 import { getTxNotes, type TxMetadata } from "../storage";
-import { getSupabaseConfig } from "../twoFactor";
+import { getApiClient } from "../apiClient";
 import { isMockMode } from "../../testing/runtimeConfig";
 
 export interface ActivityFeedItem {
@@ -192,9 +192,8 @@ export async function loadActivityHistory(
   limit = 200,
 ): Promise<ActivityFeedItem[]> {
   try {
-    const { url, key } = await getSupabaseConfig();
-    const sb = new SupabaseLite(url, key);
-    const records = await getActivityRecords(walletAddress, limit, sb);
+    const client = await getApiClient();
+    const records = await getActivityRecords(walletAddress, limit, client);
     if (records.length > 0) {
       return records
         .map(activityToFeedItem)
@@ -227,6 +226,30 @@ export async function loadActivityByTxHash(
   walletAddress: string,
   txHash: string,
 ): Promise<ActivityFeedItem | null> {
-  const rows = await loadActivityHistory(walletAddress, 500);
-  return rows.find((row) => row.txHash === txHash) || null;
+  // 1. Check local notes first (instant, no network)
+  try {
+    const notes = await getTxNotes();
+    const local = notes?.[txHash];
+    if (local) return localNoteToFeedItem(local as TxMetadata);
+  } catch {
+    // fall through
+  }
+
+  // 2. Query API for recent activity and find by tx_hash
+  try {
+    const client = await getApiClient();
+    const records = await getActivityRecords(walletAddress, 200, client);
+    const match = records.find((r) => r.tx_hash === txHash);
+    if (match) return activityToFeedItem(match);
+  } catch {
+    // fall through
+  }
+
+  // 3. Fallback: search mock data
+  if (isMockMode()) {
+    const mock = buildMockActivityFeed();
+    return mock.find((row) => row.txHash === txHash) || null;
+  }
+
+  return null;
 }

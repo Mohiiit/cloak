@@ -22,7 +22,8 @@ import {
 import { useAccount } from "@starknet-react/core";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { getSettings, saveSettings, clearAllData } from "~~/lib/storage";
-import { getSupabaseConfig, saveSupabaseConfig, check2FAEnabled } from "~~/lib/two-factor";
+import { check2FAEnabled } from "~~/lib/two-factor";
+import { getApiConfig, saveApiConfig } from "~~/lib/api-client";
 import { useWard, type WardEntry } from "~~/hooks/useWard";
 import toast from "react-hot-toast";
 
@@ -34,9 +35,9 @@ export default function SettingsPage() {
   const settings = getSettings();
 
   // 2FA state
-  const supabaseConfig = typeof window !== "undefined" ? getSupabaseConfig() : { url: "", key: "" };
-  const [supabaseUrl, setSupabaseUrl] = useState(supabaseConfig.url);
-  const [supabaseKey, setSupabaseKey] = useState(supabaseConfig.key);
+  const apiConfig = typeof window !== "undefined" ? getApiConfig() : { url: "", key: "" };
+  const [apiUrl, setApiUrl] = useState(apiConfig.url);
+  const [apiKey, setApiKey] = useState(apiConfig.key);
   const [twoFAEnabled, setTwoFAEnabled] = useState<boolean | null>(null);
   const [checking2FA, setChecking2FA] = useState(false);
   const ward = useWard();
@@ -281,36 +282,36 @@ export default function SettingsPage() {
             Enable or disable 2FA from the Cloak mobile app. Transactions will require mobile approval when enabled.
           </p>
 
-          {/* Supabase config */}
+          {/* API config */}
           <div className="space-y-2">
             <div>
               <label className="text-[11px] text-slate-500 mb-1 block">
-                Supabase URL
+                API URL
               </label>
               <input
                 type="text"
-                value={supabaseUrl}
-                onChange={(e) => setSupabaseUrl(e.target.value)}
-                placeholder="https://your-project.supabase.co"
+                value={apiUrl}
+                onChange={(e) => setApiUrl(e.target.value)}
+                placeholder="https://your-server.com/api/v1"
                 className="w-full bg-slate-900 rounded-lg border border-slate-700/50 px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-cyan-500/50 transition-colors"
               />
             </div>
             <div>
               <label className="text-[11px] text-slate-500 mb-1 block">
-                Supabase Anon Key
+                API Key
               </label>
               <input
                 type="password"
-                value={supabaseKey}
-                onChange={(e) => setSupabaseKey(e.target.value)}
-                placeholder="sb_publishable_..."
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="your-api-key"
                 className="w-full bg-slate-900 rounded-lg border border-slate-700/50 px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-cyan-500/50 transition-colors"
               />
             </div>
             <button
               onClick={() => {
-                saveSupabaseConfig(supabaseUrl, supabaseKey);
-                toast.success("Supabase config saved");
+                saveApiConfig(apiUrl, apiKey);
+                toast.success("API config saved");
                 // Re-check 2FA status with new config
                 if (starkAddress) {
                   setChecking2FA(true);

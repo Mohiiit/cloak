@@ -2,11 +2,10 @@
  * Ward approval system for Cloak extension.
  *
  * Thin wrapper around the SDK ward module.
- * Constructs a SupabaseLite from chrome.storage config and delegates to SDK.
+ * Constructs a CloakApiClient from chrome.storage config and delegates to SDK.
  */
 
 import {
-  SupabaseLite,
   checkIfWardAccount as sdkCheckIfWardAccount,
   fetchWardApprovalNeeds,
   requestWardApproval as sdkRequestWardApproval,
@@ -18,16 +17,9 @@ import type {
   WardApprovalRequest,
   WardApprovalResult,
 } from "@cloak-wallet/sdk";
-import { getSupabaseConfig } from "./supabase-config";
+import { getApiClient } from "./api-config";
 
 export type { WardApprovalNeeds, WardApprovalResult };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function getSdkClient(): Promise<SupabaseLite> {
-  const { url, key } = await getSupabaseConfig();
-  return new SupabaseLite(url, key);
-}
 
 // ─── Ward on-chain checks ─────────────────────────────────────────────────────
 
@@ -57,7 +49,7 @@ export async function requestWardApproval(
   params: ExtensionWardApprovalParams,
   options?: ExtensionWardApprovalOptions,
 ): Promise<WardApprovalResult> {
-  const client = await getSdkClient();
+  const client = await getApiClient();
   return sdkRequestWardApproval(
     client,
     params,

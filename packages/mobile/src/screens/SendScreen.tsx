@@ -15,8 +15,10 @@ import {
   Modal,
   Animated,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import ClipboardLib from "@react-native-clipboard/clipboard";
 import {
+  ArrowLeft,
   Car,
   Check,
   Coffee,
@@ -847,6 +849,15 @@ export default function SendScreen({ navigation, route }: any) {
   };
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      {/* Header */}
+      <View style={styles.screenHeader}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={20} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.screenHeaderTitle}>Send</Text>
+        <View style={styles.backBtn} />
+      </View>
     <KeyboardSafeScreen
       scrollRef={scrollRef}
       style={styles.container}
@@ -1103,6 +1114,7 @@ export default function SendScreen({ navigation, route }: any) {
         )}
       </TouchableOpacity>
     </KeyboardSafeScreen>
+    </SafeAreaView>
   );
 }
 
@@ -1329,6 +1341,27 @@ const modalStyles = StyleSheet.create({
 /* ─── Form styles ─────────────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  screenHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  screenHeaderTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: colors.text,
+    fontFamily: typography.primarySemibold,
+  },
   container: { flex: 1, backgroundColor: colors.bg },
   content: {
     paddingHorizontal: 24,

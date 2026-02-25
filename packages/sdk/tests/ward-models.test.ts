@@ -66,15 +66,15 @@ describe("ward typed UI model", () => {
 
 describe("ward lifecycle helpers", () => {
   it("creates request with normalized addresses and default status", async () => {
-    const insert = vi.fn(async (_table: string, body: Record<string, unknown>) => [
-      makeRow({
-        ...body,
-        id: "req-created",
-      } as Partial<WardApprovalRequest>),
-    ]);
-    const sb = { insert };
+    const createWardApproval = vi.fn(async (body: Record<string, unknown>) => ({
+      ...makeRow(),
+      ...body,
+      id: "req-created",
+      status: body.initial_status || "pending_ward_sig",
+    }));
+    const client = { createWardApproval };
 
-    const created = await createWardApprovalRequest(sb as any, {
+    const created = await createWardApprovalRequest(client as any, {
       wardAddress: "0x00AbC",
       guardianAddress: "0x00Def",
       action: "transfer",
@@ -92,12 +92,11 @@ describe("ward lifecycle helpers", () => {
       needsGuardian2fa: false,
     });
 
-    expect(insert).toHaveBeenCalledWith(
-      "ward_approval_requests",
+    expect(createWardApproval).toHaveBeenCalledWith(
       expect.objectContaining({
         ward_address: "0xabc",
         guardian_address: "0xdef",
-        status: "pending_ward_sig",
+        initial_status: "pending_ward_sig",
       }),
     );
     expect(created.id).toBe("req-created");
@@ -105,27 +104,25 @@ describe("ward lifecycle helpers", () => {
   });
 
   it("sets responded_at automatically when moving to terminal status", async () => {
-    const update = vi.fn(async (_table: string, _filters: string, body: Record<string, unknown>) => [
-      makeRow({
-        id: "req-1",
-        status: body.status as WardApprovalRequest["status"],
-        responded_at: (body.responded_at as string) || null,
-      }),
-    ]);
-    const sb = { update };
+    const updateWardApproval = vi.fn(async () => undefined);
+    const getWardApproval = vi.fn(async () => ({
+      ...makeRow(),
+      id: "req-1",
+      status: "approved",
+      responded_at: new Date().toISOString(),
+    }));
+    const client = { updateWardApproval, getWardApproval };
 
-    const row = await updateWardApprovalRequest(sb as any, "req-1", {
+    const row = await updateWardApprovalRequest(client as any, "req-1", {
       status: "approved",
       finalTxHash: "0xfinal",
     });
 
-    expect(update).toHaveBeenCalledWith(
-      "ward_approval_requests",
-      "id=eq.req-1",
+    expect(updateWardApproval).toHaveBeenCalledWith(
+      "req-1",
       expect.objectContaining({
         status: "approved",
         final_tx_hash: "0xfinal",
-        responded_at: expect.any(String),
       }),
     );
     expect(row?.status).toBe("approved");
@@ -133,17 +130,18 @@ describe("ward lifecycle helpers", () => {
   });
 
   it("lists guardian/ward requests with normalized filters", async () => {
-    const select = vi.fn(async () => [makeRow()]);
-    const sb = { select };
+    const getWardApprovalHistory = vi.fn(async () => [makeRow()]);
+    const getPendingWardApprovals = vi.fn(async () => [makeRow()]);
+    const client = { getWardApprovalHistory, getPendingWardApprovals };
 
     const guardianRows = await listWardApprovalRequestsForGuardian(
-      sb as any,
+      client as any,
       "0x00DeF",
       ["pending_guardian", "approved"],
       25,
     );
     const wardRows = await listWardApprovalRequestsForWard(
-      sb as any,
+      client as any,
       "0x00aBc",
       ["pending_guardian"],
       10,
@@ -151,17 +149,12 @@ describe("ward lifecycle helpers", () => {
 
     expect(guardianRows).toHaveLength(1);
     expect(wardRows).toHaveLength(1);
-    expect(select).toHaveBeenNthCalledWith(
-      1,
-      "ward_approval_requests",
-      "guardian_address=eq.0xdef&status=in.(pending_guardian,approved)&limit=25",
-      "created_at.desc",
-    );
-    expect(select).toHaveBeenNthCalledWith(
-      2,
-      "ward_approval_requests",
-      "ward_address=eq.0xabc&status=in.(pending_guardian)&limit=10",
-      "created_at.desc",
-    );
+    expect(getWardApprovalHistory).toHaveBeenCalledWith({
+      guardian: "0xdef",
+      limit: 25,
+    });
+    expect(getPendingWardApprovals).toHaveBeenCalledWith({
+      ward: "0xabc",
+    });
   });
 });

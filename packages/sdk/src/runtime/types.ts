@@ -1,6 +1,6 @@
 import type { RpcProvider } from "starknet";
 import type { StorageAdapter, Network } from "../types";
-import type { SupabaseLite } from "../supabase";
+import type { CloakApiClient } from "../api-client";
 import type {
   TwoFAApprovalParams,
   TwoFAApprovalResult,
@@ -56,9 +56,9 @@ export interface CloakRuntimeConfig {
   network?: Network;
   rpcUrl?: string;
   provider?: RpcProvider;
-  supabase?: SupabaseLite;
-  supabaseUrl?: string;
-  supabaseKey?: string;
+  apiClient?: CloakApiClient;
+  apiUrl?: string;
+  apiKey?: string;
   swapsAdapter?: CloakSwapModuleAdapter;
   storage?: StorageAdapter;
   logger?: RuntimeLogger;
@@ -68,7 +68,7 @@ export interface CloakRuntimeConfig {
 
 export interface CloakRuntimeDeps {
   provider: RpcProvider;
-  supabase: SupabaseLite;
+  apiClient: CloakApiClient;
   storage: StorageAdapter;
   logger: RuntimeLogger;
   now: RuntimeNow;

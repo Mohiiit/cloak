@@ -1,3 +1,4 @@
+import { CloakApiClient } from "@cloak-wallet/sdk";
 import { TOKENS, type TokenKey } from "./tokens";
 
 export const AVNU_QUOTES_URL = "https://sepolia.api.avnu.fi/swap/v3/quotes";
@@ -34,8 +35,7 @@ export type BringRateInput = {
   toToken: TokenKey;
   sentUnits: bigint;
   slippageBps: number;
-  supabaseUrl: string;
-  supabaseKey: string;
+  apiClient: CloakApiClient;
 };
 
 type SdkRuntime = {
@@ -228,7 +228,6 @@ async function quoteViaSdkDefault(input: BringRateInput): Promise<QuoteMeta> {
   const sdk = require("@cloak-wallet/sdk") as {
     createCloakRuntime: (config: unknown) => SdkRuntime;
     DEFAULT_RPC: { sepolia: string };
-    SupabaseLite: new (url: string, key: string) => unknown;
     padAddress: (value: string) => string;
   };
   const starknet = require("starknet") as {
@@ -236,11 +235,10 @@ async function quoteViaSdkDefault(input: BringRateInput): Promise<QuoteMeta> {
   };
 
   const provider = new starknet.RpcProvider({ nodeUrl: sdk.DEFAULT_RPC.sepolia });
-  const supabase = new sdk.SupabaseLite(input.supabaseUrl, input.supabaseKey);
   const runtime = sdk.createCloakRuntime({
     network: "sepolia",
     provider,
-    supabase,
+    apiClient: input.apiClient,
   });
 
   const swapQuote = await runtime.swaps.quote({

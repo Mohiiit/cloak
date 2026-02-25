@@ -6,12 +6,10 @@ import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Send, Clock, Shield, ScanLine, Repeat } from "lucide-react-native";
+import { Home, Clock, Shield, ScanLine, Bot, Settings as SettingsIcon } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
-import SendScreen from "../screens/SendScreen";
-import WalletScreen from "../screens/WalletScreen";
+import AgentScreen from "../screens/AgentScreen";
 import ActivityScreen from "../screens/ActivityScreen";
-import SwapScreen from "../screens/SwapScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import DeployScreen from "../screens/DeployScreen";
 import { CloakIcon } from "../components/CloakIcon";
@@ -26,18 +24,16 @@ const Tab = createBottomTabNavigator<AppTabParamList>();
 
 const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
   Home: ({ size, color }) => <Home size={size} color={color} />,
-  Send: ({ size, color }) => <Send size={size} color={color} />,
-  Wallet: ({ size, color }) => <CloakIcon size={size} color={color} />,
-  Swap: ({ size, color }) => <Repeat size={size} color={color} />,
+  Agent: ({ size, color }) => <Bot size={size} color={color} />,
   Activity: ({ size, color }) => <Clock size={size} color={color} />,
+  Settings: ({ size, color }) => <SettingsIcon size={size} color={color} />,
 };
 
 const TAB_TEST_IDS: Record<string, string> = {
   Home: testIDs.navigation.tabHome,
-  Send: testIDs.navigation.tabSend,
-  Wallet: testIDs.navigation.tabWallet,
-  Swap: testIDs.navigation.tabSwap,
+  Agent: testIDs.navigation.tabAgent,
   Activity: testIDs.navigation.tabActivity,
+  Settings: testIDs.navigation.tabSettings,
 };
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
@@ -49,12 +45,12 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return <Text style={[styles.icon, focused && styles.iconActive]}>{"•"}</Text>;
 }
 
-function HeaderLogoButton({ onPress }: { onPress: () => void }) {
+function HeaderLogoButton() {
   return (
-    <Pressable onPress={onPress} style={styles.headerLeftGroup}>
+    <View style={styles.headerLeftGroup}>
       <CloakIcon size={24} />
       <Text style={styles.headerBrand}>Cloak</Text>
-    </Pressable>
+    </View>
   );
 }
 
@@ -105,11 +101,9 @@ export default function AppNavigator() {
           headerTitleStyle: { fontWeight: "600", fontFamily: typography.primarySemibold },
           headerTitleAlign: "center" as const,
           headerTitle: route.name === "Home" && ward.isWard ? () => <HeaderWardBadge frozen={isWardFrozen} /> : "",
-          headerLeft: () => (
-            <HeaderLogoButton onPress={() => navigation.navigate("AppTabs", { screen: "Settings" })} />
-          ),
+          headerLeft: () => <HeaderLogoButton />,
           headerRight: () => (
-            <HeaderQuickActionButton onPress={() => navigation.navigate("AppTabs", { screen: "Send", params: { openScanner: true } })} />
+            <HeaderQuickActionButton onPress={() => navigation.getParent("root")?.navigate("Send", { openScanner: true })} />
           ),
           headerLeftContainerStyle: { paddingLeft: 20 },
           headerRightContainerStyle: { paddingRight: 20 },
@@ -124,9 +118,8 @@ export default function AppNavigator() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarLabel: ({ focused, color }) => {
-            const frozenTab = isWardFrozen && (route.name === "Send" || route.name === "Wallet");
             return (
-              <Text style={[styles.tabLabel, { color, fontWeight: focused ? "600" : "500", opacity: frozenTab ? 0.3 : 1 }]}>
+              <Text style={[styles.tabLabel, { color, fontWeight: focused ? "600" : "500" }]}>
                 {route.name}
               </Text>
             );
@@ -134,12 +127,7 @@ export default function AppNavigator() {
           tabBarButtonTestID: TAB_TEST_IDS[route.name],
           tabBarAccessibilityLabel: TAB_TEST_IDS[route.name],
           tabBarIcon: ({ focused }) => {
-            const frozenTab = isWardFrozen && (route.name === "Send" || route.name === "Wallet");
-            return (
-              <View style={{ opacity: frozenTab ? 0.3 : 1 }}>
-                <TabIcon label={route.name} focused={focused} />
-              </View>
-            );
+            return <TabIcon label={route.name} focused={focused} />;
           },
         })}
       >
@@ -153,20 +141,8 @@ export default function AppNavigator() {
           }}
         />
         <Tab.Screen
-          name="Send"
-          component={SendScreen}
-          options={{ headerTitle: "" }}
-          listeners={isWardFrozen ? { tabPress: (e) => e.preventDefault() } : undefined}
-        />
-        <Tab.Screen
-          name="Wallet"
-          component={WalletScreen}
-          options={{ headerTitle: "" }}
-          listeners={isWardFrozen ? { tabPress: (e) => e.preventDefault() } : undefined}
-        />
-        <Tab.Screen
-          name="Swap"
-          component={SwapScreen}
+          name="Agent"
+          component={AgentScreen}
           options={{ headerTitle: "" }}
         />
         <Tab.Screen
@@ -177,11 +153,7 @@ export default function AppNavigator() {
         <Tab.Screen
           name="Settings"
           component={SettingsScreen}
-          options={{
-            headerTitle: "",
-            tabBarButton: () => null,
-            tabBarItemStyle: { display: "none" },
-          }}
+          options={{ headerTitle: "" }}
         />
       </Tab.Navigator>
       <TestStateMarkers />

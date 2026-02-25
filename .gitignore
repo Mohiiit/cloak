@@ -26,3 +26,9 @@ packages/mobile/e2e/artifacts/
 
 # Build outputs
 **/dist
+
+# Temp/debug files
+tmp_*.ts
+txn_failure.json
+packages/sdk/debug-swap-chunks.cjs
+packages/nextjs/.agent-data/

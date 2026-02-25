@@ -7,11 +7,14 @@ import {
 } from "../src/ward";
 import { saveTransaction } from "../src/transactions";
 import type { AmountUnit } from "../src/token-convert";
+import type { WardApprovalResponse, TransactionResponse } from "../src/types/api";
 
 type Row = Record<string, any>;
 
-class InMemorySupabase {
-  private tables: Record<string, Row[]> = {};
+class InMemoryApiClient {
+  private wardApprovals: Row[] = [];
+  private transactions: Row[] = [];
+  private wardConfigs: Row[] = [];
   private seq = 1;
   private clock = Date.parse("2026-02-21T00:00:00.000Z");
 
@@ -20,90 +23,238 @@ class InMemorySupabase {
     return new Date(this.clock).toISOString();
   }
 
-  private table(name: string): Row[] {
-    if (!this.tables[name]) this.tables[name] = [];
-    return this.tables[name];
+  // ─── Ward Approvals ──────────────────────────────────────────────────────
+
+  async createWardApproval(body: any): Promise<WardApprovalResponse> {
+    const now = this.nowIso();
+    const row: Row = {
+      ...body,
+      id: `ward-approval-${this.seq++}`,
+      created_at: now,
+      expires_at: new Date(new Date(now).getTime() + 10 * 60 * 1000).toISOString(),
+      responded_at: null,
+      ward_2fa_sig_json: body.ward_2fa_sig_json ?? null,
+      guardian_sig_json: body.guardian_sig_json ?? null,
+      guardian_2fa_sig_json: body.guardian_2fa_sig_json ?? null,
+      final_tx_hash: body.final_tx_hash ?? null,
+      error_message: body.error_message ?? null,
+      status: body.initial_status || "pending_ward_sig",
+    };
+    this.wardApprovals.push(row);
+    return { ...row } as WardApprovalResponse;
   }
 
-  private parseFilters(filters?: string): {
-    clauses: Array<{ key: string; op: "eq" | "in"; values: string[] }>;
-    limit?: number;
-  } {
-    const clauses: Array<{ key: string; op: "eq" | "in"; values: string[] }> = [];
-    let limit: number | undefined;
-    if (!filters) return { clauses, limit };
+  async getWardApproval(id: string): Promise<WardApprovalResponse> {
+    const row = this.wardApprovals.find((r) => r.id === id);
+    if (!row) throw Object.assign(new Error("Not found"), { statusCode: 404 });
+    return { ...row } as WardApprovalResponse;
+  }
 
-    for (const part of filters.split("&")) {
-      const idx = part.indexOf("=");
-      if (idx <= 0) continue;
-      const key = part.slice(0, idx);
-      const value = part.slice(idx + 1);
-      if (key === "limit") {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed) && parsed > 0) limit = Math.floor(parsed);
-        continue;
-      }
-      if (value.startsWith("eq.")) {
-        clauses.push({ key, op: "eq", values: [value.slice(3)] });
-        continue;
-      }
-      if (value.startsWith("in.(") && value.endsWith(")")) {
-        const values = value
-          .slice(4, -1)
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean);
-        clauses.push({ key, op: "in", values });
+  async updateWardApproval(id: string, body: any): Promise<void> {
+    const row = this.wardApprovals.find((r) => r.id === id);
+    if (row) Object.assign(row, body);
+  }
+
+  async getPendingWardApprovals(_params: any): Promise<WardApprovalResponse[]> {
+    return this.wardApprovals
+      .filter(
+        (r) =>
+          r.status === "pending_ward_sig" || r.status === "pending_guardian",
+      )
+      .map((r) => ({ ...r }) as WardApprovalResponse);
+  }
+
+  async getWardApprovalHistory(_params: any): Promise<WardApprovalResponse[]> {
+    return this.wardApprovals.map((r) => ({ ...r }) as WardApprovalResponse);
+  }
+
+  // ─── Transactions ────────────────────────────────────────────────────────
+
+  async saveTransaction(body: any): Promise<TransactionResponse> {
+    const row: Row = {
+      ...body,
+      id: `tx-${this.seq++}`,
+      created_at: this.nowIso(),
+      // Fill in nullable fields that TransactionResponse requires
+      amount: body.amount ?? null,
+      amount_unit: body.amount_unit ?? null,
+      recipient: body.recipient ?? null,
+      recipient_name: body.recipient_name ?? null,
+      note: body.note ?? null,
+      error_message: body.error_message ?? null,
+      ward_address: body.ward_address ?? null,
+      fee: body.fee ?? null,
+      platform: body.platform ?? null,
+    };
+    this.transactions.push(row);
+    return { ...row } as TransactionResponse;
+  }
+
+  // ─── Activity ────────────────────────────────────────────────────────────
+
+  async getActivity(wallet: string, opts?: any) {
+    const normalizedWallet = wallet.toLowerCase().replace(/^0x0+/, "0x");
+    const records: any[] = [];
+
+    // Transactions for this wallet
+    for (const tx of this.transactions) {
+      const txWallet = (tx.wallet_address || "")
+        .toLowerCase()
+        .replace(/^0x0+/, "0x");
+      if (txWallet === normalizedWallet) {
+        records.push({
+          id: tx.tx_hash || tx.id,
+          source: "transaction",
+          wallet_address: tx.wallet_address,
+          tx_hash: tx.tx_hash,
+          type: tx.type,
+          token: tx.token,
+          amount: tx.amount ?? null,
+          amount_unit: tx.amount_unit ?? null,
+          recipient: tx.recipient ?? null,
+          recipient_name: tx.recipient_name ?? null,
+          note: tx.note ?? null,
+          status:
+            tx.status === "confirmed"
+              ? "confirmed"
+              : tx.status === "failed"
+                ? "failed"
+                : "pending",
+          error_message: tx.error_message ?? null,
+          account_type: tx.account_type,
+          ward_address: tx.ward_address ?? null,
+          fee: tx.fee ?? null,
+          network: tx.network,
+          platform: tx.platform ?? null,
+          created_at: tx.created_at,
+          swap: null,
+        });
       }
     }
-    return { clauses, limit };
-  }
 
-  private applyFilters(rows: Row[], filters?: string): Row[] {
-    const { clauses, limit } = this.parseFilters(filters);
-    let out = rows.filter((row) =>
-      clauses.every((clause) => {
-        const value = String(row[clause.key] ?? "");
-        if (clause.op === "eq") return value === clause.values[0];
-        return clause.values.includes(value);
-      }),
+    const seenTxHashes = new Set(
+      records.map((r) => r.tx_hash).filter(Boolean),
     );
-    if (typeof limit === "number") out = out.slice(0, limit);
-    return out;
-  }
 
-  async insert<T = any>(table: string, data: Record<string, any>): Promise<T[]> {
-    const row: Row = { ...data };
-    if (!row.id) row.id = `${table}-${this.seq++}`;
-    if (!row.created_at) row.created_at = this.nowIso();
-    if (table === "ward_approval_requests" && !row.expires_at) {
-      row.expires_at = new Date(new Date(row.created_at).getTime() + 10 * 60 * 1000).toISOString();
+    // Managed ward transactions (guardian sees ward's transactions)
+    for (const config of this.wardConfigs) {
+      const guardianAddr = (config.guardian_address || "")
+        .toLowerCase()
+        .replace(/^0x0+/, "0x");
+      if (guardianAddr !== normalizedWallet) continue;
+      const wardAddr = (config.ward_address || "")
+        .toLowerCase()
+        .replace(/^0x0+/, "0x");
+      for (const tx of this.transactions) {
+        const txWallet = (tx.wallet_address || "")
+          .toLowerCase()
+          .replace(/^0x0+/, "0x");
+        if (txWallet === wardAddr && !seenTxHashes.has(tx.tx_hash)) {
+          seenTxHashes.add(tx.tx_hash);
+          records.push({
+            id: tx.tx_hash || tx.id,
+            source: "transaction",
+            wallet_address: tx.wallet_address,
+            tx_hash: tx.tx_hash,
+            type: tx.type,
+            token: tx.token,
+            amount: tx.amount ?? null,
+            amount_unit: tx.amount_unit ?? null,
+            recipient: tx.recipient ?? null,
+            recipient_name: tx.recipient_name ?? null,
+            note: tx.note ?? null,
+            status:
+              tx.status === "confirmed"
+                ? "confirmed"
+                : tx.status === "failed"
+                  ? "failed"
+                  : "pending",
+            error_message: tx.error_message ?? null,
+            account_type: tx.account_type,
+            ward_address: tx.ward_address ?? null,
+            fee: tx.fee ?? null,
+            network: tx.network,
+            platform: tx.platform ?? null,
+            created_at: tx.created_at,
+            swap: null,
+          });
+        }
+      }
     }
-    this.table(table).push(row);
-    return [{ ...row }] as T[];
-  }
 
-  async select<T = any>(table: string, filters?: string, orderBy?: string): Promise<T[]> {
-    let rows = this.applyFilters(this.table(table), filters).map((row) => ({ ...row }));
-    if (orderBy) {
-      const [field, direction] = orderBy.split(".");
-      const sign = direction === "desc" ? -1 : 1;
-      rows.sort((a, b) => {
-        const av = a[field];
-        const bv = b[field];
-        const at = typeof av === "string" ? new Date(av).getTime() : Number(av ?? 0);
-        const bt = typeof bv === "string" ? new Date(bv).getTime() : Number(bv ?? 0);
-        if (Number.isFinite(at) && Number.isFinite(bt)) return (at - bt) * sign;
-        return String(av ?? "").localeCompare(String(bv ?? "")) * sign;
+    // Ward approvals where viewer is guardian or ward (deduped against transactions)
+    for (const req of this.wardApprovals) {
+      const guardian = (req.guardian_address || "")
+        .toLowerCase()
+        .replace(/^0x0+/, "0x");
+      const ward = (req.ward_address || "")
+        .toLowerCase()
+        .replace(/^0x0+/, "0x");
+      if (guardian !== normalizedWallet && ward !== normalizedWallet) continue;
+      const hash = req.final_tx_hash || req.tx_hash || "";
+      if (hash && seenTxHashes.has(hash)) continue;
+
+      const statusMap: Record<string, string> = {
+        approved: "confirmed",
+        rejected: "rejected",
+        gas_error: "gas_error",
+        failed: "failed",
+        expired: "expired",
+      };
+      const noteMap: Record<string, string> = {
+        pending_ward_sig: "Waiting for ward signature",
+        pending_guardian: "Waiting for guardian approval",
+        rejected: "Request rejected",
+        gas_error: "Gas too low, retry required",
+        expired: "Request expired",
+      };
+
+      records.push({
+        id: req.id,
+        source: "ward_request",
+        wallet_address:
+          guardian === normalizedWallet
+            ? req.guardian_address
+            : req.ward_address,
+        tx_hash: hash,
+        type: req.action || "transfer",
+        token: req.token || "STRK",
+        amount: req.amount ?? null,
+        amount_unit: req.amount_unit ?? null,
+        recipient: req.recipient ?? null,
+        recipient_name: null,
+        note: noteMap[req.status] ?? null,
+        status: statusMap[req.status] ?? "pending",
+        status_detail: req.status,
+        error_message: req.error_message ?? null,
+        account_type: "guardian",
+        ward_address: req.ward_address,
+        fee: null,
+        network: "sepolia",
+        platform: "approval",
+        created_at: req.created_at,
+        responded_at: req.responded_at ?? null,
+        swap: null,
       });
+      if (hash) seenTxHashes.add(hash);
     }
-    return rows as T[];
+
+    records.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+    const limit = opts?.limit ?? 100;
+    return {
+      records: records.slice(0, limit),
+      total: records.length,
+      has_more: records.length > limit,
+    };
   }
 
-  async update<T = any>(table: string, filters: string, data: Record<string, any>): Promise<T[]> {
-    const rows = this.applyFilters(this.table(table), filters);
-    for (const row of rows) Object.assign(row, data);
-    return rows.map((row) => ({ ...row })) as T[];
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  addWardConfig(config: any) {
+    this.wardConfigs.push(config);
   }
 }
 
@@ -171,14 +322,14 @@ const CASES: FlowCase[] = [
 
 describe("activity workflow integration", () => {
   it.each(CASES)("covers $name via SDK lifecycle helpers", async (flow) => {
-    const sb = new InMemorySupabase();
+    const client = new InMemoryApiClient();
 
-    await sb.insert("ward_configs", {
+    client.addWardConfig({
       ward_address: ADDRS.ward,
       guardian_address: ADDRS.guardian,
     });
 
-    const request = await createWardApprovalRequest(sb as any, {
+    const request = await createWardApprovalRequest(client as any, {
       wardAddress: ADDRS.ward,
       guardianAddress: ADDRS.guardian,
       action: flow.action,
@@ -187,7 +338,7 @@ describe("activity workflow integration", () => {
       amountUnit: flow.amountUnit,
       recipient: ADDRS.recipient,
       callsJson: "[]",
-      wardSigJson: "[\"0x1\",\"0x2\"]",
+      wardSigJson: '["0x1","0x2"]',
       nonce: "0x1",
       resourceBoundsJson: "{}",
       txHash: flow.txHash || "",
@@ -196,7 +347,7 @@ describe("activity workflow integration", () => {
       needsGuardian2fa: false,
     });
 
-    const updated = await updateWardApprovalRequest(sb as any, request.id, {
+    const updated = await updateWardApprovalRequest(client as any, request.id, {
       status: flow.status,
       txHash: flow.txHash || request.tx_hash,
       finalTxHash: flow.status === "approved" ? flow.txHash || null : null,
@@ -218,12 +369,16 @@ describe("activity workflow integration", () => {
           network: "sepolia",
           platform: "sdk-test",
         },
-        sb as any,
+        client as any,
       );
     }
 
-    const guardianFeed = await getActivityRecords(ADDRS.guardian, 20, sb as any);
-    const wardFeed = await getActivityRecords(ADDRS.ward, 20, sb as any);
+    const guardianFeed = await getActivityRecords(
+      ADDRS.guardian,
+      20,
+      client as any,
+    );
+    const wardFeed = await getActivityRecords(ADDRS.ward, 20, client as any);
 
     expect(guardianFeed).toHaveLength(1);
     expect(wardFeed).toHaveLength(1);
@@ -250,7 +405,9 @@ describe("activity workflow integration", () => {
     expect(guardianFeed[0].status_detail).toBe(flow.status);
     expect(guardianFeed[0].type).toBe(expectedType);
     expect(guardianFeed[0].amount_unit).toBe(flow.amountUnit);
-    expect(guardianFeed[0].status).toBe(flow.status === "rejected" ? "rejected" : "expired");
+    expect(guardianFeed[0].status).toBe(
+      flow.status === "rejected" ? "rejected" : "expired",
+    );
     if (flow.status === "expired") {
       expect(guardianFeed[0].note).toContain("expired");
     }
@@ -260,6 +417,8 @@ describe("activity workflow integration", () => {
     expect(wardFeed[0].status_detail).toBe(flow.status);
     expect(wardFeed[0].type).toBe(expectedType);
     expect(wardFeed[0].amount_unit).toBe(flow.amountUnit);
-    expect(wardFeed[0].status).toBe(flow.status === "rejected" ? "rejected" : "expired");
+    expect(wardFeed[0].status).toBe(
+      flow.status === "rejected" ? "rejected" : "expired",
+    );
   });
 });

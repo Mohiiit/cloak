@@ -5,7 +5,7 @@
  * - get_account_type() → "WARD" (0x57415244) if ward
  * - get_guardian_address(), is_frozen(), get_spending_limit_per_tx(), etc.
  *
- * Also loads the guardian's ward list from Supabase (if the wallet is a guardian).
+ * Also loads the guardian's ward list from the backend API (if the wallet is a guardian).
  */
 import { useState, useEffect, useCallback } from "react";
 import { useAccount } from "@starknet-react/core";
@@ -14,10 +14,9 @@ import {
   fetchWardInfo,
   normalizeAddress,
   getProvider,
-  SupabaseLite,
 } from "@cloak-wallet/sdk";
 import type { WardInfo } from "@cloak-wallet/sdk";
-import { getSupabaseConfig } from "~~/lib/two-factor";
+import { getClient } from "~~/lib/api-client";
 
 export type { WardInfo };
 
@@ -28,6 +27,7 @@ export interface WardEntry {
   status: string;
   spendingLimitPerTx: string | null;
   requireGuardianForAll: boolean;
+  pseudoName?: string;
 }
 
 export function useWard() {
@@ -71,21 +71,20 @@ export function useWard() {
     if (!address) return;
     setIsLoadingWards(true);
     try {
-      const { url, key } = getSupabaseConfig();
-      const sb = new SupabaseLite(url, key);
+      const client = getClient();
       const normalizedAddr = normalizeAddress(address);
-      const rows = await sb.select(
-        "ward_configs",
-        `guardian_address=eq.${normalizedAddr}&status=neq.removed&order=created_at.desc`,
-      );
-      const entries: WardEntry[] = (rows || []).map((r: any) => ({
-        wardAddress: r.ward_address,
-        wardPublicKey: r.ward_public_key,
-        tongoAddress: r.tongo_address || undefined,
-        status: r.status,
-        spendingLimitPerTx: r.spending_limit_per_tx,
-        requireGuardianForAll: r.require_guardian_for_all ?? true,
-      }));
+      const rows = await client.listWards(normalizedAddr);
+      const entries: WardEntry[] = (rows || [])
+        .filter((r) => r.status !== "removed")
+        .map((r) => ({
+          wardAddress: r.ward_address,
+          wardPublicKey: r.ward_public_key,
+          tongoAddress: undefined,
+          status: r.status,
+          spendingLimitPerTx: r.spending_limit_per_tx,
+          requireGuardianForAll: r.require_guardian_for_all ?? true,
+          pseudoName: r.pseudo_name || undefined,
+        }));
       setWards(entries);
     } catch (err) {
       console.warn("[useWard] Failed to load wards:", err);

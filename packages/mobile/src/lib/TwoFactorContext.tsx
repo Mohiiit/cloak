@@ -22,8 +22,6 @@ import { useToast } from "../components/Toast";
 import { isMockMode } from "../testing/runtimeConfig";
 import {
   ApprovalRequest,
-  getSupabaseConfig,
-  saveSupabaseConfig,
   getSecondaryPublicKey,
   getSecondaryPrivateKey,
   generateSecondaryKey,
@@ -38,6 +36,7 @@ import {
   normalizeAddress,
   DualKeySigner,
 } from "./twoFactor";
+import { getApiConfig, saveApiConfig } from "./apiClient";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,8 +48,8 @@ type TwoFactorState = {
   hasBiometrics: boolean;
   pendingRequests: ApprovalRequest[];
   secondaryPublicKey: string | null;
-  supabaseUrl: string;
-  supabaseKey: string;
+  apiUrl: string;
+  apiKey: string;
   isLoading: boolean;
 
   // Actions
@@ -88,8 +87,8 @@ export function TwoFactorProvider({
   const [secondaryPublicKey, setSecondaryPublicKey] = useState<string | null>(
     null,
   );
-  const [supabaseUrl, setSupabaseUrl] = useState("");
-  const [supabaseKey, setSupabaseKey] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -100,10 +99,10 @@ export function TwoFactorProvider({
   useEffect(() => {
     (async () => {
       try {
-        // Load Supabase config
-        const config = await getSupabaseConfig();
-        setSupabaseUrl(config.url);
-        setSupabaseKey(config.key);
+        // Load API config
+        const config = await getApiConfig();
+        setApiUrl(config.url);
+        setApiKey(config.key);
 
         // Check biometrics
         const bioAvail = await isBiometricsAvailable();
@@ -113,7 +112,7 @@ export function TwoFactorProvider({
         const pubKey = await getSecondaryPublicKey();
         setSecondaryPublicKey(pubKey);
 
-        // Check if 2FA is configured on Supabase
+        // Check if 2FA is configured via backend API
         if (wallet.keys?.starkAddress) {
           const { configured } = await isTwoFactorConfigured(
             normalizeAddress(wallet.keys.starkAddress),
@@ -240,7 +239,7 @@ export function TwoFactorProvider({
       const { privateKey, publicKey } = generateSecondaryKey();
       await saveSecondaryPrivateKey(privateKey);
 
-      // Step 3: On-chain set_secondary_key — MUST succeed before Supabase
+      // Step 3: On-chain set_secondary_key — MUST succeed before backend registration
       onStep?.("onchain");
       const provider = new RpcProvider({ nodeUrl: DEFAULT_RPC.sepolia });
       const account = new Account({
@@ -266,15 +265,15 @@ export function TwoFactorProvider({
       console.warn("[TwoFactorContext] set_secondary_key tx:", tx.transaction_hash);
       await provider.waitForTransaction(tx.transaction_hash);
 
-      // Step 4: Register on Supabase (only after on-chain succeeds)
+      // Step 4: Register on backend (only after on-chain succeeds)
       onStep?.("register");
       const { error } = await enableTwoFactorConfig(
         normalizeAddress(wallet.keys.starkAddress),
         publicKey,
       );
       if (error) {
-        // On-chain IS enforcing 2FA, but Supabase failed — warn but still mark enabled locally
-        console.warn("[TwoFactorContext] Supabase registration failed (on-chain is active):", error);
+        // On-chain IS enforcing 2FA, but backend failed — warn but still mark enabled locally
+        console.warn("[TwoFactorContext] Backend registration failed (on-chain is active):", error);
         showToast("2FA enabled on-chain, but config sync failed. Retrying may help.", "warning");
       }
 
@@ -377,14 +376,14 @@ export function TwoFactorProvider({
       console.warn("[TwoFactorContext] remove_secondary_key tx:", txHash);
       await provider.waitForTransaction(txHash);
 
-      // Step 2: Supabase delete — only after on-chain succeeds
+      // Step 2: Backend delete — only after on-chain succeeds
       onStep?.("register");
       const { error } = await disableTwoFactorConfig(
         normalizeAddress(wallet.keys.starkAddress),
       );
       if (error) {
-        // On-chain already removed 2FA, but Supabase failed — warn but proceed with local cleanup
-        console.warn("[TwoFactorContext] Supabase disable failed (on-chain already removed):", error);
+        // On-chain already removed 2FA, but backend failed — warn but proceed with local cleanup
+        console.warn("[TwoFactorContext] Backend disable failed (on-chain already removed):", error);
         showToast("2FA removed on-chain, but config sync failed", "warning");
       }
 
@@ -397,7 +396,7 @@ export function TwoFactorProvider({
       onStep?.("done");
       showToast("Two-Factor Authentication disabled", "success");
     } catch (e: any) {
-      // On-chain failed — abort entirely, do NOT delete Supabase or clear local keys
+      // On-chain failed — abort entirely, do NOT delete backend config or clear local keys
       onStep?.("error");
       console.warn("[TwoFactorContext] disable2FA error:", e);
       showToast(`Failed to disable 2FA: ${e.message}`, "error");
@@ -419,10 +418,10 @@ export function TwoFactorProvider({
 
   const saveConfig = useCallback(
     async (url: string, key: string) => {
-      await saveSupabaseConfig(url, key);
-      setSupabaseUrl(url);
-      setSupabaseKey(key);
-      showToast("Supabase config saved", "success");
+      await saveApiConfig(url, key);
+      setApiUrl(url);
+      setApiKey(key);
+      showToast("API config saved", "success");
     },
     [showToast],
   );
@@ -435,8 +434,8 @@ export function TwoFactorProvider({
         hasBiometrics,
         pendingRequests,
         secondaryPublicKey,
-        supabaseUrl,
-        supabaseKey,
+        apiUrl,
+        apiKey,
         isLoading,
         enable2FA,
         disable2FA,

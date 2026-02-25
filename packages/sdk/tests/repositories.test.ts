@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { SupabaseLite } from "../src/supabase";
+import { CloakApiClient } from "../src/api-client";
 import { ApprovalsRepository, TransactionsRepository } from "../src/repositories";
 import * as approvalFns from "../src/two-factor";
 import * as wardFns from "../src/ward";
@@ -12,8 +12,8 @@ describe("Repositories", () => {
 
   it("maps canonical amounts in TransactionsRepository.save", async () => {
     const provider = {} as any;
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
-    const repo = new TransactionsRepository(sb, provider);
+    const client = new CloakApiClient("https://example.com", "test-key");
+    const repo = new TransactionsRepository(client, provider);
 
     const saveSpy = vi
       .spyOn(transactionFns, "saveTransaction")
@@ -40,14 +40,14 @@ describe("Repositories", () => {
         amount_unit: "erc20_wei",
         note: "1 STRK",
       }),
-      sb,
+      client,
     );
   });
 
   it("delegates transaction read/write methods", async () => {
     const provider = { waitForTransaction: vi.fn() } as any;
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
-    const repo = new TransactionsRepository(sb, provider);
+    const client = new CloakApiClient("https://example.com", "test-key");
+    const repo = new TransactionsRepository(client, provider);
 
     const updateSpy = vi
       .spyOn(transactionFns, "updateTransactionStatus")
@@ -61,14 +61,14 @@ describe("Repositories", () => {
     await repo.listByWallet("0x1", 20);
     await repo.confirm("0xtx");
 
-    expect(updateSpy).toHaveBeenCalledWith("0xtx", "failed", "boom", "0xfee", sb);
-    expect(listSpy).toHaveBeenCalledWith("0x1", 20, sb);
-    expect(confirmSpy).toHaveBeenCalledWith(provider, "0xtx", sb);
+    expect(updateSpy).toHaveBeenCalledWith("0xtx", "failed", "boom", "0xfee", client);
+    expect(listSpy).toHaveBeenCalledWith("0x1", 20, client);
+    expect(confirmSpy).toHaveBeenCalledWith(provider, "0xtx", client);
   });
 
   it("delegates approval flows with common options", async () => {
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
-    const repo = new ApprovalsRepository(sb);
+    const client = new CloakApiClient("https://example.com", "test-key");
+    const repo = new ApprovalsRepository(client);
 
     const twoFASpy = vi
       .spyOn(approvalFns, "request2FAApproval")
@@ -116,13 +116,13 @@ describe("Repositories", () => {
     );
 
     expect(twoFASpy).toHaveBeenCalledWith(
-      sb,
+      client,
       expect.objectContaining({ walletAddress: "0x1" }),
       expect.any(Function),
       signal,
     );
     expect(wardSpy).toHaveBeenCalledWith(
-      sb,
+      client,
       expect.objectContaining({ wardAddress: "0xward" }),
       undefined,
       signal,
@@ -131,8 +131,8 @@ describe("Repositories", () => {
   });
 
   it("delegates typed ward request lifecycle helpers", async () => {
-    const sb = new SupabaseLite("https://example.supabase.co", "test-key");
-    const repo = new ApprovalsRepository(sb);
+    const client = new CloakApiClient("https://example.com", "test-key");
+    const repo = new ApprovalsRepository(client);
 
     const sample = {
       id: "req-1",
@@ -197,11 +197,11 @@ describe("Repositories", () => {
     await repo.listWardRequests("0xward", ["approved"], 20);
     const ui = repo.toWardRequestView(sample as any);
 
-    expect(createSpy).toHaveBeenCalledWith(sb, expect.objectContaining({ wardAddress: "0xward" }), undefined);
-    expect(getSpy).toHaveBeenCalledWith(sb, "req-1");
-    expect(updateSpy).toHaveBeenCalledWith(sb, "req-1", { status: "approved" });
-    expect(listGuardianSpy).toHaveBeenCalledWith(sb, "0xguardian", ["pending_guardian"], 20);
-    expect(listWardSpy).toHaveBeenCalledWith(sb, "0xward", ["approved"], 20);
+    expect(createSpy).toHaveBeenCalledWith(client, expect.objectContaining({ wardAddress: "0xward" }), undefined);
+    expect(getSpy).toHaveBeenCalledWith(client, "req-1");
+    expect(updateSpy).toHaveBeenCalledWith(client, "req-1", { status: "approved" });
+    expect(listGuardianSpy).toHaveBeenCalledWith(client, "0xguardian", ["pending_guardian"], 20);
+    expect(listWardSpy).toHaveBeenCalledWith(client, "0xward", ["approved"], 20);
     expect(ui.actionLabel).toBe("Private Transfer");
   });
 });
