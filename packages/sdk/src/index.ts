@@ -201,6 +201,8 @@ export {
   extractX402PaymentPayload,
   x402Fetch,
   payWithX402,
+  X402FacilitatorClient,
+  createShieldedFacilitatorClient,
   assertValidChallenge,
   assertValidPaymentPayload,
 } from "./x402";
@@ -213,6 +215,10 @@ export type {
   X402VerifyResponse,
   X402SettleResponse,
   X402FetchOptions,
+  X402ChallengeRequest,
+  X402VerifyRequest,
+  X402SettleRequest,
+  X402FacilitatorClientOptions,
 } from "./x402";
 
 // Compliance helpers

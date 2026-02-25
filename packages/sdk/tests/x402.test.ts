@@ -7,6 +7,7 @@ import {
   extractX402PaymentPayload,
   x402Fetch,
   payWithX402,
+  createShieldedFacilitatorClient,
   type X402Challenge,
 } from "../src/x402";
 
@@ -110,5 +111,56 @@ describe("x402 helpers", () => {
     expect(res.status).toBe(200);
     const headers = new Headers((fetchImpl.mock.calls[0][1] as RequestInit).headers);
     expect(headers.get("x-x402-payment")).toBeTruthy();
+  });
+
+  it("calls facilitator challenge/verify/settle APIs", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ challenge: baseChallenge }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: "accepted",
+            retryable: false,
+            paymentRef: "pay_ref",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: "settled",
+            paymentRef: "pay_ref",
+            txHash: "0xabc",
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const client = createShieldedFacilitatorClient({
+      baseUrl: "https://facilitator.example.com",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const challenge = await client.challenge({
+      recipient: "0xabc",
+      token: "STRK",
+      minAmount: "100",
+    });
+    const payload = createShieldedPaymentPayload(challenge, {
+      tongoAddress: "tongo-addr",
+      proof: "proof-blob",
+      replayKey: "rk_x",
+      nonce: "nonce_x",
+    });
+    const verify = await client.verify({ challenge, payment: payload });
+    const settle = await client.settle({ challenge, payment: payload });
+
+    expect(verify.status).toBe("accepted");
+    expect(settle.status).toBe("settled");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 });

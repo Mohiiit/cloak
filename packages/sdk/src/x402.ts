@@ -62,6 +62,30 @@ export interface X402FetchOptions {
 const DEFAULT_CHALLENGE_HEADER = "x-x402-challenge";
 const DEFAULT_PAYMENT_HEADER = "x-x402-payment";
 
+export interface X402ChallengeRequest {
+  recipient: string;
+  token?: string;
+  minAmount?: string;
+  context?: Record<string, unknown>;
+  network?: string;
+  ttlSeconds?: number;
+}
+
+export interface X402VerifyRequest {
+  challenge: X402Challenge;
+  payment: X402PaymentPayload;
+}
+
+export interface X402SettleRequest {
+  challenge: X402Challenge;
+  payment: X402PaymentPayload;
+}
+
+export interface X402FacilitatorClientOptions {
+  baseUrl: string;
+  fetchImpl?: typeof fetch;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -229,6 +253,66 @@ export async function payWithX402(
     ...init,
     headers,
   });
+}
+
+export class X402FacilitatorClient {
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: X402FacilitatorClientOptions) {
+    this.baseUrl = options.baseUrl.replace(/\/$/, "");
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async challenge(input: X402ChallengeRequest): Promise<X402Challenge> {
+    const res = await this.fetchImpl(`${this.baseUrl}/challenge`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      throw new Error(`x402 challenge failed: ${res.status}`);
+    }
+    const json = (await res.json()) as { challenge: X402Challenge };
+    assertValidChallenge(json.challenge);
+    return json.challenge;
+  }
+
+  async verify(input: X402VerifyRequest): Promise<X402VerifyResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      throw new Error(`x402 verify failed: ${res.status}`);
+    }
+    return (await res.json()) as X402VerifyResponse;
+  }
+
+  async settle(input: X402SettleRequest): Promise<X402SettleResponse> {
+    const res = await this.fetchImpl(`${this.baseUrl}/settle`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      throw new Error(`x402 settle failed: ${res.status}`);
+    }
+    return (await res.json()) as X402SettleResponse;
+  }
+}
+
+export function createShieldedFacilitatorClient(
+  options: X402FacilitatorClientOptions,
+): X402FacilitatorClient {
+  return new X402FacilitatorClient(options);
 }
 
 export function assertValidChallenge(challenge: unknown): asserts challenge is X402Challenge {
