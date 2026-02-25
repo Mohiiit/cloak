@@ -68,12 +68,12 @@ cd bridge-bundle && npm run build && cd ..
 npx react-native run-android   # or run-ios
 ```
 
-### SDK (`@cloak/sdk`)
+### SDK (`@cloak-wallet/sdk`)
 
 Reusable TypeScript library wrapping Tongo for shielded wallet operations.
 
 ```typescript
-import { CloakClient, MemoryStorage } from "@cloak/sdk";
+import { CloakClient, MemoryStorage } from "@cloak-wallet/sdk";
 
 const client = new CloakClient({ network: "sepolia", storage: new MemoryStorage() });
 await client.createWallet();
@@ -83,6 +83,24 @@ await client.account("STRK").fund(2n);                          // Shield
 await client.account("STRK").transfer("tongoAddress", 1n);      // Send
 await client.account("STRK").withdraw(1n);                       // Unshield
 ```
+
+Latest npm release: `@cloak-wallet/sdk@0.2.1` (with `0.2.0` deprecated).
+
+---
+
+## Backend Auto-Deploy
+
+This repo now includes a production backend deployment workflow:
+
+- Workflow: `.github/workflows/deploy-backend.yml`
+- Trigger: push to `main` (backend-relevant paths) or manual dispatch
+- Target: linked Vercel project (`cloak-backend`)
+
+Required GitHub repository secrets:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
 
 ---
 

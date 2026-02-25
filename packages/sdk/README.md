@@ -10,7 +10,11 @@ Cloak lets you shield tokens into a private balance, transfer them anonymously, 
 npm install @cloak-wallet/sdk
 ```
 
-Peer dependency: `starknet@^8.5.0`
+Latest stable release: `0.2.1`
+
+> Recommended: use `@cloak-wallet/sdk@0.2.1` or newer. Version `0.2.0` is deprecated.
+
+The package currently ships with `starknet@8.5.3` as a direct dependency.
 
 ## Quick Start
 
@@ -448,6 +452,24 @@ try {
 | ETH | 3×10¹² | 0.000003 ETH |
 | USDC | 10⁴ | 0.01 USDC |
 
+## Security Considerations
+
+### Private keys
+
+- Private keys are signed locally and should never be sent to a backend.
+- Use platform-secure storage adapters in production.
+- `LocalStorageAdapter` is convenient for development; prefer hardened storage in production apps.
+
+### API keys and server-side modules
+
+- API keys used by backend or voice integrations should not be embedded in public client bundles.
+- Proxy sensitive operations via your backend where possible.
+
+### RPC endpoints
+
+- Default public RPCs can be rate-limited.
+- Use dedicated provider endpoints for production traffic.
+
 ## Architecture
 
 ```
@@ -464,4 +486,4 @@ The SDK wraps the [Tongo SDK](https://www.npmjs.com/package/@fatsolutions/tongo-
 
 ## License
 
-MIT
+Apache-2.0

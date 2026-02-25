@@ -8,5 +8,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   treeshake: true,
-  noExternal: ["@fatsolutions/tongo-sdk", "starknet"],
+  external: ["starknet", "@fatsolutions/tongo-sdk"],
 });
