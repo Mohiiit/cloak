@@ -1,9 +1,9 @@
 /**
  * Bottom tab navigation for the Cloak wallet.
  */
-import React from "react";
+import React, { useRef } from "react";
 import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createBottomTabNavigator, type BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home, Clock, Shield, ScanLine, Bot, Settings as SettingsIcon } from "lucide-react-native";
@@ -15,12 +15,14 @@ import DeployScreen from "../screens/DeployScreen";
 import { CloakIcon } from "../components/CloakIcon";
 import { useWallet } from "../lib/WalletContext";
 import { useWardContext } from "../lib/wardContext";
+import { emitAgentTabVoiceEvent } from "../lib/agentVoiceEvents";
 import { colors, spacing, typography } from "../lib/theme";
 import { testIDs } from "../testing/testIDs";
 import TestStateMarkers from "../testing/TestStateMarkers";
 import type { AppTabParamList } from "./types";
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
+const AGENT_HOLD_TO_RECORD_MS = 3000;
 
 const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
   Home: ({ size, color }) => <Home size={size} color={color} />,
@@ -67,6 +69,58 @@ function HeaderQuickActionButton({ onPress }: { onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={styles.headerQuickBtn}>
       <ScanLine size={15} color={colors.primaryLight} />
+    </Pressable>
+  );
+}
+
+function AgentTabBarButton({
+  accessibilityHint,
+  accessibilityLabel,
+  accessibilityRole,
+  accessibilityState,
+  disabled,
+  style,
+  testID,
+  onPress,
+  onPressIn,
+  onPressOut,
+  onLongPress,
+  children,
+}: BottomTabBarButtonProps) {
+  const holdTriggeredRef = useRef(false);
+
+  return (
+    <Pressable
+      accessibilityHint={accessibilityHint}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={accessibilityState}
+      disabled={disabled}
+      style={style}
+      testID={testID}
+      delayLongPress={AGENT_HOLD_TO_RECORD_MS}
+      onPressIn={(e) => {
+        holdTriggeredRef.current = false;
+        onPressIn?.(e);
+      }}
+      onLongPress={(e) => {
+        holdTriggeredRef.current = true;
+        onLongPress?.(e);
+        onPress?.(e);
+        emitAgentTabVoiceEvent("start");
+      }}
+      onPressOut={(e) => {
+        onPressOut?.(e);
+        if (!holdTriggeredRef.current) return;
+        emitAgentTabVoiceEvent("stop");
+        holdTriggeredRef.current = false;
+      }}
+      onPress={(e) => {
+        if (holdTriggeredRef.current) return;
+        onPress?.(e);
+      }}
+    >
+      {children}
     </Pressable>
   );
 }
@@ -143,7 +197,10 @@ export default function AppNavigator() {
         <Tab.Screen
           name="Agent"
           component={AgentScreen}
-          options={{ headerTitle: "" }}
+          options={{
+            headerTitle: "",
+            tabBarButton: (props) => <AgentTabBarButton {...props} />,
+          }}
         />
         <Tab.Screen
           name="Activity"

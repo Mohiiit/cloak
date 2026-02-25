@@ -28,12 +28,26 @@ interface VoiceAgentParams {
   wards?: AgentWardInput[];
 }
 
+function normalizeProvider(value?: string | null): string {
+  if (!value) return "auto";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "sarvam" || normalized === "whisper" || normalized === "auto") return normalized;
+  return "auto";
+}
+
 export function useVoiceAgent(): UseVoiceAgentReturn {
   const recorder = useAudioRecorder();
+  const {
+    isRecording,
+    durationMs,
+    startRecording,
+    stopRecording,
+    cancel: cancelRecording,
+  } = recorder;
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcript, setTranscript] = useState<string | null>(null);
   const [language, setLanguageState] = useState<VoiceLanguageCode>("en-IN");
-  const [provider, setProviderState] = useState("sarvam");
+  const [provider, setProviderState] = useState("auto");
   const abortRef = useRef<AbortController | null>(null);
 
   // Load persisted preferences on first render
@@ -44,7 +58,7 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
       if (v) setLanguageState(v as VoiceLanguageCode);
     });
     AsyncStorage.getItem(VOICE_PROVIDER_KEY).then((v) => {
-      if (v) setProviderState(v);
+      if (v) setProviderState(normalizeProvider(v));
     });
   }
 
@@ -54,13 +68,14 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
   }, []);
 
   const setProvider = useCallback((p: string) => {
-    setProviderState(p);
-    AsyncStorage.setItem(VOICE_PROVIDER_KEY, p);
+    const normalized = normalizeProvider(p);
+    setProviderState(normalized);
+    AsyncStorage.setItem(VOICE_PROVIDER_KEY, normalized);
   }, []);
 
   const stopAndTranscribe = useCallback(
     async (params: VoiceAgentParams): Promise<(AgentChatResponse & { serverUrl: string }) | null> => {
-      const result = await recorder.stopRecording();
+      const result = await stopRecording();
       if (!result) return null;
 
       setIsTranscribing(true);
@@ -81,7 +96,7 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
         } as any);
 
         formData.append("language", language);
-        formData.append("provider", provider);
+        if (provider !== "auto") formData.append("provider", provider);
         if (params.sessionId) formData.append("sessionId", params.sessionId);
         if (params.walletAddress) formData.append("walletAddress", params.walletAddress);
         if (params.contacts.length > 0) formData.append("contacts", JSON.stringify(params.contacts));
@@ -108,22 +123,22 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
         abortRef.current = null;
       }
     },
-    [recorder.stopRecording, language, provider],
+    [language, provider, stopRecording],
   );
 
   const cancel = useCallback(() => {
-    recorder.cancel();
+    cancelRecording();
     abortRef.current?.abort();
     setIsTranscribing(false);
     setTranscript(null);
-  }, [recorder.cancel]);
+  }, [cancelRecording]);
 
   return {
-    isRecording: recorder.isRecording,
+    isRecording,
     isTranscribing,
-    durationMs: recorder.durationMs,
+    durationMs,
     transcript,
-    startRecording: recorder.startRecording,
+    startRecording,
     stopAndTranscribe,
     cancel,
     language,

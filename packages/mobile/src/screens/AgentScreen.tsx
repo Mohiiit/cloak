@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -21,7 +21,6 @@ import {
   Clock3,
   MessageSquare,
   Mic,
-  MicOff,
   Play,
   Plus,
   Save,
@@ -41,11 +40,16 @@ import { useTransactionRouter } from "../hooks/useTransactionRouter";
 import { useToast } from "../components/Toast";
 import { saveTxNote } from "../lib/storage";
 import {
+  consumeAgentTabVoiceEvents,
+  useAgentTabVoiceEventVersion,
+} from "../lib/agentVoiceEvents";
+import {
   deleteAgentSession,
   getAgentServerUrl,
   loadAgentState,
   sendAgentMessage,
   setAgentServerUrl,
+  type AgentChatResponse,
   type AgentCard,
   type AgentMessage,
   type AgentPlan,
@@ -222,6 +226,14 @@ export default function AgentScreen() {
   const { showToast } = useToast();
 
   const voice = useVoiceAgent();
+  const {
+    isRecording: isVoiceRecording,
+    isTranscribing: isVoiceTranscribing,
+    durationMs: voiceDurationMs,
+    startRecording: startVoiceRecording,
+    stopAndTranscribe,
+    cancel: cancelVoiceRecording,
+  } = voice;
 
   const [serverUrl, setServerUrlState] = useState("");
   const [serverDraft, setServerDraft] = useState("");
@@ -238,10 +250,11 @@ export default function AgentScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
-
-  useEffect(() => {
-    void refreshState();
-  }, []);
+  const quickVoiceSessionRef = useRef<string | undefined>(undefined);
+  const lastVoiceEventIdRef = useRef(0);
+  const isProcessingVoiceEventsRef = useRef(false);
+  const voiceEventVersion = useAgentTabVoiceEventVersion();
+  const walletAddress = wallet.keys?.starkAddress;
 
   useEffect(() => {
     Animated.timing(drawerAnim, {
@@ -249,7 +262,7 @@ export default function AgentScreen() {
       duration: 250,
       useNativeDriver: true,
     }).start();
-  }, [showDrawer]);
+  }, [drawerAnim, showDrawer]);
 
   const mappedContacts = useMemo(
     () =>
@@ -271,7 +284,86 @@ export default function AgentScreen() {
     [wards],
   );
 
-  async function refreshState(sessionId?: string) {
+  const applyAgentResponse = useCallback((result: AgentChatResponse & { serverUrl: string }) => {
+    setActiveSession(result.session);
+    setSessions(result.sessions);
+    setPlan(result.plan);
+    setServerUrlState(result.serverUrl);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200);
+  }, []);
+
+  const ensureSessionForVoice = useCallback(async (): Promise<string | undefined> => {
+    if (activeSession?.id) return activeSession.id;
+    try {
+      const data = await loadAgentState();
+      setActiveSession(data.session);
+      setSessions(data.sessions);
+      setServerUrlState(data.serverUrl);
+      setServerDraft(data.serverUrl);
+      return data.session.id;
+    } catch (err: any) {
+      showToast(err?.message || "Unable to initialize Agent session", "error");
+      return undefined;
+    }
+  }, [activeSession?.id, showToast]);
+
+  const handleVoiceStopAndTranscribe = useCallback(async (sessionId?: string) => {
+    try {
+      const result = await stopAndTranscribe({
+        sessionId,
+        walletAddress: walletAddress || undefined,
+        contacts: mappedContacts,
+        wards: mappedWards,
+      });
+      if (!result) return;
+      applyAgentResponse(result);
+    } catch (err: any) {
+      showToast(err?.message || "Voice transcription failed", "error");
+    }
+  }, [applyAgentResponse, mappedContacts, mappedWards, showToast, stopAndTranscribe, walletAddress]);
+
+  const handleHoldVoiceStart = useCallback(async () => {
+    if (isVoiceRecording || isVoiceTranscribing) return;
+    const sessionId = await ensureSessionForVoice();
+    const ok = await startVoiceRecording();
+    if (!ok) {
+      showToast("Microphone permission denied or audio module not available", "error");
+      return;
+    }
+    quickVoiceSessionRef.current = sessionId;
+  }, [ensureSessionForVoice, isVoiceRecording, isVoiceTranscribing, showToast, startVoiceRecording]);
+
+  const handleHoldVoiceStop = useCallback(async () => {
+    if (!isVoiceRecording) return;
+    const sessionId = quickVoiceSessionRef.current ?? activeSession?.id;
+    quickVoiceSessionRef.current = undefined;
+    await handleVoiceStopAndTranscribe(sessionId);
+  }, [activeSession?.id, handleVoiceStopAndTranscribe, isVoiceRecording]);
+
+  const processVoiceEvents = useCallback(async () => {
+    if (isProcessingVoiceEventsRef.current) return;
+    isProcessingVoiceEventsRef.current = true;
+
+    try {
+      while (true) {
+        const events = consumeAgentTabVoiceEvents(lastVoiceEventIdRef.current);
+        if (events.length === 0) break;
+
+        for (const event of events) {
+          lastVoiceEventIdRef.current = event.id;
+          if (event.type === "start") {
+            await handleHoldVoiceStart();
+          } else {
+            await handleHoldVoiceStop();
+          }
+        }
+      }
+    } finally {
+      isProcessingVoiceEventsRef.current = false;
+    }
+  }, [handleHoldVoiceStart, handleHoldVoiceStop]);
+
+  const refreshState = useCallback(async (sessionId?: string) => {
     setIsLoading(true);
     try {
       const data = await loadAgentState(sessionId);
@@ -288,7 +380,15 @@ export default function AgentScreen() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [showToast]);
+
+  useEffect(() => {
+    void refreshState();
+  }, [refreshState]);
+
+  useEffect(() => {
+    void processVoiceEvents();
+  }, [processVoiceEvents, voiceEventVersion]);
 
   async function submitMessage(message: string, overrideSessionId?: string | null) {
     if (!message.trim()) return;
@@ -314,15 +414,11 @@ export default function AgentScreen() {
       const result = await sendAgentMessage({
         message,
         sessionId: overrideSessionId === undefined ? activeSession?.id : overrideSessionId || undefined,
-        walletAddress: wallet.address || undefined,
+        walletAddress: walletAddress || undefined,
         contacts: mappedContacts,
         wards: mappedWards,
       });
-      setActiveSession(result.session);
-      setSessions(result.sessions);
-      setPlan(result.plan);
-      setServerUrlState(result.serverUrl);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
+      applyAgentResponse(result);
     } catch (err: any) {
       showToast(err?.message || "Agent request failed", "error");
     } finally {
@@ -718,38 +814,27 @@ export default function AgentScreen() {
 
       {/* ─── Input Bar ─── */}
       <View style={styles.inputBar}>
-        {voice.isRecording || voice.isTranscribing ? (
+        {isVoiceRecording || isVoiceTranscribing ? (
           /* Recording / Transcribing state */
           <View style={styles.voiceRow}>
-            {voice.isRecording && (
+            {isVoiceRecording && (
               <View style={styles.recordingDot} />
             )}
             <Text style={styles.voiceStatusText}>
-              {voice.isTranscribing
+              {isVoiceTranscribing
                 ? "Transcribing..."
-                : `Listening... ${Math.floor(voice.durationMs / 1000)}s`}
+                : `Listening... ${Math.floor(voiceDurationMs / 1000)}s`}
             </Text>
-            {voice.isTranscribing && (
+            {isVoiceTranscribing && (
               <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />
             )}
             <View style={{ flex: 1 }} />
-            {voice.isRecording && (
+            {isVoiceRecording && (
               <TouchableOpacity
                 style={styles.voiceStopBtn}
-                onPress={async () => {
-                  const result = await voice.stopAndTranscribe({
-                    sessionId: activeSession?.id,
-                    walletAddress: wallet.address || undefined,
-                    contacts: mappedContacts,
-                    wards: mappedWards,
-                  });
-                  if (result) {
-                    setActiveSession(result.session);
-                    setSessions(result.sessions);
-                    if (result.plan) setPlan(result.plan);
-                    setServerUrlState(result.serverUrl);
-                    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 200);
-                  }
+                onPress={() => {
+                  quickVoiceSessionRef.current = undefined;
+                  void handleVoiceStopAndTranscribe(activeSession?.id);
                 }}
               >
                 <Send size={18} color="#fff" />
@@ -757,7 +842,10 @@ export default function AgentScreen() {
             )}
             <TouchableOpacity
               style={styles.voiceCancelBtn}
-              onPress={voice.cancel}
+              onPress={() => {
+                quickVoiceSessionRef.current = undefined;
+                cancelVoiceRecording();
+              }}
             >
               <X size={16} color={colors.error} />
             </TouchableOpacity>
@@ -768,7 +856,8 @@ export default function AgentScreen() {
             <TouchableOpacity
               style={styles.micBtn}
               onPress={async () => {
-                const ok = await voice.startRecording();
+                quickVoiceSessionRef.current = undefined;
+                const ok = await startVoiceRecording();
                 if (!ok) {
                   showToast("Microphone permission denied or audio module not available", "error");
                 }
