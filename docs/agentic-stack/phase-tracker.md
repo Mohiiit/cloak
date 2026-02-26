@@ -61,7 +61,7 @@ Legend:
 | 49 | swap full test matrix | done | packages/nextjs/lib/marketplace/agents/swap-runner.matrix.test.ts |
 | 50 | full stack release gate | done | docs/agentic-stack/full-stack-release-gate.md |
 | 51 | client integration contract freeze | done | docs/agentic-stack/client-integration-contract-freeze.md |
-| 52 | marketplace run persistence migration | pending | supabase-migration-agent-runs.sql |
+| 52 | marketplace run persistence migration | done | supabase-migration-agent-runs.sql |
 | 53 | supabase-backed marketplace repositories | pending | packages/nextjs/lib/marketplace/*.repo.ts |
 | 54 | operator-scoped run/hire access controls | pending | packages/nextjs/app/api/v1/marketplace/runs/route.ts |
 | 55 | pagination and filtering contract rollout | pending | packages/nextjs/app/api/v1/marketplace/*/route.ts |
