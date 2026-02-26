@@ -56,7 +56,7 @@ export class X402ReconciliationWorker {
       level: "info",
       event: "x402.reconcile.completed",
       traceId: this.traceId,
-      metadata: summary,
+      metadata: summary as unknown as Record<string, unknown>,
     });
     return summary;
   }

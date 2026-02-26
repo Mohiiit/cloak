@@ -395,11 +395,14 @@ async function updateRunWithExecution(
   run: AgentRunResponse,
   execution: Awaited<ReturnType<typeof executeAgentRuntime>>,
 ) {
+  const nextPaymentState: NonNullable<
+    NonNullable<AgentRunResponse["payment_evidence"]>["state"]
+  > = execution.status === "completed" ? "settled" : "failed";
   const paymentEvidence =
     run.payment_evidence && run.billable
       ? {
           ...run.payment_evidence,
-          state: execution.status === "completed" ? "settled" : "failed",
+          state: nextPaymentState,
         }
       : run.payment_evidence;
   return updateRunRecord(run.id, {
