@@ -6,11 +6,7 @@
  * - get_guardian_address(), is_frozen(), etc.
  */
 import { useState, useEffect, useCallback } from "react";
-import {
-  checkIfWardAccount as sdkCheckIfWardAccount,
-  fetchWardInfo as sdkFetchWardInfo,
-  getProvider,
-} from "@cloak-wallet/sdk";
+import * as CloakSdk from "@cloak-wallet/sdk";
 import type { WardInfo } from "@cloak-wallet/sdk";
 
 export type { WardInfo };
@@ -24,7 +20,10 @@ export function useWard(starkAddress: string | undefined) {
     if (!starkAddress) return false;
     setIsCheckingWard(true);
     try {
-      const isWardAccount = await sdkCheckIfWardAccount(getProvider(), starkAddress);
+      const isWardAccount = await CloakSdk.checkIfWardAccount(
+        CloakSdk.getProvider(),
+        starkAddress,
+      );
       setIsWard(isWardAccount);
       return isWardAccount;
     } catch {
@@ -38,7 +37,7 @@ export function useWard(starkAddress: string | undefined) {
   const refreshWardInfo = useCallback(async () => {
     if (!starkAddress) return;
     try {
-      const info = await sdkFetchWardInfo(getProvider(), starkAddress);
+      const info = await CloakSdk.fetchWardInfo(CloakSdk.getProvider(), starkAddress);
       setWardInfo(info);
     } catch (err) {
       console.warn("[useWard] Failed to read ward info:", err);
