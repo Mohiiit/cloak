@@ -72,7 +72,7 @@ Legend:
 | 60 | web agent profile page | done | packages/nextjs/app/marketplace/[agentId]/page.tsx |
 | 61 | web hire flow | done | packages/nextjs/app/marketplace/[agentId]/page.tsx |
 | 62 | web paid run flow with x402 retry | done | packages/nextjs/app/marketplace/[agentId]/page.tsx |
-| 63 | web operator dashboard | pending | packages/nextjs/app/marketplace/dashboard/page.tsx |
+| 63 | web operator dashboard | done | packages/nextjs/app/marketplace/dashboard/page.tsx |
 | 64 | mobile marketplace entry integration | pending | packages/mobile/src/screens/AgentScreen.tsx |
 | 65 | mobile discover and hire flow | pending | packages/mobile/src/screens/MarketplaceScreen.tsx |
 | 66 | mobile paid run x402 flow | pending | packages/mobile/src/lib/marketplaceApi.ts |
