@@ -6,8 +6,7 @@ import {
   ValidationError,
   validate,
 } from "~~/app/api/v1/_lib/validation";
-import { getAgentProfile } from "~~/lib/marketplace/agents-store";
-import { selectDiscoveryAgentIds } from "~~/lib/marketplace/discovery-index";
+import { listAgentProfileRecords } from "~~/lib/marketplace/agents-repo";
 import { rankDiscoveredAgents } from "~~/lib/marketplace/discovery-ranking";
 import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
 import {
@@ -46,13 +45,19 @@ export async function GET(req: NextRequest) {
 
     const limit = query.limit ?? 25;
     const offset = query.offset ?? 0;
-    const candidateIds = selectDiscoveryAgentIds({
-      capability: query.capability,
-      agentType: query.agent_type,
-    });
-    const candidates = candidateIds
-      .map((agentId) => getAgentProfile(agentId))
-      .filter((profile): profile is NonNullable<typeof profile> => !!profile)
+    const candidates = (await listAgentProfileRecords())
+      .filter((profile) => {
+        if (query.agent_type && profile.agent_type !== query.agent_type) return false;
+        if (
+          query.capability &&
+          !profile.capabilities.some(
+            capability => capability.toLowerCase() === query.capability?.toLowerCase(),
+          )
+        ) {
+          return false;
+        }
+        return true;
+      })
       .filter((profile) => {
         if (query.verified_only && !profile.verified) return false;
         if (profile.status && profile.status !== "active") return false;

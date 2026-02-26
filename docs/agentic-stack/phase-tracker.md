@@ -62,7 +62,7 @@ Legend:
 | 50 | full stack release gate | done | docs/agentic-stack/full-stack-release-gate.md |
 | 51 | client integration contract freeze | done | docs/agentic-stack/client-integration-contract-freeze.md |
 | 52 | marketplace run persistence migration | done | supabase-migration-agent-runs.sql |
-| 53 | supabase-backed marketplace repositories | pending | packages/nextjs/lib/marketplace/*.repo.ts |
+| 53 | supabase-backed marketplace repositories | done | packages/nextjs/lib/marketplace/*.repo.ts |
 | 54 | operator-scoped run/hire access controls | pending | packages/nextjs/app/api/v1/marketplace/runs/route.ts |
 | 55 | pagination and filtering contract rollout | pending | packages/nextjs/app/api/v1/marketplace/*/route.ts |
 | 56 | sdk marketplace session unification | pending | packages/sdk/src/marketplace-session.ts |

@@ -12,7 +12,7 @@ import {
   ValidationError,
   validate,
 } from "~~/app/api/v1/_lib/validation";
-import { getHire, updateHireStatus } from "~~/lib/marketplace/hires-store";
+import { getHireRecord, updateHireStatusRecord } from "~~/lib/marketplace/hires-repo";
 import {
   consumeRateLimit,
   MARKETPLACE_RATE_LIMITS,
@@ -42,7 +42,7 @@ export async function PATCH(
       );
     }
     const { id } = await context.params;
-    const hire = getHire(id);
+    const hire = await getHireRecord(id);
     if (!hire) return notFound("Hire not found");
     if (hire.operator_wallet.toLowerCase() !== auth.wallet_address.toLowerCase()) {
       return forbidden("Only operator can update this hire");
@@ -52,7 +52,7 @@ export async function PATCH(
     if (!patch.status) {
       return badRequest("status is required");
     }
-    const updated = updateHireStatus(id, patch.status);
+    const updated = await updateHireStatusRecord(id, patch.status);
     if (!updated) return notFound("Hire not found");
     return NextResponse.json(updated);
   } catch (err) {

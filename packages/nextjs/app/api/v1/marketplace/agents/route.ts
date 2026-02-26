@@ -13,10 +13,10 @@ import {
   validate,
 } from "~~/app/api/v1/_lib/validation";
 import {
-  getAgentProfile,
-  listAgentProfiles,
-  upsertAgentProfile,
-} from "~~/lib/marketplace/agents-store";
+  getAgentProfileRecord,
+  listAgentProfileRecords,
+  upsertAgentProfileRecord,
+} from "~~/lib/marketplace/agents-repo";
 import { verifyEndpointProofSet } from "~~/lib/marketplace/endpoint-proof";
 import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
 import {
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     const limit = query.limit ?? 50;
     const offset = query.offset ?? 0;
 
-    let agents = listAgentProfiles()
+    let agents = (await listAgentProfileRecords())
       .filter((agent) => {
         if (query.agent_type && agent.agent_type !== query.agent_type) return false;
         if (query.verified_only && !agent.verified) return false;
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     }
     const body = await req.json();
     const data = validate(RegisterAgentSchema, body);
-    const existing = getAgentProfile(data.agent_id);
+    const existing = await getAgentProfileRecord(data.agent_id);
 
     if (auth.wallet_address.toLowerCase() !== data.operator_wallet.toLowerCase()) {
       return forbidden("operator_wallet must match authenticated wallet");
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
       return badRequest(proofCheck.reason || "Invalid endpoint proofs");
     }
 
-    const profile = upsertAgentProfile(data);
+    const profile = await upsertAgentProfileRecord(data);
     incrementRegistryMetric(existing ? "profiles_updated" : "profiles_registered");
     return NextResponse.json(profile, { status: 201 });
   } catch (err) {

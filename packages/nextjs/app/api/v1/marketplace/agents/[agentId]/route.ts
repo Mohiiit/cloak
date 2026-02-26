@@ -13,9 +13,9 @@ import {
   validate,
 } from "~~/app/api/v1/_lib/validation";
 import {
-  getAgentProfile,
-  updateAgentProfile,
-} from "~~/lib/marketplace/agents-store";
+  getAgentProfileRecord,
+  updateAgentProfileRecord,
+} from "~~/lib/marketplace/agents-repo";
 import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
 import { incrementRegistryMetric } from "~~/lib/marketplace/registry-metrics";
 
@@ -28,7 +28,7 @@ export async function GET(
   try {
     await authenticate(req);
     const { agentId } = await context.params;
-    const profile = getAgentProfile(agentId);
+    const profile = await getAgentProfileRecord(agentId);
     if (!profile) return notFound("Agent not found");
     const refreshOnchain = req.nextUrl.searchParams.get("refresh_onchain") === "true";
     if (!refreshOnchain) return NextResponse.json(profile);
@@ -53,7 +53,7 @@ export async function PATCH(
   try {
     const auth = await authenticate(req);
     const { agentId } = await context.params;
-    const profile = getAgentProfile(agentId);
+    const profile = await getAgentProfileRecord(agentId);
     if (!profile) return notFound("Agent not found");
     if (profile.operator_wallet.toLowerCase() !== auth.wallet_address.toLowerCase()) {
       return forbidden("Only operator can update this agent");
@@ -65,7 +65,7 @@ export async function PATCH(
       return badRequest("At least one updatable field is required");
     }
 
-    const updated = updateAgentProfile(agentId, patch);
+    const updated = await updateAgentProfileRecord(agentId, patch);
     if (!updated) return notFound("Agent not found");
     incrementRegistryMetric("profiles_updated");
     return NextResponse.json(updated);

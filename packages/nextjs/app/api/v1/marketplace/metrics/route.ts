@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate, AuthError } from "~~/app/api/v1/_lib/auth";
 import { serverError, unauthorized } from "~~/app/api/v1/_lib/errors";
-import { listAgentProfiles } from "~~/lib/marketplace/agents-store";
+import { listAgentProfileRecords } from "~~/lib/marketplace/agents-repo";
 import {
   computeFreshnessSnapshot,
   getRegistryMetricsSnapshot,
@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   try {
     await authenticate(req);
-    const profiles = listAgentProfiles();
+    const profiles = await listAgentProfileRecords();
     return NextResponse.json({
       metrics: getRegistryMetricsSnapshot(),
       freshness: computeFreshnessSnapshot(profiles),
@@ -24,4 +24,3 @@ export async function GET(req: NextRequest) {
     return serverError("Failed to fetch marketplace metrics");
   }
 }
-

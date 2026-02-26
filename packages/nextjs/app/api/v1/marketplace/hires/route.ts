@@ -10,8 +10,8 @@ import {
   ValidationError,
   validate,
 } from "~~/app/api/v1/_lib/validation";
-import { getAgentProfile } from "~~/lib/marketplace/agents-store";
-import { createHire, listHires } from "~~/lib/marketplace/hires-store";
+import { getAgentProfileRecord } from "~~/lib/marketplace/agents-repo";
+import { createHireRecord, listHireRecords } from "~~/lib/marketplace/hires-repo";
 import {
   consumeRateLimit,
   MARKETPLACE_RATE_LIMITS,
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
         { status: 429 },
       );
     }
-    const hires = listHires({
+    const hires = await listHireRecords({
       operatorWallet: auth.wallet_address,
       agentId: req.nextUrl.searchParams.get("agent_id") || undefined,
     });
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       return forbidden("operator_wallet must match authenticated wallet");
     }
 
-    const profile = getAgentProfile(data.agent_id);
+    const profile = await getAgentProfileRecord(data.agent_id);
     if (!profile || profile.status !== "active") {
       return NextResponse.json(
         { error: "Agent is unavailable", code: "AGENT_UNAVAILABLE" },
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const hire = createHire(data);
+    const hire = await createHireRecord(data);
     return NextResponse.json(hire, { status: 201 });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);

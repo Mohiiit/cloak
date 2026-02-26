@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate, AuthError } from "~~/app/api/v1/_lib/auth";
 import { badRequest, unauthorized, serverError } from "~~/app/api/v1/_lib/errors";
-import { createRun, listRuns, updateRun } from "~~/lib/marketplace/runs-store";
+import {
+  createRunRecord,
+  listRunRecords,
+  updateRunRecord,
+} from "~~/lib/marketplace/runs-repo";
 import { shieldedPaywall } from "~~/lib/marketplace/x402/paywall";
 import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
-import { getHire } from "~~/lib/marketplace/hires-store";
-import { getAgentProfile } from "~~/lib/marketplace/agents-store";
+import { getHireRecord } from "~~/lib/marketplace/hires-repo";
+import { getAgentProfileRecord } from "~~/lib/marketplace/agents-repo";
+import type { AgentRunResponse } from "@cloak-wallet/sdk";
 import {
   executeAgentRuntime,
   inferAgentType,
@@ -32,7 +37,7 @@ export async function GET(req: NextRequest) {
   try {
     await authenticate(req);
     return NextResponse.json({
-      runs: listRuns(),
+      runs: await listRunRecords(),
     });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
@@ -66,7 +71,7 @@ export async function POST(req: NextRequest) {
       return badRequest("hire_id and action are required");
     }
 
-    const hire = getHire(body.hire_id);
+    const hire = await getHireRecord(body.hire_id);
     if (hire && body.agent_id && hire.agent_id !== body.agent_id) {
       return badRequest("agent_id does not match hire");
     }
@@ -74,7 +79,7 @@ export async function POST(req: NextRequest) {
     if (!resolvedAgentId) {
       return badRequest("agent_id is required when hire does not exist");
     }
-    const agentProfile = getAgentProfile(resolvedAgentId);
+    const agentProfile = await getAgentProfileRecord(resolvedAgentId);
 
     let paymentRef: string | null = null;
     let settlementTxHash: string | null = null;
@@ -95,7 +100,7 @@ export async function POST(req: NextRequest) {
       settlementTxHash = paywall.settlementTxHash ?? null;
     }
 
-    const run = createRun({
+    const run = await createRunRecord({
       hireId: body.hire_id,
       agentId: resolvedAgentId,
       hireOperatorWallet: hire?.operator_wallet ?? null,
@@ -111,7 +116,7 @@ export async function POST(req: NextRequest) {
     const agentType = agentProfile?.agent_type || inferAgentType(resolvedAgentId);
     const finalizedRun =
       shouldExecute && agentType
-        ? (updateRunWithExecution(
+        ? (await updateRunWithExecution(
             run,
             await executeAgentRuntime({
               agentType,
@@ -152,11 +157,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function updateRunWithExecution(
-  run: ReturnType<typeof createRun>,
+async function updateRunWithExecution(
+  run: AgentRunResponse,
   execution: Awaited<ReturnType<typeof executeAgentRuntime>>,
 ) {
-  return updateRun(run.id, {
+  return updateRunRecord(run.id, {
     status: execution.status === "completed" ? "completed" : "failed",
     execution_tx_hashes: execution.executionTxHashes,
     result: execution.result,
