@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   StaticX402ProofProvider,
   x402FetchWithProofProvider,
-} from "@cloak-wallet/sdk";
+} from "~~/lib/marketplace/x402/client";
 import { getApiConfig } from "~~/lib/api-client";
 
 type AgentProfileResponse = {

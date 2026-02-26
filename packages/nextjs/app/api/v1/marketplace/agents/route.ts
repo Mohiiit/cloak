@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
         if (
           query.capability &&
           !agent.capabilities.some(
-            (capability) => capability.toLowerCase() === query.capability?.toLowerCase(),
+            (capability: string) => capability.toLowerCase() === query.capability?.toLowerCase(),
           )
         ) {
           return false;

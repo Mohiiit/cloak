@@ -191,6 +191,16 @@ export interface UpdateWardApprovalRequest {
   responded_at?: string | null;
 }
 
+export interface PendingWardApprovalsQuery {
+  ward?: string;
+  guardian?: string;
+  status?: WardApprovalStatus | WardApprovalStatus[];
+  limit?: number;
+  offset?: number;
+  include_all?: boolean;
+  updated_after?: string;
+}
+
 // ─── Transactions ────────────────────────────────────────────────────────────
 
 export type TransactionStatus = "pending" | "confirmed" | "failed";

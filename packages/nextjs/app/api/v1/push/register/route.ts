@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeAddress } from "@cloak-wallet/sdk";
 import { authenticate, AuthError } from "../../_lib/auth";
 import { getSupabase } from "../../_lib/supabase";
 import { unauthorized, serverError } from "../../_lib/errors";
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     await sb.upsert(
       "push_subscriptions",
       {
-        wallet_address: auth.wallet_address,
+        wallet_address: normalizeAddress(auth.wallet_address),
         device_id: data.device_id,
         platform: data.platform,
         token: data.token ?? null,
@@ -32,6 +33,10 @@ export async function POST(req: NextRequest) {
         p256dh: data.p256dh ?? null,
         auth: data.auth ?? null,
         is_active: true,
+        failure_count: 0,
+        last_error: null,
+        last_success_at: null,
+        last_failure_at: null,
         updated_at: new Date().toISOString(),
       },
       "wallet_address,device_id",

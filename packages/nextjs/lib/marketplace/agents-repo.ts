@@ -59,7 +59,7 @@ function fromRow(row: AgentProfileRow): AgentProfileResponse {
       reputation_score: 0,
       validation_score: 0,
       freshness_seconds: 0,
-    }) as AgentProfileResponse["trust_summary"],
+    }) as unknown as AgentProfileResponse["trust_summary"],
     verified: !!row.verified,
     status: row.status,
     registry_version: row.registry_version,
@@ -137,7 +137,11 @@ export async function upsertAgentProfileRecord(
 
   try {
     const sb = getSupabase();
-    const rows = await sb.upsert<AgentProfileRow>("agent_profiles", row, "agent_id");
+    const rows = await sb.upsert<AgentProfileRow>(
+      "agent_profiles",
+      row as unknown as Record<string, unknown>,
+      "agent_id",
+    );
     return fromRow(rows[0] ?? row);
   } catch {
     return upsertAgentProfile(input);

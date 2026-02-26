@@ -40,9 +40,10 @@ function fromRow(row: AgentRunRow): AgentRunResponse {
     status: row.status,
     payment_ref: row.payment_ref,
     settlement_tx_hash: row.settlement_tx_hash,
-    payment_evidence: parseJsonObject(row.payment_evidence) as AgentRunResponse["payment_evidence"],
+    payment_evidence:
+      parseJsonObject(row.payment_evidence) as unknown as AgentRunResponse["payment_evidence"],
     agent_trust_snapshot:
-      parseJsonObject(row.agent_trust_snapshot) as AgentRunResponse["agent_trust_snapshot"],
+      parseJsonObject(row.agent_trust_snapshot) as unknown as AgentRunResponse["agent_trust_snapshot"],
     execution_tx_hashes: parseJsonArray(row.execution_tx_hashes),
     result: parseJsonObject(row.result),
     created_at: row.created_at,
@@ -88,7 +89,10 @@ export async function createRunRecord(input: {
 
   try {
     const sb = getSupabase();
-    const rows = await sb.insert<AgentRunRow>("agent_runs", row);
+    const rows = await sb.insert<AgentRunRow>(
+      "agent_runs",
+      row as unknown as Record<string, unknown>,
+    );
     return fromRow(rows[0] ?? row);
   } catch {
     return createRun(input);

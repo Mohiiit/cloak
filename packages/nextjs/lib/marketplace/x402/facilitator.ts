@@ -108,15 +108,16 @@ export class X402Facilitator {
 
     await this.replayStore.registerPending(req.payment.replayKey, paymentRef);
 
-    const settled = {
+    const txHash = `0x${Buffer.from(paymentRef).toString("hex").slice(0, 62)}`;
+    const settled: X402SettleResponse = {
       status: "settled",
       paymentRef,
-      txHash: `0x${Buffer.from(paymentRef).toString("hex").slice(0, 62)}`,
+      txHash,
     };
     await this.replayStore.markSettled(
       req.payment.replayKey,
       paymentRef,
-      settled.txHash,
+      txHash,
     );
     return settled;
   }

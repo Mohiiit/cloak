@@ -143,6 +143,11 @@ export interface WardApprovalRequestOptions {
    * Useful for mobile-originated flows that can auto-sign locally.
    */
   onRequestCreated?: (request: WardApprovalRequest) => Promise<void> | void;
+  /**
+   * Poll interval while waiting for a terminal approval status.
+   * Defaults to 6000ms.
+   */
+  pollIntervalMs?: number;
 }
 
 export interface WardApprovalResult {
@@ -788,7 +793,7 @@ export function getProvider(network: "sepolia" | "mainnet" = "sepolia"): RpcProv
 // ─── Ward Approval Request + Poll ─────────────────────────────────────────────
 
 const TOKEN_SUFFIX_RE = /\s*(STRK|ETH|USDC)\s*$/i;
-const POLL_INTERVAL = 2000;
+const POLL_INTERVAL = 6000;
 const TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
 const TERMINAL_WARD_STATUSES = new Set<WardApprovalStatus>([
@@ -1060,7 +1065,11 @@ export async function listWardApprovalRequestsForGuardian(
   const normalizedGuardian = normalizeAddress(guardianAddress);
   let responses: WardApprovalResponse[];
   if (statuses && statuses.length > 0 && statuses.every((s) => PENDING_WARD_STATUSES.has(s))) {
-    responses = await client.getPendingWardApprovals({ guardian: normalizedGuardian });
+    responses = await client.getPendingWardApprovals({
+      guardian: normalizedGuardian,
+      status: statuses,
+      limit,
+    });
   } else {
     responses = await client.getWardApprovalHistory({ guardian: normalizedGuardian, limit });
   }
@@ -1076,7 +1085,11 @@ export async function listWardApprovalRequestsForWard(
   const normalizedWard = normalizeAddress(wardAddress);
   let responses: WardApprovalResponse[];
   if (statuses && statuses.length > 0 && statuses.every((s) => PENDING_WARD_STATUSES.has(s))) {
-    responses = await client.getPendingWardApprovals({ ward: normalizedWard });
+    responses = await client.getPendingWardApprovals({
+      ward: normalizedWard,
+      status: statuses,
+      limit,
+    });
   } else {
     responses = await client.getWardApprovalHistory({ ward: normalizedWard, limit });
   }
@@ -1121,6 +1134,7 @@ export async function requestWardApproval(
 
   onStatusChange?.("Waiting for ward mobile signing...");
   const startTime = Date.now();
+  const pollInterval = Math.max(1500, Math.trunc(options?.pollIntervalMs || POLL_INTERVAL));
 
   return new Promise<WardApprovalResult>((resolve) => {
     const poll = async () => {
@@ -1173,10 +1187,10 @@ export async function requestWardApproval(
           onStatusChange?.(`Status: ${row.status}`);
         }
 
-        setTimeout(poll, POLL_INTERVAL);
+        setTimeout(poll, pollInterval);
       } catch (err) {
         console.warn("[Ward] Poll error:", err);
-        setTimeout(poll, POLL_INTERVAL);
+        setTimeout(poll, pollInterval);
       }
     };
 

@@ -311,8 +311,17 @@ describe("POST /api/v1/ward-approvals", () => {
       "ward_approval_requests",
       expect.objectContaining({
         status: "pending_ward_sig",
+        event_version: 1,
         responded_at: null,
       }),
+    );
+    expect(mockSb.upsert).toHaveBeenCalledWith(
+      "ward_approval_events_outbox",
+      expect.objectContaining({
+        approval_id: "wa1",
+        event_type: "ward_approval.created",
+      }),
+      "approval_id,event_version,event_type",
     );
   });
 
@@ -353,7 +362,11 @@ describe("GET /api/v1/ward-approvals", () => {
     expect(mockSb.select).toHaveBeenCalledWith(
       "ward_approval_requests",
       expect.stringContaining("ward_address=eq.0xward"),
-      expect.objectContaining({ orderBy: "created_at.desc" }),
+      expect.objectContaining({
+        orderBy: "updated_at.desc",
+        limit: 50,
+        offset: 0,
+      }),
     );
   });
 
@@ -369,7 +382,27 @@ describe("GET /api/v1/ward-approvals", () => {
     expect(mockSb.select).toHaveBeenCalledWith(
       "ward_approval_requests",
       undefined,
-      expect.objectContaining({ orderBy: "created_at.desc" }),
+      expect.objectContaining({
+        orderBy: "updated_at.desc",
+        limit: 50,
+        offset: 0,
+      }),
+    );
+  });
+
+  it("defaults to pending statuses when scoped by ward/guardian", async () => {
+    mockSb.select.mockResolvedValue([]);
+
+    await GET(
+      makeReq("http://localhost/api/v1/ward-approvals?guardian=0xGUARDIAN"),
+    );
+
+    expect(mockSb.select).toHaveBeenCalledWith(
+      "ward_approval_requests",
+      expect.stringContaining("status=in.(pending_ward_sig,pending_guardian)"),
+      expect.objectContaining({
+        orderBy: "updated_at.desc",
+      }),
     );
   });
 });
@@ -423,7 +456,26 @@ describe("PATCH /api/v1/ward-approvals/:id", () => {
   });
 
   it("updates ward approval status", async () => {
-    const updated = { id: "wa1", status: "approved" };
+    mockSb.select.mockResolvedValueOnce([
+      {
+        id: "wa1",
+        status: "pending_guardian",
+        ward_address: "0xaaa111",
+        guardian_address: "0xbbb222",
+        action: "transfer",
+        token: "STRK",
+        event_version: 1,
+      },
+    ]);
+    const updated = {
+      id: "wa1",
+      status: "approved",
+      event_version: 2,
+      ward_address: "0xaaa111",
+      guardian_address: "0xbbb222",
+      action: "transfer",
+      token: "STRK",
+    };
     mockSb.update.mockResolvedValue([updated]);
 
     const res = await PATCH(
@@ -440,16 +492,33 @@ describe("PATCH /api/v1/ward-approvals/:id", () => {
     // Terminal status should auto-set responded_at
     expect(mockSb.update).toHaveBeenCalledWith(
       "ward_approval_requests",
-      "id=eq.wa1",
+      "id=eq.wa1&event_version=eq.1",
       expect.objectContaining({
         status: "approved",
+        event_version: 2,
         responded_at: expect.any(String),
         updated_at: expect.any(String),
       }),
     );
+    expect(mockSb.upsert).toHaveBeenCalledWith(
+      "ward_approval_events_outbox",
+      expect.objectContaining({
+        approval_id: "wa1",
+        event_type: "ward_approval.status_changed",
+        event_version: 2,
+      }),
+      "approval_id,event_version,event_type",
+    );
   });
 
   it("sets responded_at for terminal statuses", async () => {
+    mockSb.select.mockResolvedValueOnce([
+      {
+        id: "wa1",
+        status: "pending_guardian",
+        event_version: 3,
+      },
+    ]);
     mockSb.update.mockResolvedValue([{ id: "wa1", status: "rejected" }]);
 
     await PATCH(
@@ -465,6 +534,13 @@ describe("PATCH /api/v1/ward-approvals/:id", () => {
   });
 
   it("does not set responded_at for non-terminal statuses", async () => {
+    mockSb.select.mockResolvedValueOnce([
+      {
+        id: "wa1",
+        status: "pending_guardian",
+        event_version: 4,
+      },
+    ]);
     mockSb.update.mockResolvedValue([
       { id: "wa1", status: "pending_guardian" },
     ]);
@@ -482,7 +558,7 @@ describe("PATCH /api/v1/ward-approvals/:id", () => {
   });
 
   it("returns 404 when not found", async () => {
-    mockSb.update.mockResolvedValue([]);
+    mockSb.select.mockResolvedValueOnce([]);
 
     const res = await PATCH(
       makeReq("http://localhost/api/v1/ward-approvals/nope", {
@@ -1208,6 +1284,21 @@ describe("POST /api/v1/push/register", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 when web registration is missing keys", async () => {
+    const res = await POST(
+      makeReq("http://localhost/api/v1/push/register", {
+        method: "POST",
+        body: {
+          platform: "web",
+          device_id: "device-abc",
+          endpoint: "https://example.com/webpush",
+        },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+  });
+
   it("returns 401 when unauthenticated", async () => {
     mockAuthError();
 
@@ -1246,7 +1337,10 @@ describe("DELETE /api/v1/push/unregister", () => {
     expect(mockSb.update).toHaveBeenCalledWith(
       "push_subscriptions",
       expect.stringContaining("wallet_address=eq.0x123abc"),
-      { is_active: false },
+      expect.objectContaining({
+        is_active: false,
+        updated_at: expect.any(String),
+      }),
     );
   });
 

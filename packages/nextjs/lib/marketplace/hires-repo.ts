@@ -49,7 +49,10 @@ export async function createHireRecord(
 
   try {
     const sb = getSupabase();
-    const rows = await sb.insert<AgentHireRow>("agent_hires", row);
+    const rows = await sb.insert<AgentHireRow>(
+      "agent_hires",
+      row as unknown as Record<string, unknown>,
+    );
     return fromRow(rows[0] ?? row);
   } catch {
     return createHire(input);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeAddress } from "@cloak-wallet/sdk";
 import { authenticate, AuthError } from "../../_lib/auth";
 import { getSupabase } from "../../_lib/supabase";
 import { badRequest, unauthorized, serverError } from "../../_lib/errors";
@@ -27,8 +28,11 @@ export async function DELETE(req: NextRequest) {
 
     await sb.update(
       "push_subscriptions",
-      `wallet_address=eq.${auth.wallet_address}&device_id=eq.${deviceId}`,
-      { is_active: false },
+      `wallet_address=eq.${normalizeAddress(auth.wallet_address)}&device_id=eq.${deviceId}`,
+      {
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      },
     );
 
     return new NextResponse(null, { status: 204 });

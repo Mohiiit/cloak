@@ -203,6 +203,21 @@ export type {
   UpdateAgentProfileInput,
   UpdateHireInput,
 } from "./marketplace";
+export type {
+  AgentType,
+  AgentProfileStatus,
+  AgentHireStatus,
+  AgentEndpointOwnershipProof,
+  RegisterAgentRequest,
+  AgentProfileResponse,
+  CreateAgentHireRequest,
+  AgentHireResponse,
+  CreateAgentRunRequest,
+  AgentRunResponse,
+  DiscoverAgentsQuery,
+  X402ChallengeResponse,
+  X402PaymentPayloadRequest,
+} from "./types/api";
 export {
   createMarketplaceSession,
   createMarketplaceSessionFromApiClient,

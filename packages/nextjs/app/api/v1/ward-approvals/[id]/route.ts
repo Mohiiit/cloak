@@ -6,6 +6,8 @@ import {
   unauthorized,
   serverError,
 } from "../../_lib/errors";
+import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
+import { enqueueWardApprovalEvent } from "../../_lib/push/outbox";
 import {
   UpdateWardApprovalSchema,
   validate,
@@ -39,6 +41,8 @@ interface WardApprovalRow {
   error_message: string | null;
   created_at: string;
   responded_at: string | null;
+  event_version?: number | null;
+  updated_at?: string | null;
 }
 
 /** Statuses that indicate the approval flow has terminated. */
@@ -49,6 +53,21 @@ const TERMINAL_STATUSES = new Set([
   "gas_error",
   "expired",
 ]);
+
+async function findWardApprovalById(
+  id: string,
+): Promise<{ sb: ReturnType<typeof getSupabase>; row: WardApprovalRow | null }> {
+  const sb = getSupabase();
+  const rows = await sb.select<WardApprovalRow>(
+    "ward_approval_requests",
+    `id=eq.${id}`,
+    { limit: 1 },
+  );
+  return {
+    sb,
+    row: rows[0] || null,
+  };
+}
 
 /**
  * GET /api/v1/ward-approvals/[id]
@@ -62,19 +81,12 @@ export async function GET(
     await authenticate(req);
 
     const { id } = await params;
-    const sb = getSupabase();
-
-    const rows = await sb.select<WardApprovalRow>(
-      "ward_approval_requests",
-      `id=eq.${id}`,
-      { limit: 1 },
-    );
-
-    if (rows.length === 0) {
+    const { row } = await findWardApprovalById(id);
+    if (!row) {
       return notFound("Ward approval request not found");
     }
 
-    return NextResponse.json(rows[0]);
+    return NextResponse.json(row);
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
     console.error("[GET /api/v1/ward-approvals/:id]", err);
@@ -95,13 +107,17 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await authenticate(req);
+    const auth = await authenticate(req);
+    const traceId = createTraceId(`ward-approvals:update:${auth.wallet_address}`);
 
     const body = await req.json();
     const data = validate(UpdateWardApprovalSchema, body);
 
     const { id } = await params;
-    const sb = getSupabase();
+    const { sb, row: existing } = await findWardApprovalById(id);
+    if (!existing) {
+      return notFound("Ward approval request not found");
+    }
 
     // Build the update payload from validated fields.
     const update: Record<string, unknown> = {};
@@ -124,24 +140,76 @@ export async function PATCH(
     if (data.error_message !== undefined)
       update.error_message = data.error_message;
 
+    const statusChanged =
+      data.status !== undefined && data.status !== existing.status;
+    const existingVersion = Number(existing.event_version);
+    const useCas = statusChanged && Number.isFinite(existingVersion) && existingVersion >= 1;
+
     // Auto-set responded_at for terminal statuses unless explicitly provided.
     if (data.status && TERMINAL_STATUSES.has(data.status)) {
       update.responded_at = new Date().toISOString();
+    }
+
+    if (statusChanged) {
+      const currentVersion =
+        Number.isFinite(existingVersion) && existingVersion >= 1
+          ? existingVersion
+          : 1;
+      update.event_version = Math.max(1, Math.trunc(currentVersion) + 1);
     }
 
     update.updated_at = new Date().toISOString();
 
     const rows = await sb.update<WardApprovalRow>(
       "ward_approval_requests",
-      `id=eq.${id}`,
+      useCas ? `id=eq.${id}&event_version=eq.${existingVersion}` : `id=eq.${id}`,
       update,
     );
 
     if (rows.length === 0) {
-      return notFound("Ward approval request not found");
+      // CAS miss can happen under concurrent updates.
+      const latestRows = await sb.select<WardApprovalRow>(
+        "ward_approval_requests",
+        `id=eq.${id}`,
+        { limit: 1 },
+      );
+      if (latestRows.length === 0) {
+        return notFound("Ward approval request not found");
+      }
+      return NextResponse.json(latestRows[0]);
     }
 
-    return NextResponse.json(rows[0]);
+    const updated = rows[0];
+    if (statusChanged) {
+      try {
+        await enqueueWardApprovalEvent({
+          sb,
+          row: updated,
+          eventType: "ward_approval.status_changed",
+          previousStatus: existing.status,
+        });
+      } catch (pushErr) {
+        console.warn(
+          "[ward-approvals] failed to enqueue status_changed event",
+          pushErr,
+        );
+      }
+    }
+
+    logAgenticEvent({
+      level: "info",
+      event: "ward_approvals.updated",
+      traceId,
+      actor: auth.wallet_address,
+      metadata: {
+        approvalId: id,
+        status: updated.status,
+        previousStatus: existing.status,
+        statusChanged,
+      },
+    });
+
+    return NextResponse.json(updated);
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
     if (err instanceof ValidationError) return err.response;

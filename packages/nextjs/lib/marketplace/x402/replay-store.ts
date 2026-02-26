@@ -69,7 +69,7 @@ export class X402ReplayStore {
         const sb = getSupabase();
         const rows = await sb.upsert<X402ReplayRecord>(
           "x402_payments",
-          record,
+          record as unknown as Record<string, unknown>,
           "replay_key",
         );
         return rows[0] ?? record;
@@ -111,7 +111,7 @@ export class X402ReplayStore {
         const sb = getSupabase();
         const rows = await sb.upsert<X402ReplayRecord>(
           "x402_payments",
-          updated,
+          updated as unknown as Record<string, unknown>,
           "replay_key",
         );
         return rows[0] ?? updated;
@@ -152,7 +152,7 @@ export class X402ReplayStore {
         const sb = getSupabase();
         const rows = await sb.upsert<X402ReplayRecord>(
           "x402_payments",
-          updated,
+          updated as unknown as Record<string, unknown>,
           "replay_key",
         );
         return rows[0] ?? updated;
@@ -169,4 +169,3 @@ export class X402ReplayStore {
     inMemoryReplayStore.clear();
   }
 }
-

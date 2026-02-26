@@ -155,6 +155,8 @@ describe("ward lifecycle helpers", () => {
     });
     expect(getPendingWardApprovals).toHaveBeenCalledWith({
       ward: "0xabc",
+      status: ["pending_guardian"],
+      limit: 10,
     });
   });
 });

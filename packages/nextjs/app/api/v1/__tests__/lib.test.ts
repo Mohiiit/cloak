@@ -745,8 +745,28 @@ describe("validation.ts", () => {
       const result = PushRegisterSchema.safeParse({
         platform: "extension",
         device_id: "ext-1",
+        endpoint: "https://push.example.com/sub/ext-1",
+        p256dh: "key1",
+        auth: "key2",
       });
       expect(result.success).toBe(true);
+    });
+
+    it("rejects ios registration when token is missing", () => {
+      const result = PushRegisterSchema.safeParse({
+        platform: "ios",
+        device_id: "ios-no-token",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects web registration when keys are missing", () => {
+      const result = PushRegisterSchema.safeParse({
+        platform: "web",
+        device_id: "web-missing-keys",
+        endpoint: "https://push.example.com/sub/123",
+      });
+      expect(result.success).toBe(false);
     });
   });
 

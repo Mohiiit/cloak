@@ -252,6 +252,30 @@ export const PushRegisterSchema = z.object({
   endpoint: z.string().url("Must be a valid URL").nullable().optional(),
   p256dh: z.string().nullable().optional(),
   auth: z.string().nullable().optional(),
+}).superRefine((value, ctx) => {
+  const isWeb = value.platform === "web" || value.platform === "extension";
+  const isMobile = value.platform === "ios" || value.platform === "android";
+
+  if (isWeb) {
+    if (!value.endpoint || !value.p256dh || !value.auth) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endpoint"],
+        message:
+          "Web/extension push registration requires endpoint, p256dh, and auth",
+      });
+    }
+  }
+
+  if (isMobile) {
+    if (!value.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["token"],
+        message: "Mobile push registration requires token",
+      });
+    }
+  }
 });
 
 // ─── Compliance ─────────────────────────────────────────────────────────────

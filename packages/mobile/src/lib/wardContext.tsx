@@ -65,6 +65,9 @@ const STORAGE_KEY_PARTIAL_WARD = "cloak_partial_ward";
 const MAX_GAS_RETRIES = 2;
 const WARD_STRK_DECIMALS = 18n;
 const DEFAULT_WARD_FUNDING_WEI = "0x" + (5n * 10n ** (WARD_STRK_DECIMALS - 1n)).toString(16);
+const WARD_POLL_INTERVAL_IDLE_MS = 60_000;
+const WARD_POLL_INTERVAL_ACTIVE_MS = 10_000;
+const WARD_POLL_FETCH_LIMIT = 25;
 
 const WARD_CREATION_TOTAL_STEPS = 6;
 
@@ -944,7 +947,11 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     try {
       const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const myAddr = normalizeAddress(wallet.keys.starkAddress);
-      const data = await client.getPendingWardApprovals({ ward: myAddr });
+      const data = await client.getPendingWardApprovals({
+        ward: myAddr,
+        status: "pending_ward_sig",
+        limit: WARD_POLL_FETCH_LIMIT,
+      });
       if (data) {
         // Filter to pending_ward_sig status and non-expired
         const now = new Date().toISOString();
@@ -966,7 +973,11 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     try {
       const client = await getApiClient({ walletAddress: wallet.keys?.starkAddress, publicKey: wallet.keys?.starkPublicKey });
       const myAddr = normalizeAddress(wallet.keys.starkAddress);
-      const data = await client.getPendingWardApprovals({ guardian: myAddr });
+      const data = await client.getPendingWardApprovals({
+        guardian: myAddr,
+        status: "pending_guardian",
+        limit: WARD_POLL_FETCH_LIMIT,
+      });
       if (data) {
         // Filter to pending_guardian status and non-expired
         const now = new Date().toISOString();
@@ -993,14 +1004,23 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     fetchWardSignRequests();
-    wardPollRef.current = setInterval(fetchWardSignRequests, 3000);
+    const wardPollIntervalMs =
+      pendingWard2faRequests.length > 0
+        ? WARD_POLL_INTERVAL_ACTIVE_MS
+        : WARD_POLL_INTERVAL_IDLE_MS;
+    wardPollRef.current = setInterval(fetchWardSignRequests, wardPollIntervalMs);
     return () => {
       if (wardPollRef.current) {
         clearInterval(wardPollRef.current);
         wardPollRef.current = null;
       }
     };
-  }, [isWard, wallet.keys?.starkAddress, fetchWardSignRequests]);
+  }, [
+    isWard,
+    wallet.keys?.starkAddress,
+    fetchWardSignRequests,
+    pendingWard2faRequests.length,
+  ]);
 
   // Guardian polling
   useEffect(() => {
@@ -1013,14 +1033,24 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     fetchGuardianRequests();
-    guardianPollRef.current = setInterval(fetchGuardianRequests, 3000);
+    const guardianPollIntervalMs =
+      pendingGuardianRequests.length > 0
+        ? WARD_POLL_INTERVAL_ACTIVE_MS
+        : WARD_POLL_INTERVAL_IDLE_MS;
+    guardianPollRef.current = setInterval(fetchGuardianRequests, guardianPollIntervalMs);
     return () => {
       if (guardianPollRef.current) {
         clearInterval(guardianPollRef.current);
         guardianPollRef.current = null;
       }
     };
-  }, [isWard, wards.length, wallet.keys?.starkAddress, fetchGuardianRequests]);
+  }, [
+    isWard,
+    wards.length,
+    wallet.keys?.starkAddress,
+    fetchGuardianRequests,
+    pendingGuardianRequests.length,
+  ]);
 
   // Refresh on AppState focus
   useEffect(() => {
