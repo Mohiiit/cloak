@@ -11,6 +11,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -118,6 +120,8 @@ export default function MarketplaceScreen() {
   const [runPayerAddress, setRunPayerAddress] = useState(
     'tongo-mobile-operator',
   );
+  const [policyCollapsed, setPolicyCollapsed] = useState(true);
+  const [runConfigCollapsed, setRunConfigCollapsed] = useState(true);
 
   const filteredAgents = useMemo(() => {
     const query = searchText.trim().toLowerCase();
@@ -309,43 +313,69 @@ export default function MarketplaceScreen() {
       </View>
 
       <View style={styles.policyCard}>
-        <Text style={styles.policyTitle}>Hire policy JSON</Text>
-        <TextInput
-          style={styles.policyInput}
-          value={policyDraft}
-          onChangeText={setPolicyDraft}
-          multiline
-          autoCapitalize="none"
-          autoCorrect={false}
-          spellCheck={false}
-        />
+        <TouchableOpacity
+          style={styles.collapsibleHeader}
+          onPress={() => setPolicyCollapsed(prev => !prev)}
+        >
+          <Text style={styles.policyTitle}>Hire policy JSON</Text>
+          {policyCollapsed ? (
+            <ChevronDown size={16} color={colors.textMuted} />
+          ) : (
+            <ChevronUp size={16} color={colors.textMuted} />
+          )}
+        </TouchableOpacity>
+        {!policyCollapsed ? (
+          <TextInput
+            style={styles.policyInput}
+            value={policyDraft}
+            onChangeText={setPolicyDraft}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+          />
+        ) : null}
       </View>
 
       <View style={styles.policyCard}>
-        <Text style={styles.policyTitle}>Paid run config (x402)</Text>
-        <TextInput
-          style={styles.singleLineInput}
-          value={runAction}
-          onChangeText={setRunAction}
-          placeholder="Action (swap/stake/dispatch_batch)"
-          placeholderTextColor={colors.textMuted}
-        />
-        <TextInput
-          style={styles.singleLineInput}
-          value={runPayerAddress}
-          onChangeText={setRunPayerAddress}
-          placeholder="Payer tongo address"
-          placeholderTextColor={colors.textMuted}
-        />
-        <TextInput
-          style={styles.policyInput}
-          value={runParamsDraft}
-          onChangeText={setRunParamsDraft}
-          multiline
-          autoCapitalize="none"
-          autoCorrect={false}
-          spellCheck={false}
-        />
+        <TouchableOpacity
+          style={styles.collapsibleHeader}
+          onPress={() => setRunConfigCollapsed(prev => !prev)}
+        >
+          <Text style={styles.policyTitle}>Paid run config (x402)</Text>
+          {runConfigCollapsed ? (
+            <ChevronDown size={16} color={colors.textMuted} />
+          ) : (
+            <ChevronUp size={16} color={colors.textMuted} />
+          )}
+        </TouchableOpacity>
+        {!runConfigCollapsed ? (
+          <>
+            <TextInput
+              style={styles.singleLineInput}
+              value={runAction}
+              onChangeText={setRunAction}
+              placeholder="Action (swap/stake/dispatch_batch)"
+              placeholderTextColor={colors.textMuted}
+            />
+            <TextInput
+              style={styles.singleLineInput}
+              value={runPayerAddress}
+              onChangeText={setRunPayerAddress}
+              placeholder="Payer tongo address"
+              placeholderTextColor={colors.textMuted}
+            />
+            <TextInput
+              style={styles.policyInput}
+              value={runParamsDraft}
+              onChangeText={setRunParamsDraft}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+            />
+          </>
+        ) : null}
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -549,6 +579,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fontSize.xs,
     fontFamily: typography.secondarySemibold,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 28,
   },
   policyInput: {
     minHeight: 92,
