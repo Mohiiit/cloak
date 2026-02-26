@@ -65,7 +65,7 @@ Legend:
 | 53 | supabase-backed marketplace repositories | done | packages/nextjs/lib/marketplace/*.repo.ts |
 | 54 | operator-scoped run/hire access controls | done | packages/nextjs/app/api/v1/marketplace/runs/route.ts |
 | 55 | pagination and filtering contract rollout | done | packages/nextjs/app/api/v1/marketplace/*/route.ts |
-| 56 | sdk marketplace session unification | pending | packages/sdk/src/marketplace-session.ts |
+| 56 | sdk marketplace session unification | done | packages/sdk/src/marketplace-session.ts |
 | 57 | x402 proof provider interface | pending | packages/sdk/src/x402.ts |
 | 58 | backend x402 proof adapter boundary | pending | packages/nextjs/lib/marketplace/x402/facilitator.ts |
 | 59 | web marketplace discovery page | pending | packages/nextjs/app/marketplace/page.tsx |

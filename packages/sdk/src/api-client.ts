@@ -34,6 +34,13 @@ import type {
   ViewingGrantResponse,
   CreateInnocenceProofRequest,
   InnocenceProofResponse,
+  RegisterAgentRequest,
+  AgentProfileResponse,
+  DiscoverAgentsQuery,
+  CreateAgentHireRequest,
+  AgentHireResponse,
+  CreateAgentRunRequest,
+  AgentRunResponse,
   ApiError,
   PaginationParams,
 } from "./types/api";
@@ -100,6 +107,13 @@ export class CloakApiClient {
 
   private del<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>("DELETE", path, body);
+  }
+
+  getConfig(): { baseUrl: string; apiKey: string } {
+    return {
+      baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
+    };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -326,6 +340,100 @@ export class CloakApiClient {
 
   async listInnocenceProofs(): Promise<InnocenceProofResponse[]> {
     return this.get<InnocenceProofResponse[]>("/compliance/innocence-proofs");
+  }
+
+  // ─── Marketplace ────────────────────────────────────────────────────────
+
+  async registerAgent(req: RegisterAgentRequest): Promise<AgentProfileResponse> {
+    return this.post<AgentProfileResponse>("/marketplace/agents", req);
+  }
+
+  async listAgents(query?: DiscoverAgentsQuery): Promise<AgentProfileResponse[]> {
+    const payload = await this.get<{ agents: AgentProfileResponse[] }>(
+      `/marketplace/agents${this.queryString(query || {})}`,
+    );
+    return payload.agents;
+  }
+
+  async discoverAgents(
+    query?: DiscoverAgentsQuery,
+  ): Promise<Array<AgentProfileResponse & { discovery_score: number }>> {
+    const payload = await this.get<{
+      agents: Array<AgentProfileResponse & { discovery_score: number }>;
+    }>(`/marketplace/discover${this.queryString(query || {})}`);
+    return payload.agents;
+  }
+
+  async getAgent(agentId: string): Promise<AgentProfileResponse> {
+    return this.get<AgentProfileResponse>(
+      `/marketplace/agents/${encodeURIComponent(agentId)}`,
+    );
+  }
+
+  async updateAgent(
+    agentId: string,
+    patch: Partial<{
+      status: "active" | "paused" | "retired";
+      verified: boolean;
+      trust_score: number;
+      metadata_uri: string | null;
+    }>,
+  ): Promise<AgentProfileResponse> {
+    return this.patch<AgentProfileResponse>(
+      `/marketplace/agents/${encodeURIComponent(agentId)}`,
+      patch,
+    );
+  }
+
+  async createHire(req: CreateAgentHireRequest): Promise<AgentHireResponse> {
+    return this.post<AgentHireResponse>("/marketplace/hires", req);
+  }
+
+  async listHires(params?: {
+    agent_id?: string;
+    status?: "active" | "paused" | "revoked";
+    limit?: number;
+    offset?: number;
+  }): Promise<AgentHireResponse[]> {
+    const payload = await this.get<{ hires: AgentHireResponse[] }>(
+      `/marketplace/hires${this.queryString(params || {})}`,
+    );
+    return payload.hires;
+  }
+
+  async updateHire(
+    hireId: string,
+    patch: { status: "active" | "paused" | "revoked" },
+  ): Promise<AgentHireResponse> {
+    return this.patch<AgentHireResponse>(
+      `/marketplace/hires/${encodeURIComponent(hireId)}`,
+      patch,
+    );
+  }
+
+  async createRun(
+    req: CreateAgentRunRequest & { agent_id?: string; token?: string; minAmount?: string; execute?: boolean },
+  ): Promise<AgentRunResponse> {
+    return this.post<AgentRunResponse>("/marketplace/runs", req);
+  }
+
+  async listRuns(params?: {
+    hire_id?: string;
+    agent_id?: string;
+    status?:
+      | "queued"
+      | "blocked_policy"
+      | "pending_payment"
+      | "running"
+      | "completed"
+      | "failed";
+    limit?: number;
+    offset?: number;
+  }): Promise<AgentRunResponse[]> {
+    const payload = await this.get<{ runs: AgentRunResponse[] }>(
+      `/marketplace/runs${this.queryString(params || {})}`,
+    );
+    return payload.runs;
   }
 }
 

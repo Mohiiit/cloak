@@ -203,6 +203,14 @@ export type {
   UpdateAgentProfileInput,
   UpdateHireInput,
 } from "./marketplace";
+export {
+  createMarketplaceSession,
+  createMarketplaceSessionFromApiClient,
+} from "./marketplace-session";
+export type {
+  MarketplaceSession,
+  MarketplaceSessionOptions,
+} from "./marketplace-session";
 
 // x402 helpers
 export {
