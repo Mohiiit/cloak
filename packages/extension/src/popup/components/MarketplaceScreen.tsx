@@ -18,7 +18,77 @@ type AgentCard = {
   discovery_score?: number;
 };
 
+type RunCard = {
+  id: string;
+  status: string;
+  payment_ref?: string | null;
+  settlement_tx_hash?: string | null;
+  execution_tx_hashes?: string[] | null;
+};
+
 const CAPABILITIES = ["", "stake", "dispatch", "swap", "x402_shielded"] as const;
+
+function randomRef(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+async function postRunWithX402(input: {
+  baseUrl: string;
+  apiKey: string;
+  body: Record<string, unknown>;
+  payerTongoAddress: string;
+}): Promise<Response> {
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-API-Key": input.apiKey,
+  };
+
+  const first = await fetch(`${input.baseUrl}/api/v1/marketplace/runs`, {
+    method: "POST",
+    headers: baseHeaders,
+    body: JSON.stringify(input.body),
+  });
+  if (first.status !== 402) {
+    return first;
+  }
+
+  const rawChallenge = first.headers.get("x-x402-challenge");
+  if (!rawChallenge) {
+    throw new Error("Missing x402 challenge header");
+  }
+  const challenge = JSON.parse(rawChallenge) as {
+    challengeId: string;
+    token: string;
+    minAmount: string;
+    contextHash: string;
+    expiresAt: string;
+  };
+
+  const paymentPayload = {
+    version: "1",
+    scheme: "cloak-shielded-x402",
+    challengeId: challenge.challengeId,
+    tongoAddress: input.payerTongoAddress,
+    token: challenge.token,
+    amount: challenge.minAmount,
+    proof: "proof-extension-demo",
+    replayKey: randomRef("rk"),
+    contextHash: challenge.contextHash,
+    expiresAt: challenge.expiresAt,
+    nonce: randomRef("nonce"),
+    createdAt: new Date().toISOString(),
+  };
+
+  return fetch(`${input.baseUrl}/api/v1/marketplace/runs`, {
+    method: "POST",
+    headers: {
+      ...baseHeaders,
+      "x-x402-challenge": rawChallenge,
+      "x-x402-payment": JSON.stringify(paymentPayload),
+    },
+    body: JSON.stringify(input.body),
+  });
+}
 
 export function MarketplaceScreen({ onBack }: Props) {
   const [agents, setAgents] = useState<AgentCard[]>([]);
@@ -39,6 +109,21 @@ export function MarketplaceScreen({ onBack }: Props) {
   const [hireIdsByAgent, setHireIdsByAgent] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [runningAgent, setRunningAgent] = useState<string | null>(null);
+  const [runAction, setRunAction] = useState("swap");
+  const [runPayerAddress, setRunPayerAddress] = useState("tongo-extension-operator");
+  const [runParamsDraft, setRunParamsDraft] = useState(
+    JSON.stringify(
+      {
+        sell_token: "USDC",
+        buy_token: "STRK",
+        amount: "25",
+      },
+      null,
+      2,
+    ),
+  );
+  const [lastRunByAgent, setLastRunByAgent] = useState<Record<string, RunCard>>({});
 
   const filteredAgents = useMemo(() => {
     const query = searchText.trim().toLowerCase();
@@ -130,6 +215,56 @@ export function MarketplaceScreen({ onBack }: Props) {
     [policyDraft],
   );
 
+  const runPaidExecution = useCallback(
+    async (agent: AgentCard) => {
+      const hireId = hireIdsByAgent[agent.agent_id];
+      if (!hireId) {
+        setError("Create a hire before running paid execution");
+        return;
+      }
+
+      setRunningAgent(agent.agent_id);
+      setError(null);
+      setStatus(null);
+      try {
+        let parsedParams: Record<string, unknown> = {};
+        try {
+          parsedParams = JSON.parse(runParamsDraft) as Record<string, unknown>;
+        } catch {
+          throw new Error("Run params JSON is invalid");
+        }
+
+        const cfg = await getApiConfig();
+        const baseUrl = cfg.url.replace(/\/$/, "");
+        const response = await postRunWithX402({
+          baseUrl,
+          apiKey: cfg.key,
+          payerTongoAddress: runPayerAddress,
+          body: {
+            hire_id: hireId,
+            agent_id: agent.agent_id,
+            action: runAction,
+            params: parsedParams,
+            billable: true,
+            execute: true,
+          },
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || `Paid run failed (${response.status})`);
+        }
+        const run = payload as RunCard;
+        setLastRunByAgent(prev => ({ ...prev, [agent.agent_id]: run }));
+        setStatus(`Paid run completed: ${run.id}`);
+      } catch (err: any) {
+        setError(err?.message || "Failed to execute paid run");
+      } finally {
+        setRunningAgent(null);
+      }
+    },
+    [hireIdsByAgent, runAction, runParamsDraft, runPayerAddress],
+  );
+
   return (
     <div className="flex flex-col h-[580px] bg-cloak-bg p-6 animate-fade-in overflow-y-auto">
       <Header title="Agent Marketplace" onBack={onBack} />
@@ -184,6 +319,29 @@ export function MarketplaceScreen({ onBack }: Props) {
           onChange={(e) => setPolicyDraft(e.target.value)}
           className="w-full h-24 px-2 py-2 rounded-lg bg-cloak-input-bg border border-cloak-border text-[10px] text-cloak-text font-mono resize-none outline-none"
         />
+      </div>
+
+      <div className="rounded-xl border border-cloak-border bg-cloak-card p-3 mb-3">
+        <p className="text-[10px] text-cloak-muted uppercase tracking-wider mb-1.5">Paid run (x402)</p>
+        <div className="flex flex-col gap-2">
+          <input
+            value={runAction}
+            onChange={(e) => setRunAction(e.target.value)}
+            className="w-full h-8 px-2 rounded-lg bg-cloak-input-bg border border-cloak-border text-[11px] text-cloak-text outline-none"
+            placeholder="run action"
+          />
+          <input
+            value={runPayerAddress}
+            onChange={(e) => setRunPayerAddress(e.target.value)}
+            className="w-full h-8 px-2 rounded-lg bg-cloak-input-bg border border-cloak-border text-[11px] text-cloak-text outline-none"
+            placeholder="payer tongo address"
+          />
+          <textarea
+            value={runParamsDraft}
+            onChange={(e) => setRunParamsDraft(e.target.value)}
+            className="w-full h-20 px-2 py-2 rounded-lg bg-cloak-input-bg border border-cloak-border text-[10px] text-cloak-text font-mono resize-none outline-none"
+          />
+        </div>
       </div>
 
       {error && (
@@ -246,6 +404,29 @@ export function MarketplaceScreen({ onBack }: Props) {
               </button>
               {hireIdsByAgent[agent.agent_id] && (
                 <p className="text-[10px] text-emerald-400 mt-1.5 font-mono">hire: {hireIdsByAgent[agent.agent_id]}</p>
+              )}
+              <button
+                onClick={() => void runPaidExecution(agent)}
+                disabled={!hireIdsByAgent[agent.agent_id] || runningAgent === agent.agent_id}
+                className="w-full h-8 mt-2 rounded-lg bg-violet-500/80 hover:bg-violet-500 text-white text-[11px] font-medium disabled:opacity-50"
+              >
+                {runningAgent === agent.agent_id ? "Running..." : "Run paid action"}
+              </button>
+              {lastRunByAgent[agent.agent_id] && (
+                <div className="mt-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-2">
+                  <p className="text-[10px] text-violet-200 font-mono">
+                    run: {lastRunByAgent[agent.agent_id].id}
+                  </p>
+                  <p className="text-[10px] text-violet-200">
+                    status: {lastRunByAgent[agent.agent_id].status}
+                  </p>
+                  <p className="text-[10px] text-violet-200 break-all">
+                    payment_ref: {lastRunByAgent[agent.agent_id].payment_ref || "n/a"}
+                  </p>
+                  <p className="text-[10px] text-violet-200 break-all">
+                    settlement_tx: {lastRunByAgent[agent.agent_id].settlement_tx_hash || "n/a"}
+                  </p>
+                </div>
               )}
             </div>
           ))
