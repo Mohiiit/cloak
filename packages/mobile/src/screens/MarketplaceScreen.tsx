@@ -13,6 +13,7 @@ import { ArrowLeft, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-reac
 import type { AgentProfileResponse } from "@cloak-wallet/sdk";
 import {
   discoverMarketplaceAgents,
+  executeMarketplacePaidRun,
   hireMarketplaceAgent,
 } from "../lib/marketplaceApi";
 import { useWallet } from "../lib/WalletContext";
@@ -43,6 +44,20 @@ export default function MarketplaceScreen() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [hireIdsByAgent, setHireIdsByAgent] = useState<Record<string, string>>({});
+  const [runningAgent, setRunningAgent] = useState<string | null>(null);
+  const [runAction, setRunAction] = useState("swap");
+  const [runParamsDraft, setRunParamsDraft] = useState(
+    JSON.stringify(
+      {
+        sell_token: "USDC",
+        buy_token: "STRK",
+        amount: "25",
+      },
+      null,
+      2,
+    ),
+  );
+  const [runPayerAddress, setRunPayerAddress] = useState("tongo-mobile-operator");
 
   const filteredAgents = useMemo(() => {
     const query = searchText.trim().toLowerCase();
@@ -116,6 +131,46 @@ export default function MarketplaceScreen() {
     [policyDraft, wallet.keys?.publicKey, wallet.keys?.starkAddress],
   );
 
+  const runPaidExecution = useCallback(
+    async (agent: AgentCard) => {
+      const hireId = hireIdsByAgent[agent.agent_id];
+      if (!hireId) {
+        setError("Create a hire before running paid execution");
+        return;
+      }
+
+      setRunningAgent(agent.agent_id);
+      setError(null);
+      setStatus(null);
+      try {
+        let params: Record<string, unknown> = {};
+        try {
+          params = JSON.parse(runParamsDraft) as Record<string, unknown>;
+        } catch {
+          throw new Error("Run params JSON is invalid");
+        }
+
+        const run = await executeMarketplacePaidRun({
+          hireId,
+          agentId: agent.agent_id,
+          action: runAction,
+          params,
+          payerTongoAddress: runPayerAddress,
+        });
+        setStatus(`Paid run completed: ${run.id}`);
+        navigation.navigate("MarketplaceRunDetail", {
+          run,
+          agentName: agent.name,
+        });
+      } catch (err: any) {
+        setError(err?.message || "Failed to execute paid run");
+      } finally {
+        setRunningAgent(null);
+      }
+    },
+    [hireIdsByAgent, navigation, runAction, runParamsDraft, runPayerAddress],
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -167,6 +222,33 @@ export default function MarketplaceScreen() {
           style={styles.policyInput}
           value={policyDraft}
           onChangeText={setPolicyDraft}
+          multiline
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+        />
+      </View>
+
+      <View style={styles.policyCard}>
+        <Text style={styles.policyTitle}>Paid run config (x402)</Text>
+        <TextInput
+          style={styles.singleLineInput}
+          value={runAction}
+          onChangeText={setRunAction}
+          placeholder="Action (swap/stake/dispatch)"
+          placeholderTextColor={colors.textMuted}
+        />
+        <TextInput
+          style={styles.singleLineInput}
+          value={runPayerAddress}
+          onChangeText={setRunPayerAddress}
+          placeholder="Payer tongo address"
+          placeholderTextColor={colors.textMuted}
+        />
+        <TextInput
+          style={styles.policyInput}
+          value={runParamsDraft}
+          onChangeText={setRunParamsDraft}
           multiline
           autoCapitalize="none"
           autoCorrect={false}
@@ -232,6 +314,22 @@ export default function MarketplaceScreen() {
                 {hireIdsByAgent[agent.agent_id] ? (
                   <Text style={styles.hireIdText}>hire: {hireIdsByAgent[agent.agent_id]}</Text>
                 ) : null}
+                <TouchableOpacity
+                  style={[
+                    styles.runButton,
+                    !hireIdsByAgent[agent.agent_id] && styles.runButtonDisabled,
+                  ]}
+                  disabled={
+                    !hireIdsByAgent[agent.agent_id] || runningAgent === agent.agent_id
+                  }
+                  onPress={() => void runPaidExecution(agent)}
+                >
+                  {runningAgent === agent.agent_id ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.runButtonText}>Run paid action</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             ))
           )}
@@ -357,6 +455,17 @@ const styles = StyleSheet.create({
     fontFamily: typography.primary,
     textAlignVertical: "top",
   },
+  singleLineInput: {
+    height: 38,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.inputBg,
+    color: colors.text,
+    paddingHorizontal: spacing.sm,
+    fontSize: fontSize.xs,
+    fontFamily: typography.primary,
+  },
   errorText: {
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
@@ -479,5 +588,21 @@ const styles = StyleSheet.create({
     color: colors.success,
     fontSize: fontSize.xs,
     fontFamily: typography.primary,
+  },
+  runButton: {
+    marginTop: spacing.xs,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.secondary,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  runButtonDisabled: {
+    opacity: 0.45,
+  },
+  runButtonText: {
+    color: "#fff",
+    fontSize: fontSize.xs,
+    fontFamily: typography.primarySemibold,
   },
 });

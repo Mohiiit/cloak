@@ -1,4 +1,5 @@
 import type { NavigatorScreenParams } from "@react-navigation/native";
+import type { AgentRunResponse } from "@cloak-wallet/sdk";
 
 export type AppTabParamList = {
   Home: undefined;
@@ -10,6 +11,10 @@ export type AppTabParamList = {
 export type RootStackParamList = {
   AppTabs: NavigatorScreenParams<AppTabParamList>;
   Marketplace: undefined;
+  MarketplaceRunDetail: {
+    run: AgentRunResponse;
+    agentName?: string;
+  };
   Send: { openScanner?: boolean } | undefined;
   Shield: undefined;
   Unshield: undefined;
