@@ -1,13 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createContextHash,
+  computeX402IntentHash,
+  createX402TongoProofEnvelope,
+  encodeX402TongoProofEnvelope,
+  decodeX402TongoProofEnvelope,
   parseX402Challenge,
   createShieldedPaymentPayload,
+  TongoEnvelopeProofProvider,
   decodeX402PaymentHeader,
   extractX402PaymentPayload,
   x402Fetch,
+  x402FetchWithTongoProof,
   payWithX402,
   createShieldedFacilitatorClient,
+  waitForX402Settlement,
+  X402SettlementError,
   type X402Challenge,
 } from "../src/x402";
 
@@ -49,6 +57,32 @@ describe("x402 helpers", () => {
     expect(decoded.challengeId).toBe(baseChallenge.challengeId);
     expect(decoded.token).toBe("STRK");
     expect(decoded.amount).toBe("100");
+  });
+
+  it("creates and decodes tongo proof envelope", () => {
+    const envelope = createX402TongoProofEnvelope({
+      challenge: baseChallenge,
+      tongoAddress: "tongo-addr",
+      replayKey: "rk1",
+      nonce: "nonce1",
+      settlementTxHash: "0x1234",
+      attestor: "sdk-test",
+    });
+    const encoded = encodeX402TongoProofEnvelope(envelope);
+    const decoded = decodeX402TongoProofEnvelope(encoded);
+    const expectedIntentHash = computeX402IntentHash({
+      challengeId: baseChallenge.challengeId,
+      contextHash: baseChallenge.contextHash,
+      recipient: baseChallenge.recipient,
+      token: baseChallenge.token,
+      tongoAddress: "tongo-addr",
+      amount: baseChallenge.minAmount,
+      replayKey: "rk1",
+      nonce: "nonce1",
+      expiresAt: baseChallenge.expiresAt,
+    });
+    expect(decoded.intentHash).toBe(expectedIntentHash);
+    expect(decoded.settlementTxHash).toBe("0x1234");
   });
 
   it("extracts payment payload from request headers", () => {
@@ -95,6 +129,48 @@ describe("x402 helpers", () => {
     const headers = new Headers(retryInit.headers);
     expect(headers.get("x-x402-challenge")).toBe(JSON.stringify(baseChallenge));
     expect(headers.get("x-x402-payment")).toBeTruthy();
+  });
+
+  it("retries using tongo proof provider helper", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("Payment required", {
+          status: 402,
+          headers: {
+            "x-x402-challenge": JSON.stringify(baseChallenge),
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const response = await x402FetchWithTongoProof(
+      "https://example.com/run",
+      { method: "POST" },
+      {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        tongoAddress: "payer",
+        proofProvider: new TongoEnvelopeProofProvider(
+          ({ challenge, tongoAddress, replayKey, nonce }) =>
+            createX402TongoProofEnvelope({
+              challenge,
+              tongoAddress,
+              replayKey,
+              nonce,
+              settlementTxHash: "0x9999",
+              attestor: "sdk-test",
+            }),
+        ),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const retryInit = fetchImpl.mock.calls[1][1] as RequestInit;
+    const headers = new Headers(retryInit.headers);
+    const paymentHeader = headers.get("x-x402-payment");
+    expect(paymentHeader).toBeTruthy();
+    const decoded = decodeX402PaymentHeader(paymentHeader!);
+    expect(decoded.proof).toContain("tongo_attestation_v1");
   });
 
   it("sends payment payload in one shot with payWithX402", async () => {
@@ -163,5 +239,69 @@ describe("x402 helpers", () => {
     expect(verify.status).toBe("accepted");
     expect(settle.status).toBe("settled");
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("polls settle endpoint until payment is settled", async () => {
+    const settle = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "pending",
+        paymentRef: "pay_1",
+      })
+      .mockResolvedValueOnce({
+        status: "settled",
+        paymentRef: "pay_1",
+        txHash: "0x1234",
+      });
+
+    const payload = createShieldedPaymentPayload(baseChallenge, {
+      tongoAddress: "tongo-addr",
+      proof: "proof-blob",
+      replayKey: "rk_poll_1",
+      nonce: "nonce_poll_1",
+    });
+
+    const settled = await waitForX402Settlement(
+      { settle } as any,
+      {
+        challenge: baseChallenge,
+        payment: payload,
+      },
+      {
+        pollIntervalMs: 1,
+        timeoutMs: 500,
+      },
+    );
+
+    expect(settle).toHaveBeenCalledTimes(2);
+    expect(settled.status).toBe("settled");
+    expect(settled.txHash).toBe("0x1234");
+  });
+
+  it("throws timeout when settlement never reaches terminal state", async () => {
+    const settle = vi.fn().mockResolvedValue({
+      status: "pending",
+      paymentRef: "pay_2",
+    });
+    const payload = createShieldedPaymentPayload(baseChallenge, {
+      tongoAddress: "tongo-addr",
+      proof: "proof-blob",
+      replayKey: "rk_poll_2",
+      nonce: "nonce_poll_2",
+    });
+
+    await expect(
+      waitForX402Settlement(
+        { settle } as any,
+        {
+          challenge: baseChallenge,
+          payment: payload,
+        },
+        {
+          pollIntervalMs: 1,
+          maxAttempts: 2,
+        },
+      ),
+    ).rejects.toBeInstanceOf(X402SettlementError);
   });
 });

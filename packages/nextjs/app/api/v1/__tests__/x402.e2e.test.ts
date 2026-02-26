@@ -3,6 +3,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
+  createX402TongoProofEnvelope,
+  encodeX402TongoProofEnvelope,
   createShieldedPaymentPayload,
   x402Fetch,
 } from "../../../../../sdk/src/x402";
@@ -65,13 +67,24 @@ describe("x402 e2e", () => {
       },
       {
         fetchImpl: routeFetch as unknown as typeof fetch,
-        createPayload: challenge =>
-          createShieldedPaymentPayload(challenge, {
+        createPayload: challenge => {
+          const replayKey = "rk_e2e_1";
+          const nonce = "nonce_e2e_1";
+          const proofEnvelope = createX402TongoProofEnvelope({
+            challenge,
             tongoAddress: "tongo1payer",
-            proof: "proof-e2e",
-            replayKey: "rk_e2e_1",
-            nonce: "nonce_e2e_1",
-          }),
+            replayKey,
+            nonce,
+            settlementTxHash: "0x1234",
+            attestor: "test-suite",
+          });
+          return createShieldedPaymentPayload(challenge, {
+            tongoAddress: "tongo1payer",
+            proof: encodeX402TongoProofEnvelope(proofEnvelope),
+            replayKey,
+            nonce,
+          });
+        },
       },
     );
 

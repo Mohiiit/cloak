@@ -1,11 +1,15 @@
 import { useState, useCallback, useEffect } from "react";
-import { getActivityRecords, type ActivityRecord } from "@cloak-wallet/sdk";
+import {
+  getActivityRecords,
+  type ActivityRecord,
+  type ActivitySource,
+} from "@cloak-wallet/sdk";
 import { getTxNotes, type TxMetadata } from "../lib/storage";
 import { getApiClient } from "@/shared/api-config";
 
 export interface TxEvent {
   txHash: string;
-  source?: "transaction" | "ward_request" | "local";
+  source?: ActivitySource | "local";
   type: string;
   amount?: string;
   amount_unit?: string;

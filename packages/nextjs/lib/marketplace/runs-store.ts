@@ -13,11 +13,13 @@ export function createRun(input: {
   action: string;
   params: Record<string, unknown>;
   billable: boolean;
+  initialStatus?: AgentRunResponse["status"];
   paymentRef?: string | null;
   settlementTxHash?: string | null;
   agentTrustSnapshot?: AgentRunResponse["agent_trust_snapshot"];
 }): AgentRunResponse {
   const id = `run_${Math.random().toString(16).slice(2)}`;
+  const status = input.initialStatus ?? "queued";
   const run: AgentRunResponse = {
     id,
     hire_id: input.hireId,
@@ -26,13 +28,21 @@ export function createRun(input: {
     action: input.action,
     params: input.params,
     billable: input.billable,
-    status: "queued",
+    status,
     payment_ref: input.paymentRef ?? null,
     settlement_tx_hash: input.settlementTxHash ?? null,
     payment_evidence: {
-      scheme: input.paymentRef ? "cloak-shielded-x402" : null,
+      scheme: input.billable ? "cloak-shielded-x402" : null,
       payment_ref: input.paymentRef ?? null,
       settlement_tx_hash: input.settlementTxHash ?? null,
+      state:
+        input.billable && status === "pending_payment"
+          ? "pending_payment"
+          : input.billable && input.paymentRef
+            ? "settled"
+            : input.billable
+              ? "required"
+              : null,
     },
     agent_trust_snapshot: input.agentTrustSnapshot ?? null,
     execution_tx_hashes: null,
@@ -67,4 +77,8 @@ export function listRuns(): AgentRunResponse[] {
   return [...inMemoryRuns.values()].sort((a, b) =>
     b.created_at.localeCompare(a.created_at),
   );
+}
+
+export function clearRunsStore(): void {
+  inMemoryRuns.clear();
 }

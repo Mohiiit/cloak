@@ -1,5 +1,6 @@
 import {
-  StaticX402ProofProvider,
+  TongoEnvelopeProofProvider,
+  createX402TongoProofEnvelope,
   x402FetchWithProofProvider,
   type AgentHireResponse,
   type AgentProfileResponse,
@@ -52,6 +53,16 @@ function withDeps(deps?: MarketplaceApiDeps) {
     getApiConfigFn: deps?.getApiConfigFn ?? getApiConfig,
     x402Executor: deps?.x402Executor ?? x402FetchWithProofProvider,
   };
+}
+
+function fallbackSettlementTxHash(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  return `0x${hex.repeat(8).slice(0, 62)}`;
 }
 
 async function createClient(
@@ -152,6 +163,7 @@ export async function executeMarketplacePaidRun(
     minAmount?: string;
     execute?: boolean;
     proof?: string;
+    settlementTxHash?: string;
   },
   deps?: MarketplaceApiDeps,
 ): Promise<AgentRunResponse> {
@@ -183,8 +195,23 @@ export async function executeMarketplacePaidRun(
     },
     {
       tongoAddress: input.payerTongoAddress,
-      proofProvider: new StaticX402ProofProvider(
-        input.proof || 'proof-mobile-demo',
+      proofProvider: new TongoEnvelopeProofProvider(
+        ({ challenge, tongoAddress, amount, replayKey, nonce, intentHash }) =>
+          createX402TongoProofEnvelope({
+            challenge,
+            tongoAddress,
+            amount,
+            replayKey,
+            nonce,
+            settlementTxHash:
+              input.settlementTxHash ||
+              fallbackSettlementTxHash(`${intentHash}:${replayKey}`),
+            attestor: 'cloak-mobile',
+            signature: input.proof,
+            metadata: {
+              source: 'mobile-marketplace',
+            },
+          }),
       ),
     },
   );

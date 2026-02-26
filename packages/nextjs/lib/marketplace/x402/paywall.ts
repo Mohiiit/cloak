@@ -12,6 +12,7 @@ import { incrementX402Metric } from "./metrics";
 
 const PAYMENT_HEADER = "x-x402-payment";
 const CHALLENGE_HEADER = "x-x402-challenge";
+const DEFAULT_MAX_HEADER_BYTES = 32 * 1024;
 
 export interface ShieldedPaywallOptions {
   recipient: string;
@@ -28,14 +29,54 @@ export interface ShieldedPaywallResult {
   settlementTxHash?: string;
 }
 
+export interface ShieldedPaywallPendingResult {
+  ok: false;
+  status: "pending";
+  paymentRef: string;
+  settlementTxHash?: string;
+  reasonCode?: string;
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.trunc(parsed);
+}
+
 export async function shieldedPaywall(
   req: NextRequest,
-  options: ShieldedPaywallOptions,
-): Promise<ShieldedPaywallResult | NextResponse> {
+  options: ShieldedPaywallOptions & {
+    allowPendingSettlement?: boolean;
+  },
+): Promise<ShieldedPaywallResult | ShieldedPaywallPendingResult | NextResponse> {
   const traceId = createTraceId("x402-paywall");
   const facilitator = options.facilitator ?? new X402Facilitator();
   const paymentHeader = req.headers.get(PAYMENT_HEADER);
   const challengeHeader = req.headers.get(CHALLENGE_HEADER);
+  const maxHeaderBytes = parsePositiveInt(
+    process.env.X402_MAX_HEADER_BYTES,
+    DEFAULT_MAX_HEADER_BYTES,
+  );
+
+  if (paymentHeader && paymentHeader.length > maxHeaderBytes) {
+    return NextResponse.json(
+      {
+        error: "x402 payment header too large",
+        code: "INVALID_PAYLOAD",
+      },
+      { status: 413 },
+    );
+  }
+  if (challengeHeader && challengeHeader.length > maxHeaderBytes) {
+    return NextResponse.json(
+      {
+        error: "x402 challenge header too large",
+        code: "INVALID_PAYLOAD",
+      },
+      { status: 413 },
+    );
+  }
 
   if (!paymentHeader) {
     const challenge = buildChallenge({
@@ -94,6 +135,15 @@ export async function shieldedPaywall(
     }
     const settle = await facilitator.settle({ challenge, payment });
     if (settle.status !== "settled") {
+      if (settle.status === "pending" && options.allowPendingSettlement) {
+        return {
+          ok: false,
+          status: "pending",
+          paymentRef: settle.paymentRef,
+          settlementTxHash: settle.txHash,
+          reasonCode: settle.reasonCode,
+        };
+      }
       return NextResponse.json(settle, { status: 402 });
     }
     incrementX402Metric("paywall_paid");

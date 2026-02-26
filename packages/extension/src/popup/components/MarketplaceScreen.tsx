@@ -32,6 +32,51 @@ function randomRef(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
 }
 
+function hashHex(input: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    const c = input.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= c;
+    h2 = Math.imul(h2, 0x27d4eb2d);
+  }
+  const part1 = (h1 >>> 0).toString(16).padStart(8, "0");
+  const part2 = (h2 >>> 0).toString(16).padStart(8, "0");
+  return `${part1}${part2}${part1}${part2}${part1}${part2}${part1}${part2}`;
+}
+
+function fallbackSettlementTxHash(seed: string): string {
+  return `0x${hashHex(seed).slice(0, 62)}`;
+}
+
+function computeIntentHash(input: {
+  challengeId: string;
+  contextHash: string;
+  recipient: string;
+  token: string;
+  tongoAddress: string;
+  amount: string;
+  replayKey: string;
+  nonce: string;
+  expiresAt: string;
+}): string {
+  return hashHex(
+    JSON.stringify({
+      amount: input.amount,
+      challengeId: input.challengeId,
+      contextHash: input.contextHash,
+      expiresAt: input.expiresAt,
+      nonce: input.nonce,
+      recipient: input.recipient.toLowerCase(),
+      replayKey: input.replayKey,
+      tongoAddress: input.tongoAddress,
+      token: input.token,
+    }),
+  );
+}
+
 async function postRunWithX402(input: {
   baseUrl: string;
   apiKey: string;
@@ -58,6 +103,7 @@ async function postRunWithX402(input: {
   }
   const challenge = JSON.parse(rawChallenge) as {
     challengeId: string;
+    recipient?: string;
     token: string;
     minAmount: string;
     contextHash: string;
@@ -71,13 +117,34 @@ async function postRunWithX402(input: {
     tongoAddress: input.payerTongoAddress,
     token: challenge.token,
     amount: challenge.minAmount,
-    proof: "proof-extension-demo",
+    proof: "",
     replayKey: randomRef("rk"),
     contextHash: challenge.contextHash,
     expiresAt: challenge.expiresAt,
     nonce: randomRef("nonce"),
     createdAt: new Date().toISOString(),
   };
+  const intentHash = computeIntentHash({
+    challengeId: challenge.challengeId,
+    contextHash: challenge.contextHash,
+    recipient: challenge.recipient || "0x0",
+    token: challenge.token,
+    tongoAddress: paymentPayload.tongoAddress,
+    amount: paymentPayload.amount,
+    replayKey: paymentPayload.replayKey,
+    nonce: paymentPayload.nonce,
+    expiresAt: challenge.expiresAt,
+  });
+  paymentPayload.proof = JSON.stringify({
+    envelopeVersion: "1",
+    proofType: "tongo_attestation_v1",
+    intentHash,
+    settlementTxHash: fallbackSettlementTxHash(
+      `${intentHash}:${paymentPayload.replayKey}`,
+    ),
+    attestor: "cloak-extension",
+    issuedAt: new Date().toISOString(),
+  });
 
   return fetch(`${input.baseUrl}/api/v1/marketplace/runs`, {
     method: "POST",

@@ -21,6 +21,10 @@ export const MARKETPLACE_RATE_LIMITS = {
   hiresRead: { limit: 240, windowMs: 60_000 },
   hiresWrite: { limit: 60, windowMs: 60_000 },
   runsWrite: { limit: 120, windowMs: 60_000 },
+  x402Challenge: { limit: 240, windowMs: 60_000 },
+  x402Verify: { limit: 300, windowMs: 60_000 },
+  x402Settle: { limit: 240, windowMs: 60_000 },
+  x402Reconcile: { limit: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitRule>;
 
 const rateBuckets = new Map<string, RateLimitBucket>();
@@ -75,4 +79,3 @@ export function consumeRateLimit(
 export function clearRateLimits(): void {
   rateBuckets.clear();
 }
-

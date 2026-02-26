@@ -34,6 +34,9 @@ type X402ProofProviderInput = {
   tongoAddress: string;
   amount: string;
   contextHash: string;
+  replayKey?: string;
+  nonce?: string;
+  intentHash?: string;
 };
 
 type X402ProofProviderOutput = {
@@ -58,6 +61,43 @@ export class StaticX402ProofProvider implements X402ProofProvider {
 
 function randomId(): string {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function hashHex(input: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    const c = input.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= c;
+    h2 = Math.imul(h2, 0x27d4eb2d);
+  }
+  const part1 = (h1 >>> 0).toString(16).padStart(8, "0");
+  const part2 = (h2 >>> 0).toString(16).padStart(8, "0");
+  return `${part1}${part2}${part1}${part2}${part1}${part2}${part1}${part2}`;
+}
+
+function computeIntentHash(input: {
+  challenge: X402Challenge;
+  tongoAddress: string;
+  amount: string;
+  replayKey: string;
+  nonce: string;
+}): string {
+  return hashHex(
+    JSON.stringify({
+      amount: input.amount,
+      challengeId: input.challenge.challengeId,
+      contextHash: input.challenge.contextHash,
+      expiresAt: input.challenge.expiresAt,
+      nonce: input.nonce,
+      recipient: input.challenge.recipient.toLowerCase(),
+      replayKey: input.replayKey,
+      tongoAddress: input.tongoAddress,
+      token: input.challenge.token,
+    }),
+  );
 }
 
 function parseChallenge(res: Response, challengeHeaderName: string): X402Challenge {
@@ -121,19 +161,31 @@ export async function x402FetchWithProofProvider(
 
   const challenge = parseChallenge(first, challengeHeaderName);
   const amount = options.amount || challenge.minAmount;
+  const seededReplayKey = randomId();
+  const seededNonce = randomId();
+  const seededIntentHash = computeIntentHash({
+    challenge,
+    tongoAddress: options.tongoAddress,
+    amount,
+    replayKey: seededReplayKey,
+    nonce: seededNonce,
+  });
   const proof = await options.proofProvider.createProof({
     challenge,
     tongoAddress: options.tongoAddress,
     amount,
     contextHash: challenge.contextHash,
+    replayKey: seededReplayKey,
+    nonce: seededNonce,
+    intentHash: seededIntentHash,
   });
   const payload = buildPayload({
     challenge,
     tongoAddress: options.tongoAddress,
     amount,
     proof: proof.proof,
-    replayKey: proof.replayKey,
-    nonce: proof.nonce,
+    replayKey: proof.replayKey || seededReplayKey,
+    nonce: proof.nonce || seededNonce,
   });
 
   const retryHeaders = new Headers(init.headers || {});
@@ -145,4 +197,3 @@ export async function x402FetchWithProofProvider(
     headers: retryHeaders,
   });
 }
-

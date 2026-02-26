@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
-  StaticX402ProofProvider,
   x402FetchWithProofProvider,
 } from "~~/lib/marketplace/x402/client";
 import { getApiConfig } from "~~/lib/api-client";
@@ -35,6 +34,25 @@ type RunResponse = {
   payment_ref: string | null;
   execution_tx_hashes: string[] | null;
 };
+
+function hashHex(input: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    const c = input.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= c;
+    h2 = Math.imul(h2, 0x27d4eb2d);
+  }
+  const part1 = (h1 >>> 0).toString(16).padStart(8, "0");
+  const part2 = (h2 >>> 0).toString(16).padStart(8, "0");
+  return `${part1}${part2}${part1}${part2}${part1}${part2}${part1}${part2}`;
+}
+
+function fallbackSettlementTxHash(seed: string): string {
+  return `0x${hashHex(seed).slice(0, 62)}`;
+}
 
 export default function AgentProfilePage() {
   const params = useParams<{ agentId: string }>();
@@ -202,7 +220,37 @@ export default function AgentProfilePage() {
         },
         {
           tongoAddress: runPayerAddress,
-          proofProvider: new StaticX402ProofProvider("proof-web-demo"),
+          proofProvider: {
+            createProof(input) {
+              const intentHash =
+                input.intentHash ||
+                hashHex(
+                  JSON.stringify({
+                    amount: input.amount,
+                    challengeId: input.challenge.challengeId,
+                    contextHash: input.challenge.contextHash,
+                    expiresAt: input.challenge.expiresAt,
+                    nonce: input.nonce || "nonce",
+                    recipient: input.challenge.recipient.toLowerCase(),
+                    replayKey: input.replayKey || "rk",
+                    tongoAddress: input.tongoAddress,
+                    token: input.challenge.token,
+                  }),
+                );
+              return {
+                proof: JSON.stringify({
+                  envelopeVersion: "1",
+                  proofType: "tongo_attestation_v1",
+                  intentHash,
+                  settlementTxHash: fallbackSettlementTxHash(
+                    `${intentHash}:${input.replayKey || "rk"}`,
+                  ),
+                  attestor: "cloak-web",
+                  issuedAt: new Date().toISOString(),
+                }),
+              };
+            },
+          },
         },
       );
 

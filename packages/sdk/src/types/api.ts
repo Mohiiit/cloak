@@ -511,6 +511,9 @@ export type X402PaymentStatus =
 
 export type X402ErrorCode =
   | "INVALID_PAYLOAD"
+  | "INVALID_TONGO_PROOF"
+  | "TONGO_UNCONFIRMED"
+  | "TONGO_CONTEXT_MISMATCH"
   | "EXPIRED_PAYMENT"
   | "REPLAY_DETECTED"
   | "CONTEXT_MISMATCH"
@@ -518,6 +521,19 @@ export type X402ErrorCode =
   | "RPC_FAILURE"
   | "SETTLEMENT_FAILED"
   | "TIMEOUT";
+
+export type X402TongoProofType = "tongo_attestation_v1";
+
+export interface X402TongoProofEnvelope {
+  envelopeVersion: "1";
+  proofType: X402TongoProofType;
+  intentHash: string;
+  settlementTxHash?: string;
+  attestor?: string;
+  issuedAt?: string;
+  signature?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export interface X402ChallengeResponse {
   version: X402Version;
@@ -698,6 +714,12 @@ export interface AgentRunResponse {
     scheme: X402Scheme | null;
     payment_ref: string | null;
     settlement_tx_hash: string | null;
+    state?:
+      | "required"
+      | "pending_payment"
+      | "settled"
+      | "failed"
+      | null;
   } | null;
   agent_trust_snapshot?: AgentTrustSummary | null;
   execution_tx_hashes: string[] | null;

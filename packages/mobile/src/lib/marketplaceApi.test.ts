@@ -1,16 +1,22 @@
 const mockX402Fetch = jest.fn();
 
 jest.mock('@cloak-wallet/sdk', () => {
-  class StaticX402ProofProvider {
-    staticProof: string;
+  class TongoEnvelopeProofProvider {
+    resolver: any;
 
-    constructor(staticProof: string) {
-      this.staticProof = staticProof;
+    constructor(resolver: any) {
+      this.resolver = resolver;
     }
   }
 
   return {
-    StaticX402ProofProvider,
+    TongoEnvelopeProofProvider,
+    createX402TongoProofEnvelope: (input: any) => ({
+      envelopeVersion: '1',
+      proofType: 'tongo_attestation_v1',
+      intentHash: input?.metadata?.intentHash || 'intent',
+      settlementTxHash: input?.settlementTxHash,
+    }),
     x402FetchWithProofProvider: (...args: any[]) => mockX402Fetch(...args),
   };
 });

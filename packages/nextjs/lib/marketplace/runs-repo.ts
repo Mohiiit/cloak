@@ -58,12 +58,14 @@ export async function createRunRecord(input: {
   action: string;
   params: Record<string, unknown>;
   billable: boolean;
+  initialStatus?: AgentRunResponse["status"];
   paymentRef?: string | null;
   settlementTxHash?: string | null;
   agentTrustSnapshot?: AgentRunResponse["agent_trust_snapshot"];
 }): Promise<AgentRunResponse> {
   if (!hasSupabaseEnv()) return createRun(input);
 
+  const status = input.initialStatus ?? "queued";
   const row: AgentRunRow = {
     id: randomId("run"),
     hire_id: input.hireId,
@@ -72,13 +74,21 @@ export async function createRunRecord(input: {
     action: input.action,
     params: input.params,
     billable: input.billable,
-    status: "queued",
+    status,
     payment_ref: input.paymentRef ?? null,
     settlement_tx_hash: input.settlementTxHash ?? null,
     payment_evidence: {
-      scheme: input.paymentRef ? "cloak-shielded-x402" : null,
+      scheme: input.billable ? "cloak-shielded-x402" : null,
       payment_ref: input.paymentRef ?? null,
       settlement_tx_hash: input.settlementTxHash ?? null,
+      state:
+        input.billable && status === "pending_payment"
+          ? "pending_payment"
+          : input.billable && input.paymentRef
+            ? "settled"
+            : input.billable
+              ? "required"
+              : null,
     },
     agent_trust_snapshot: (input.agentTrustSnapshot as unknown as Record<string, unknown>) ?? null,
     execution_tx_hashes: null,
@@ -141,6 +151,7 @@ export async function listRunRecords(filters?: {
   operatorWallet?: string;
   hireId?: string;
   agentId?: string;
+  paymentRef?: string;
   status?: AgentRunResponse["status"];
   limit?: number;
   offset?: number;
@@ -154,6 +165,7 @@ export async function listRunRecords(filters?: {
         }
         if (filters?.hireId && run.hire_id !== filters.hireId) return false;
         if (filters?.agentId && run.agent_id !== filters.agentId) return false;
+        if (filters?.paymentRef && run.payment_ref !== filters.paymentRef) return false;
         if (filters?.status && run.status !== filters.status) return false;
         return true;
       });
@@ -177,6 +189,9 @@ export async function listRunRecords(filters?: {
     if (filters?.agentId) {
       parts.push(`agent_id=eq.${encodeURIComponent(filters.agentId)}`);
     }
+    if (filters?.paymentRef) {
+      parts.push(`payment_ref=eq.${encodeURIComponent(filters.paymentRef)}`);
+    }
     if (filters?.status) {
       parts.push(`status=eq.${encodeURIComponent(filters.status)}`);
     }
@@ -199,6 +214,7 @@ export async function listRunRecords(filters?: {
       }
       if (filters?.hireId && run.hire_id !== filters.hireId) return false;
       if (filters?.agentId && run.agent_id !== filters.agentId) return false;
+      if (filters?.paymentRef && run.payment_ref !== filters.paymentRef) return false;
       if (filters?.status && run.status !== filters.status) return false;
       return true;
     });

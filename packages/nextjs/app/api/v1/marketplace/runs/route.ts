@@ -202,11 +202,15 @@ export async function POST(req: NextRequest) {
 
     let paymentRef: string | null = null;
     let settlementTxHash: string | null = null;
+    let pendingSettlement = false;
+    let pendingReasonCode: string | undefined;
 
     if (body.billable ?? true) {
       const paywall = await shieldedPaywall(req, {
         recipient:
-          process.env.CLOAK_AGENT_SERVICE_ADDRESS || auth.wallet_address,
+          agentProfile?.service_wallet ||
+          process.env.CLOAK_AGENT_SERVICE_ADDRESS ||
+          auth.wallet_address,
         token: body.token,
         minAmount: body.minAmount,
         context: {
@@ -214,10 +218,13 @@ export async function POST(req: NextRequest) {
           agent_id: resolvedAgentId,
           action: normalizedAction,
         },
+        allowPendingSettlement: true,
       });
       if (paywall instanceof NextResponse) return paywall;
       paymentRef = paywall.paymentRef;
       settlementTxHash = paywall.settlementTxHash ?? null;
+      pendingSettlement = !paywall.ok && paywall.status === "pending";
+      pendingReasonCode = !paywall.ok ? paywall.reasonCode : undefined;
     }
 
     const run = await createRunRecord({
@@ -227,15 +234,93 @@ export async function POST(req: NextRequest) {
       action: normalizedAction,
       params: body.params || {},
       billable: body.billable ?? true,
+      initialStatus: body.billable ?? true ? "pending_payment" : "queued",
       paymentRef,
       settlementTxHash,
       agentTrustSnapshot: agentProfile?.trust_summary || null,
     });
 
-    const finalizedRun =
+    let queuedRun = run;
+    if (run.billable && !pendingSettlement) {
+      queuedRun =
+        (await updateRunRecord(run.id, {
+          status: "queued",
+          payment_evidence: {
+            ...(run.payment_evidence || {
+              scheme: "cloak-shielded-x402",
+              payment_ref: run.payment_ref,
+              settlement_tx_hash: run.settlement_tx_hash,
+            }),
+            state: "settled",
+          },
+        })) || run;
+    }
+
+    if (pendingSettlement) {
+      const pendingRun =
+        (await updateRunRecord(run.id, {
+          status: "pending_payment",
+          payment_evidence: {
+            ...(run.payment_evidence || {
+              scheme: "cloak-shielded-x402",
+              payment_ref: run.payment_ref,
+              settlement_tx_hash: run.settlement_tx_hash,
+            }),
+            state: "pending_payment",
+          },
+          result: {
+            payment_status: "pending_settlement",
+            reason_code: pendingReasonCode || null,
+          },
+        })) || run;
+
+      logAgenticEvent({
+        level: "info",
+        event: "marketplace.funnel.run_pending_payment",
+        traceId,
+        actor: auth.wallet_address,
+        metadata: {
+          run_id: pendingRun.id,
+          hire_id: pendingRun.hire_id,
+          agent_id: pendingRun.agent_id,
+          action: pendingRun.action,
+          status: pendingRun.status,
+          payment_ref: pendingRun.payment_ref,
+          reason_code: pendingReasonCode || null,
+        },
+      });
+
+      const responseHeaders: Record<string, string> = {
+        "x-agentic-trace-id": traceId,
+      };
+      if (idempotencyKey) {
+        responseHeaders["x-idempotency-key"] = idempotencyKey;
+        saveIdempotencyRecord({
+          scope: "marketplace:runs:create",
+          actor: auth.wallet_address,
+          idempotencyKey,
+          requestHash,
+          status: 202,
+          body: pendingRun,
+          headers: responseHeaders,
+        });
+      }
+
+      return NextResponse.json(pendingRun, {
+        status: 202,
+        headers: responseHeaders,
+      });
+    }
+
+    const runToExecute =
       shouldExecute && agentType
+        ? (await updateRunRecord(queuedRun.id, { status: "running" })) || queuedRun
+        : queuedRun;
+
+    const finalizedRun =
+      shouldExecute && agentType && runToExecute.status === "running"
         ? (await updateRunWithExecution(
-            run,
+            runToExecute,
             await executeAgentRuntime({
               agentType,
               action: normalizedAction,
@@ -246,8 +331,8 @@ export async function POST(req: NextRequest) {
                 process.env.CLOAK_AGENT_SERVICE_ADDRESS ||
                 auth.wallet_address,
             }),
-          )) || run
-        : run;
+          )) || runToExecute
+        : runToExecute;
 
     logAgenticEvent({
       level: "info",
@@ -310,9 +395,17 @@ async function updateRunWithExecution(
   run: AgentRunResponse,
   execution: Awaited<ReturnType<typeof executeAgentRuntime>>,
 ) {
+  const paymentEvidence =
+    run.payment_evidence && run.billable
+      ? {
+          ...run.payment_evidence,
+          state: execution.status === "completed" ? "settled" : "failed",
+        }
+      : run.payment_evidence;
   return updateRunRecord(run.id, {
     status: execution.status === "completed" ? "completed" : "failed",
     execution_tx_hashes: execution.executionTxHashes,
+    payment_evidence: paymentEvidence,
     result: execution.result,
   });
 }
