@@ -31,9 +31,11 @@ import {
   Settings,
   Shield,
   ShieldAlert,
+  Store,
   Sparkles,
   X,
 } from "lucide-react-native";
+import { useNavigation } from "@react-navigation/native";
 import { TOKENS, parseTokenAmount, truncateAddress } from "@cloak-wallet/sdk";
 import { useWallet } from "../lib/WalletContext";
 import { useContacts } from "../hooks/useContacts";
@@ -221,6 +223,7 @@ function AgentCardRendererMobile({ card }: { card: AgentCard }) {
 }
 
 export default function AgentScreen() {
+  const navigation = useNavigation<any>();
   const wallet = useWallet();
   const { contacts } = useContacts();
   const { wards } = useWardContext();
@@ -595,6 +598,17 @@ export default function AgentScreen() {
     }
   }
 
+  function openMarketplace() {
+    const root = navigation.getParent?.("root");
+    const state = root?.getState?.();
+    const routeNames = Array.isArray(state?.routeNames) ? state.routeNames : [];
+    if (routeNames.includes("Marketplace")) {
+      root.navigate("Marketplace");
+      return;
+    }
+    showToast("Marketplace entry is initializing", "info");
+  }
+
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -728,6 +742,11 @@ export default function AgentScreen() {
           <Settings size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
+      <TouchableOpacity style={styles.marketplaceEntry} onPress={openMarketplace}>
+        <Store size={14} color={colors.primaryLight} />
+        <Text style={styles.marketplaceEntryTitle}>Open Agent Marketplace</Text>
+        <ChevronRight size={14} color={colors.textMuted} />
+      </TouchableOpacity>
 
       {/* ─── Chat Area ─── */}
       <ScrollView
@@ -998,6 +1017,26 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.lg,
     fontFamily: typography.primarySemibold,
+  },
+  marketplaceEntry: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  marketplaceEntryTitle: {
+    flex: 1,
+    color: colors.primaryLight,
+    fontFamily: typography.secondarySemibold,
+    fontSize: fontSize.sm,
   },
 
   // ─── Chat Area ───
