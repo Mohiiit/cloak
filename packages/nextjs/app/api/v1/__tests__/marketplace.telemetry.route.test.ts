@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { clearAgentProfiles, upsertAgentProfile } from "~~/lib/marketplace/agents-store";
 import { clearHires } from "~~/lib/marketplace/hires-store";
+import { clearIdempotencyStore } from "~~/lib/marketplace/idempotency-store";
 import { clearRateLimits } from "~~/lib/marketplace/rate-limit";
 
 vi.mock("../_lib/auth", () => ({
@@ -52,6 +53,7 @@ describe("marketplace telemetry funnel events", () => {
     vi.clearAllMocks();
     clearAgentProfiles();
     clearHires();
+    clearIdempotencyStore();
     clearRateLimits();
     seedAgent();
   });

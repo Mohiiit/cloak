@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { clearAgentProfiles } from "~~/lib/marketplace/agents-store";
 import { clearHires } from "~~/lib/marketplace/hires-store";
 import { buildEndpointOwnershipDigest } from "~~/lib/marketplace/endpoint-proof";
+import { clearIdempotencyStore } from "~~/lib/marketplace/idempotency-store";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -217,5 +218,79 @@ describe("marketplace registry routes", () => {
     expect(patchRes.status).toBe(200);
     const patched = await patchRes.json();
     expect(patched.status).toBe("paused");
+  });
+
+  it("replays hire creation when idempotency key is reused with same payload", async () => {
+    clearAgentProfiles();
+    clearHires();
+    clearIdempotencyStore();
+
+    const registerReq = new NextRequest("http://localhost/api/v1/marketplace/agents", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+      },
+      body: JSON.stringify({
+        agent_id: "idem_swap_runner",
+        name: "Swap Runner",
+        description: "Executes swaps",
+        agent_type: "swap_runner",
+        capabilities: ["swap"],
+        endpoints: ["https://agents.cloak.local/idem-swap"],
+        endpoint_proofs: [
+          {
+            endpoint: "https://agents.cloak.local/idem-swap",
+            nonce: "nonce_idem",
+            digest: buildEndpointOwnershipDigest({
+              endpoint: "https://agents.cloak.local/idem-swap",
+              operatorWallet: "0xabc123",
+              nonce: "nonce_idem",
+            }),
+          },
+        ],
+        pricing: {
+          mode: "per_run",
+          amount: "1000",
+          token: "STRK",
+        },
+        operator_wallet: "0xabc123",
+        service_wallet: "0xfeed1234",
+      }),
+    });
+    expect((await agentsPOST(registerReq)).status).toBe(201);
+
+    const body = JSON.stringify({
+      agent_id: "idem_swap_runner",
+      operator_wallet: "0xabc123",
+      policy_snapshot: { maxSlippageBps: 125 },
+      billing_mode: "per_run",
+    });
+    const headers = {
+      "Content-Type": "application/json",
+      "X-API-Key": "test-key-1234567890",
+      "Idempotency-Key": "idem-hire-1",
+    };
+
+    const firstReq = new NextRequest("http://localhost/api/v1/marketplace/hires", {
+      method: "POST",
+      headers,
+      body,
+    });
+    const firstRes = await hiresPOST(firstReq);
+    expect(firstRes.status).toBe(201);
+    expect(firstRes.headers.get("x-idempotency-key")).toBe("idem-hire-1");
+    const firstHire = await firstRes.json();
+
+    const secondReq = new NextRequest("http://localhost/api/v1/marketplace/hires", {
+      method: "POST",
+      headers,
+      body,
+    });
+    const secondRes = await hiresPOST(secondReq);
+    expect(secondRes.status).toBe(201);
+    expect(secondRes.headers.get("x-idempotent-replay")).toBe("true");
+    const secondHire = await secondRes.json();
+    expect(secondHire.id).toBe(firstHire.id);
   });
 });

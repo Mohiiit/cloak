@@ -20,6 +20,7 @@ STARKZAP_PAYMASTER_URL=
 # Optional: API-level metrics and tracing
 AGENTIC_TRACE_SALT=cloak-agentic
 AGENTIC_LOG_LEVEL=info
+MARKETPLACE_IDEMPOTENCY_TTL_MS=900000
 
 # Optional: role addresses for local demos
 CLOAK_OPERATOR_ADDRESS=

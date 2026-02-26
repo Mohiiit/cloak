@@ -20,6 +20,11 @@ import {
   createTraceId,
   logMarketplaceFunnelEvent,
 } from "~~/lib/observability/agentic";
+import {
+  hashIdempotencyRequest,
+  lookupIdempotencyRecord,
+  saveIdempotencyRecord,
+} from "~~/lib/marketplace/idempotency-store";
 
 export const runtime = "nodejs";
 
@@ -93,6 +98,35 @@ export async function POST(req: NextRequest) {
     }
     const body = await req.json();
     const data = validate(CreateAgentHireSchema, body);
+    const idempotencyKey = req.headers.get("idempotency-key")?.trim() || null;
+    const requestHash = hashIdempotencyRequest(data);
+    if (idempotencyKey) {
+      const cached = lookupIdempotencyRecord({
+        scope: "marketplace:hires:create",
+        actor: auth.wallet_address,
+        idempotencyKey,
+        requestHash,
+      });
+      if (cached.kind === "conflict") {
+        return NextResponse.json(
+          {
+            error: "Idempotency key reused with a different payload",
+            code: "IDEMPOTENCY_KEY_REUSED",
+          },
+          { status: 409 },
+        );
+      }
+      if (cached.kind === "replay") {
+        return NextResponse.json(cached.record.body, {
+          status: cached.record.status,
+          headers: {
+            ...(cached.record.headers || {}),
+            "x-idempotent-replay": "true",
+            "x-idempotency-key": idempotencyKey,
+          },
+        });
+      }
+    }
 
     if (data.operator_wallet.toLowerCase() !== auth.wallet_address.toLowerCase()) {
       return forbidden("operator_wallet must match authenticated wallet");
@@ -117,11 +151,24 @@ export async function POST(req: NextRequest) {
         billing_mode: hire.billing_mode,
       },
     });
+    const responseHeaders: Record<string, string> = {
+      "x-agentic-trace-id": traceId,
+    };
+    if (idempotencyKey) {
+      responseHeaders["x-idempotency-key"] = idempotencyKey;
+      saveIdempotencyRecord({
+        scope: "marketplace:hires:create",
+        actor: auth.wallet_address,
+        idempotencyKey,
+        requestHash,
+        status: 201,
+        body: hire,
+        headers: responseHeaders,
+      });
+    }
     return NextResponse.json(hire, {
       status: 201,
-      headers: {
-        "x-agentic-trace-id": traceId,
-      },
+      headers: responseHeaders,
     });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);

@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { clearHires, createHire } from "~~/lib/marketplace/hires-store";
+import { clearIdempotencyStore } from "~~/lib/marketplace/idempotency-store";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -18,6 +19,7 @@ describe("marketplace runs route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearHires();
+    clearIdempotencyStore();
   });
 
   it("returns 402 challenge when billable payment headers are absent", async () => {
@@ -185,5 +187,83 @@ describe("marketplace runs route", () => {
     expect(Array.isArray(listJson.runs)).toBe(true);
     expect(listJson.runs.length).toBe(1);
     expect(listJson.pagination.total).toBeGreaterThanOrEqual(2);
+  });
+
+  it("replays run creation when idempotency key is reused with same payload", async () => {
+    const body = JSON.stringify({
+      hire_id: "hire_idem_1",
+      agent_id: "staking_steward",
+      action: "stake",
+      params: { pool: "0xpool", amount: "100" },
+      billable: false,
+    });
+
+    const firstReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+        "Idempotency-Key": "idem-run-1",
+      },
+      body,
+    });
+    const firstRes = await POST(firstReq);
+    expect(firstRes.status).toBe(201);
+    const firstRun = await firstRes.json();
+    expect(firstRes.headers.get("x-idempotency-key")).toBe("idem-run-1");
+
+    const secondReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+        "Idempotency-Key": "idem-run-1",
+      },
+      body,
+    });
+    const secondRes = await POST(secondReq);
+    expect(secondRes.status).toBe(201);
+    expect(secondRes.headers.get("x-idempotent-replay")).toBe("true");
+    const secondRun = await secondRes.json();
+    expect(secondRun.id).toBe(firstRun.id);
+  });
+
+  it("rejects idempotency key reuse with different run payload", async () => {
+    const firstReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+        "Idempotency-Key": "idem-run-2",
+      },
+      body: JSON.stringify({
+        hire_id: "hire_idem_2",
+        agent_id: "staking_steward",
+        action: "stake",
+        params: { amount: "100" },
+        billable: false,
+      }),
+    });
+    expect((await POST(firstReq)).status).toBe(201);
+
+    const secondReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+        "Idempotency-Key": "idem-run-2",
+      },
+      body: JSON.stringify({
+        hire_id: "hire_idem_2",
+        agent_id: "staking_steward",
+        action: "unstake",
+        params: { amount: "50" },
+        billable: false,
+      }),
+    });
+    const secondRes = await POST(secondReq);
+    expect(secondRes.status).toBe(409);
+    const secondJson = await secondRes.json();
+    expect(secondJson.code).toBe("IDEMPOTENCY_KEY_REUSED");
   });
 });
