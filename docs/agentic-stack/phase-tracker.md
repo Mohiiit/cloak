@@ -85,4 +85,4 @@ Legend:
 | 73 | cross-surface test matrix execution | done | docs/agentic-stack/post-phase-50-test-matrix.md |
 | 74 | demo launch assets and runbook | done | docs/agentic-stack/client-rollout-demo-runbook.md |
 | 75 | staged rollout and feature flag playbook | done | docs/agentic-stack/rollout-playbook.md |
-| 76 | post-phase-50 release gate signoff | pending | docs/agentic-stack/post-phase-50-release-gate.md |
+| 76 | post-phase-50 release gate signoff | done | docs/agentic-stack/post-phase-50-release-gate.md |
