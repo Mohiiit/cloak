@@ -1,7 +1,7 @@
 {
-  "buildCommand": "cd packages/nextjs && npm run build",
+  "buildCommand": "yarn workspace @cloak-wallet/sdk build && yarn workspace @ss-2/nextjs build",
   "outputDirectory": "packages/nextjs/.next",
-  "installCommand": "npm install --prefix packages/nextjs --legacy-peer-deps --workspaces=false",
+  "installCommand": "corepack enable && yarn install --immutable",
   "crons": [
     {
       "path": "/api/v1/internal/push/dispatch",
