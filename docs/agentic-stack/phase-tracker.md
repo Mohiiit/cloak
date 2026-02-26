@@ -60,3 +60,29 @@ Legend:
 | 48 | swap x402 + listing integration | done | packages/nextjs/app/api/v1/__tests__/swap.runner.integration.test.ts |
 | 49 | swap full test matrix | done | packages/nextjs/lib/marketplace/agents/swap-runner.matrix.test.ts |
 | 50 | full stack release gate | done | docs/agentic-stack/full-stack-release-gate.md |
+| 51 | client integration contract freeze | done | docs/agentic-stack/client-integration-contract-freeze.md |
+| 52 | marketplace run persistence migration | pending | supabase-migration-agent-runs.sql |
+| 53 | supabase-backed marketplace repositories | pending | packages/nextjs/lib/marketplace/*.repo.ts |
+| 54 | operator-scoped run/hire access controls | pending | packages/nextjs/app/api/v1/marketplace/runs/route.ts |
+| 55 | pagination and filtering contract rollout | pending | packages/nextjs/app/api/v1/marketplace/*/route.ts |
+| 56 | sdk marketplace session unification | pending | packages/sdk/src/marketplace-session.ts |
+| 57 | x402 proof provider interface | pending | packages/sdk/src/x402.ts |
+| 58 | backend x402 proof adapter boundary | pending | packages/nextjs/lib/marketplace/x402/facilitator.ts |
+| 59 | web marketplace discovery page | pending | packages/nextjs/app/marketplace/page.tsx |
+| 60 | web agent profile page | pending | packages/nextjs/app/marketplace/[agentId]/page.tsx |
+| 61 | web hire flow | pending | packages/nextjs/app/marketplace/page.tsx |
+| 62 | web paid run flow with x402 retry | pending | packages/nextjs/app/marketplace/[agentId]/page.tsx |
+| 63 | web operator dashboard | pending | packages/nextjs/app/marketplace/dashboard/page.tsx |
+| 64 | mobile marketplace entry integration | pending | packages/mobile/src/screens/AgentScreen.tsx |
+| 65 | mobile discover and hire flow | pending | packages/mobile/src/screens/MarketplaceScreen.tsx |
+| 66 | mobile paid run x402 flow | pending | packages/mobile/src/lib/marketplaceApi.ts |
+| 67 | mobile run evidence views | pending | packages/mobile/src/screens/MarketplaceRunDetailScreen.tsx |
+| 68 | extension agents screen integration | pending | packages/extension/src/popup/components/MarketplaceScreen.tsx |
+| 69 | extension discover and hire flow | pending | packages/extension/src/popup/components/MarketplaceScreen.tsx |
+| 70 | extension paid run x402 flow | pending | packages/extension/src/popup/components/MarketplaceScreen.tsx |
+| 71 | marketplace telemetry funnel events | pending | packages/nextjs/lib/observability/agentic.ts |
+| 72 | resilience and idempotency controls | pending | packages/nextjs/lib/marketplace/*.ts |
+| 73 | cross-surface test matrix execution | pending | docs/agentic-stack/post-phase-50-test-matrix.md |
+| 74 | demo launch assets and runbook | pending | docs/agentic-stack/client-rollout-demo-runbook.md |
+| 75 | staged rollout and feature flag playbook | pending | docs/agentic-stack/rollout-playbook.md |
+| 76 | post-phase-50 release gate signoff | pending | docs/agentic-stack/post-phase-50-release-gate.md |
