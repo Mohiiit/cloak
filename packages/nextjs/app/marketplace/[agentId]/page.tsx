@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import {
+  StaticX402ProofProvider,
+  x402FetchWithProofProvider,
+} from "@cloak-wallet/sdk";
 import { getApiConfig } from "~~/lib/api-client";
 
 type AgentProfileResponse = {
@@ -25,6 +29,13 @@ type HireResponse = {
   billing_mode: string;
 };
 
+type RunResponse = {
+  id: string;
+  status: string;
+  payment_ref: string | null;
+  execution_tx_hashes: string[] | null;
+};
+
 export default function AgentProfilePage() {
   const params = useParams<{ agentId: string }>();
   const agentId = params?.agentId || "";
@@ -32,6 +43,7 @@ export default function AgentProfilePage() {
   const [profile, setProfile] = useState<AgentProfileResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [policyDraft, setPolicyDraft] = useState(
     JSON.stringify(
       {
@@ -45,6 +57,23 @@ export default function AgentProfilePage() {
   const [isHiring, setIsHiring] = useState(false);
   const [hireError, setHireError] = useState<string | null>(null);
   const [hireResult, setHireResult] = useState<HireResponse | null>(null);
+
+  const [hireIdInput, setHireIdInput] = useState("");
+  const [runAction, setRunAction] = useState("stake");
+  const [runParamsDraft, setRunParamsDraft] = useState(
+    JSON.stringify(
+      {
+        pool: "0xpool",
+        amount: "100",
+      },
+      null,
+      2,
+    ),
+  );
+  const [runPayerAddress, setRunPayerAddress] = useState("tongo-web-operator");
+  const [isRunning, setIsRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<RunResponse | null>(null);
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true);
@@ -126,13 +155,68 @@ export default function AgentProfilePage() {
       if (!hireRes.ok) {
         throw new Error(hireJson?.error || `Hire creation failed (${hireRes.status})`);
       }
-      setHireResult(hireJson as HireResponse);
+      const created = hireJson as HireResponse;
+      setHireResult(created);
+      setHireIdInput(created.id);
     } catch (err) {
       setHireError(err instanceof Error ? err.message : "Failed to hire agent");
     } finally {
       setIsHiring(false);
     }
   }, [policyDraft, profile]);
+
+  const runAgent = useCallback(async () => {
+    if (!profile) return;
+    setIsRunning(true);
+    setRunError(null);
+    setRunResult(null);
+
+    try {
+      const { key } = getApiConfig();
+      if (!key) throw new Error("Missing API key");
+      if (!hireIdInput.trim()) throw new Error("Hire ID is required");
+
+      let params: Record<string, unknown> = {};
+      try {
+        params = JSON.parse(runParamsDraft) as Record<string, unknown>;
+      } catch {
+        throw new Error("Run params JSON is invalid");
+      }
+
+      const response = await x402FetchWithProofProvider(
+        "/api/v1/marketplace/runs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": key,
+          },
+          body: JSON.stringify({
+            hire_id: hireIdInput.trim(),
+            agent_id: profile.agent_id,
+            action: runAction,
+            params,
+            billable: true,
+            execute: true,
+          }),
+        },
+        {
+          tongoAddress: runPayerAddress,
+          proofProvider: new StaticX402ProofProvider("proof-web-demo"),
+        },
+      );
+
+      const runJson = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(runJson?.error || `Run failed (${response.status})`);
+      }
+      setRunResult(runJson as RunResponse);
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : "Failed to execute run");
+    } finally {
+      setIsRunning(false);
+    }
+  }, [hireIdInput, profile, runAction, runParamsDraft, runPayerAddress]);
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -236,12 +320,78 @@ export default function AgentProfilePage() {
             >
               {isHiring ? "Creating hire..." : "Create hire"}
             </button>
-            {hireError && (
-              <p className="text-xs text-red-300">{hireError}</p>
-            )}
+            {hireError && <p className="text-xs text-red-300">{hireError}</p>}
             {hireResult && (
               <div className="text-xs text-emerald-300">
                 Hire created: <code>{hireResult.id}</code> ({hireResult.status})
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+            <h3 className="text-sm font-medium text-slate-200">Run paid execution (x402)</h3>
+            <p className="text-xs text-slate-400">
+              Submit a billable run. Client retries automatically on `402` by attaching x402 payment headers.
+            </p>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-400">Hire ID</span>
+              <input
+                value={hireIdInput}
+                onChange={e => setHireIdInput(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 font-mono"
+                placeholder="hire_xxx"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-400">Action</span>
+              <input
+                value={runAction}
+                onChange={e => setRunAction(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-400">Run params JSON</span>
+              <textarea
+                value={runParamsDraft}
+                onChange={e => setRunParamsDraft(e.target.value)}
+                className="w-full h-32 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 font-mono"
+                spellCheck={false}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-400">Payer Tongo address</span>
+              <input
+                value={runPayerAddress}
+                onChange={e => setRunPayerAddress(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 font-mono"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void runAgent()}
+              disabled={isRunning}
+              className="text-sm px-3 py-2 rounded-lg border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-50"
+            >
+              {isRunning ? "Running..." : "Execute paid run"}
+            </button>
+
+            {runError && <p className="text-xs text-red-300">{runError}</p>}
+            {runResult && (
+              <div className="text-xs text-emerald-300 space-y-1">
+                <div>
+                  Run ID: <code>{runResult.id}</code>
+                </div>
+                <div>Status: {runResult.status}</div>
+                <div>Payment ref: {runResult.payment_ref || "n/a"}</div>
+                <div>
+                  Execution tx hashes: {runResult.execution_tx_hashes?.join(", ") || "none"}
+                </div>
               </div>
             )}
           </div>
