@@ -76,7 +76,7 @@ export default function MarketplaceScreen() {
       const discovered = await discoverMarketplaceAgents({
         wallet: {
           walletAddress: wallet.keys?.starkAddress,
-          publicKey: wallet.keys?.publicKey,
+          publicKey: wallet.keys?.starkPublicKey,
         },
         capability: capability || undefined,
         limit: 50,
@@ -89,7 +89,7 @@ export default function MarketplaceScreen() {
     } finally {
       setLoading(false);
     }
-  }, [capability, wallet.keys?.publicKey, wallet.keys?.starkAddress]);
+  }, [capability, wallet.keys?.starkPublicKey, wallet.keys?.starkAddress]);
 
   useEffect(() => {
     void loadAgents();
@@ -111,7 +111,7 @@ export default function MarketplaceScreen() {
         const hire = await hireMarketplaceAgent({
           wallet: {
             walletAddress: wallet.keys?.starkAddress,
-            publicKey: wallet.keys?.publicKey,
+            publicKey: wallet.keys?.starkPublicKey,
           },
           agentId: agent.agent_id,
           policySnapshot,
@@ -128,7 +128,7 @@ export default function MarketplaceScreen() {
         setHiringAgent(null);
       }
     },
-    [policyDraft, wallet.keys?.publicKey, wallet.keys?.starkAddress],
+    [policyDraft, wallet.keys?.starkPublicKey, wallet.keys?.starkAddress],
   );
 
   const runPaidExecution = useCallback(
