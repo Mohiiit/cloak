@@ -1,7 +1,7 @@
-import { CloakApiClient } from "@cloak-wallet/sdk";
+import type { CloakApiClient } from "@cloak-wallet/sdk";
 import { bringRateAndQuote, formatQuoteError } from "../src/lib/swapQuote";
 
-const mockApiClient = new CloakApiClient("http://localhost:3000", "test-key");
+const mockApiClient = {} as CloakApiClient;
 
 describe("swapQuote", () => {
   it("formats raw api errors", () => {

@@ -1,4 +1,4 @@
-import { CloakApiClient } from "@cloak-wallet/sdk";
+import type { CloakApiClient } from "@cloak-wallet/sdk";
 import { TOKENS, type TokenKey } from "./tokens";
 
 export const AVNU_QUOTES_URL = "https://sepolia.api.avnu.fi/swap/v3/quotes";
