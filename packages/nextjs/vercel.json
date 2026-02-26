@@ -1,3 +1,4 @@
 {
-  "installCommand": "YARN_ENABLE_IMMUTABLE_INSTALLS=false HUSKY=0 yarn install"
+  "installCommand": "YARN_ENABLE_IMMUTABLE_INSTALLS=false HUSKY=0 yarn install",
+  "buildCommand": "yarn workspace @cloak-wallet/sdk build && yarn workspace @ss-2/nextjs build"
 }
