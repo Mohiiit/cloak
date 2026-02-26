@@ -145,9 +145,14 @@ export interface WardApprovalRequestOptions {
   onRequestCreated?: (request: WardApprovalRequest) => Promise<void> | void;
   /**
    * Poll interval while waiting for a terminal approval status.
-   * Defaults to 6000ms.
+   * Defaults to 10000ms.
    */
   pollIntervalMs?: number;
+  /**
+   * Upper bound for adaptive backoff while polling.
+   * Defaults to 30000ms.
+   */
+  maxPollIntervalMs?: number;
 }
 
 export interface WardApprovalResult {
@@ -793,7 +798,8 @@ export function getProvider(network: "sepolia" | "mainnet" = "sepolia"): RpcProv
 // ─── Ward Approval Request + Poll ─────────────────────────────────────────────
 
 const TOKEN_SUFFIX_RE = /\s*(STRK|ETH|USDC)\s*$/i;
-const POLL_INTERVAL = 6000;
+const POLL_INTERVAL = 10_000;
+const MAX_POLL_INTERVAL = 30_000;
 const TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
 const TERMINAL_WARD_STATUSES = new Set<WardApprovalStatus>([
@@ -1134,7 +1140,23 @@ export async function requestWardApproval(
 
   onStatusChange?.("Waiting for ward mobile signing...");
   const startTime = Date.now();
-  const pollInterval = Math.max(1500, Math.trunc(options?.pollIntervalMs || POLL_INTERVAL));
+  const minPollInterval = Math.max(
+    1500,
+    Math.trunc(options?.pollIntervalMs || POLL_INTERVAL),
+  );
+  const maxPollInterval = Math.max(
+    minPollInterval,
+    Math.trunc(options?.maxPollIntervalMs || MAX_POLL_INTERVAL),
+  );
+  let pollAttempt = 0;
+
+  const nextPollDelay = () => {
+    const growthStep = Math.floor(pollAttempt / 4);
+    return Math.min(
+      maxPollInterval,
+      Math.round(minPollInterval * Math.pow(1.3, growthStep)),
+    );
+  };
 
   return new Promise<WardApprovalResult>((resolve) => {
     const poll = async () => {
@@ -1150,26 +1172,31 @@ export async function requestWardApproval(
       }
 
       try {
-        const row = await getWardApprovalRequestById(client, requestId);
+        const row =
+          typeof (client as { getWardApprovalStatus?: (id: string) => Promise<any> }).getWardApprovalStatus === "function"
+            ? await (client as { getWardApprovalStatus: (id: string) => Promise<any> }).getWardApprovalStatus(requestId)
+            : await client.getWardApproval(requestId);
 
         if (!row) {
           resolve({ approved: false, error: "Ward approval request not found" });
           return;
         }
 
-        if (row.status === "approved") {
+        const status = asWardApprovalStatus(row.status);
+
+        if (status === "approved") {
           onStatusChange?.("Approved!");
           resolve({ approved: true, txHash: row.final_tx_hash || row.tx_hash });
           return;
         }
 
-        if (row.status === "rejected") {
+        if (status === "rejected") {
           onStatusChange?.("Rejected");
           resolve({ approved: false, error: "Ward transaction rejected" });
           return;
         }
 
-        if (row.status === "failed") {
+        if (status === "failed") {
           onStatusChange?.("Failed");
           resolve({
             approved: false,
@@ -1179,18 +1206,20 @@ export async function requestWardApproval(
         }
 
         // Intermediate status updates
-        if (row.status === "pending_guardian") {
+        if (status === "pending_guardian") {
           onStatusChange?.("Waiting for guardian approval...");
-        } else if (row.status === "pending_ward_sig") {
+        } else if (status === "pending_ward_sig") {
           onStatusChange?.("Waiting for ward mobile signing...");
         } else {
-          onStatusChange?.(`Status: ${row.status}`);
+          onStatusChange?.(`Status: ${status}`);
         }
 
-        setTimeout(poll, pollInterval);
+        pollAttempt += 1;
+        setTimeout(poll, nextPollDelay());
       } catch (err) {
         console.warn("[Ward] Poll error:", err);
-        setTimeout(poll, pollInterval);
+        pollAttempt += 1;
+        setTimeout(poll, nextPollDelay());
       }
     };
 

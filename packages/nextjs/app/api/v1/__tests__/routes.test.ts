@@ -433,6 +433,39 @@ describe("GET /api/v1/ward-approvals/:id", () => {
     expect(json.id).toBe("wa1");
   });
 
+  it("supports lightweight status view for polling", async () => {
+    const row = {
+      id: "wa1",
+      status: "pending_guardian",
+      tx_hash: "0xabc",
+      final_tx_hash: null,
+      error_message: null,
+      created_at: "2026-02-26T00:00:00.000Z",
+      responded_at: null,
+      updated_at: "2026-02-26T00:00:00.000Z",
+    };
+    mockSb.select.mockResolvedValue([row]);
+
+    const res = await GET(
+      makeReq("http://localhost/api/v1/ward-approvals/wa1?view=status"),
+      { params: Promise.resolve({ id: "wa1" }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockSb.select).toHaveBeenCalledWith(
+      "ward_approval_requests",
+      "id=eq.wa1",
+      {
+        limit: 1,
+        columns:
+          "id,status,tx_hash,final_tx_hash,error_message,created_at,responded_at,updated_at",
+      },
+    );
+    const json = await res.json();
+    expect(json.status).toBe("pending_guardian");
+    expect(json.ward_address).toBeUndefined();
+  });
+
   it("returns 404 when not found", async () => {
     mockSb.select.mockResolvedValue([]);
 

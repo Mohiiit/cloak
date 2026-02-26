@@ -215,6 +215,7 @@ export type {
   CreateAgentRunRequest,
   AgentRunResponse,
   DiscoverAgentsQuery,
+  WardApprovalStatusSnapshot,
   X402ChallengeResponse,
   X402PaymentPayloadRequest,
 } from "./types/api";

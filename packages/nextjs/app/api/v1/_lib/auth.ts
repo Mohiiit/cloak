@@ -21,6 +21,77 @@ interface ApiKeyRow {
   revoked_at: string | null;
 }
 
+type CachedAuthResult =
+  | { kind: "ok"; context: AuthContext }
+  | { kind: "invalid" }
+  | { kind: "revoked" };
+
+interface CachedAuthEntry {
+  result: CachedAuthResult;
+  expiresAtMs: number;
+}
+
+const API_KEY_AUTH_CACHE_TTL_MS = parsePositiveInt(
+  process.env.API_KEY_AUTH_CACHE_TTL_MS,
+  30_000,
+);
+const API_KEY_AUTH_NEGATIVE_CACHE_TTL_MS = parsePositiveInt(
+  process.env.API_KEY_AUTH_NEGATIVE_CACHE_TTL_MS,
+  10_000,
+);
+const API_KEY_AUTH_CACHE_MAX_ENTRIES = parsePositiveInt(
+  process.env.API_KEY_AUTH_CACHE_MAX_ENTRIES,
+  5000,
+);
+const apiKeyAuthCache = new Map<string, CachedAuthEntry>();
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
+function evictOneEntry(): void {
+  const firstKey = apiKeyAuthCache.keys().next().value as string | undefined;
+  if (firstKey) apiKeyAuthCache.delete(firstKey);
+}
+
+function ensureCacheCapacity(): void {
+  if (apiKeyAuthCache.size < API_KEY_AUTH_CACHE_MAX_ENTRIES) return;
+
+  const now = Date.now();
+  for (const [key, entry] of apiKeyAuthCache.entries()) {
+    if (entry.expiresAtMs <= now) apiKeyAuthCache.delete(key);
+  }
+
+  while (apiKeyAuthCache.size >= API_KEY_AUTH_CACHE_MAX_ENTRIES) {
+    evictOneEntry();
+  }
+}
+
+function readCachedAuth(keyHash: string): CachedAuthResult | null {
+  const entry = apiKeyAuthCache.get(keyHash);
+  if (!entry) return null;
+  if (entry.expiresAtMs <= Date.now()) {
+    apiKeyAuthCache.delete(keyHash);
+    return null;
+  }
+  return entry.result;
+}
+
+function cacheAuthResult(
+  keyHash: string,
+  result: CachedAuthResult,
+  ttlMs: number,
+): void {
+  ensureCacheCapacity();
+  apiKeyAuthCache.set(keyHash, {
+    result,
+    expiresAtMs: Date.now() + Math.max(1, ttlMs),
+  });
+}
+
 /**
  * Hash a raw API key using SHA-256.
  * Uses crypto.subtle which is available in both Node.js and Edge Runtime.
@@ -53,6 +124,17 @@ export async function authenticate(req: NextRequest): Promise<AuthContext> {
   }
 
   const keyHash = await hashApiKey(apiKey);
+  const cached = readCachedAuth(keyHash);
+  if (cached?.kind === "ok") {
+    return cached.context;
+  }
+  if (cached?.kind === "invalid") {
+    throw new AuthError("Invalid API key");
+  }
+  if (cached?.kind === "revoked") {
+    throw new AuthError("API key has been revoked");
+  }
+
   const sb = getSupabase();
 
   const rows = await sb.select<ApiKeyRow>(
@@ -62,19 +144,35 @@ export async function authenticate(req: NextRequest): Promise<AuthContext> {
   );
 
   if (rows.length === 0) {
+    cacheAuthResult(
+      keyHash,
+      { kind: "invalid" },
+      API_KEY_AUTH_NEGATIVE_CACHE_TTL_MS,
+    );
     throw new AuthError("Invalid API key");
   }
 
   const row = rows[0];
 
   if (row.revoked_at !== null) {
+    cacheAuthResult(
+      keyHash,
+      { kind: "revoked" },
+      API_KEY_AUTH_CACHE_TTL_MS,
+    );
     throw new AuthError("API key has been revoked");
   }
 
-  return {
+  const context: AuthContext = {
     wallet_address: row.wallet_address,
     api_key_id: row.id,
   };
+  cacheAuthResult(
+    keyHash,
+    { kind: "ok", context },
+    API_KEY_AUTH_CACHE_TTL_MS,
+  );
+  return context;
 }
 
 /**
@@ -86,4 +184,9 @@ export class AuthError extends Error {
     super(message);
     this.name = "AuthError";
   }
+}
+
+// Test-only helper to keep auth unit tests deterministic.
+export function __clearAuthCacheForTests(): void {
+  apiKeyAuthCache.clear();
 }

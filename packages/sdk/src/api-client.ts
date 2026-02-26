@@ -19,6 +19,7 @@ import type {
   UpdateWardConfigRequest,
   CreateWardApprovalRequest,
   WardApprovalResponse,
+  WardApprovalStatusSnapshot,
   UpdateWardApprovalRequest,
   PendingWardApprovalsQuery,
   SaveTransactionRequest,
@@ -204,6 +205,12 @@ export class CloakApiClient {
 
   async getWardApproval(id: string): Promise<WardApprovalResponse> {
     return this.get<WardApprovalResponse>(`/ward-approvals/${id}`);
+  }
+
+  async getWardApprovalStatus(id: string): Promise<WardApprovalStatusSnapshot> {
+    return this.get<WardApprovalStatusSnapshot>(
+      `/ward-approvals/${id}${this.queryString({ view: "status" })}`,
+    );
   }
 
   async getPendingWardApprovals(params: {

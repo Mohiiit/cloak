@@ -1,6 +1,6 @@
 {
   "name": "@cloak-wallet/sdk",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Cloak SDK — privacy-preserving wallet operations on Starknet via Tongo",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

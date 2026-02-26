@@ -63,7 +63,12 @@ vi.mock("../_lib/supabase", () => {
   };
 });
 
-import { hashApiKey, authenticate, AuthError } from "../_lib/auth";
+import {
+  hashApiKey,
+  authenticate,
+  AuthError,
+  __clearAuthCacheForTests,
+} from "../_lib/auth";
 import { getSupabase } from "../_lib/supabase";
 
 // Helper to grab the mock select fn
@@ -1093,6 +1098,7 @@ describe("auth.ts", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    __clearAuthCacheForTests();
     mockSelect = (getSupabase() as any).select;
   });
 
@@ -1229,6 +1235,40 @@ describe("auth.ts", () => {
         `key_hash=eq.${expectedHash}`,
         { limit: 1 },
       );
+    });
+
+    it("uses cache for repeated successful authentications", async () => {
+      mockSelect.mockResolvedValue([
+        {
+          id: "key-id-4",
+          wallet_address: "0xcache",
+          key_hash: "hash",
+          created_at: "2026-01-01T00:00:00Z",
+          revoked_at: null,
+        },
+      ]);
+
+      const req = new NextRequest("http://localhost/api/v1/test", {
+        headers: { "X-API-Key": "valid-key-1234567890" },
+      });
+
+      await authenticate(req);
+      await authenticate(req);
+
+      expect(mockSelect).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses cache for repeated invalid key checks", async () => {
+      mockSelect.mockResolvedValue([]);
+
+      const req = new NextRequest("http://localhost/api/v1/test", {
+        headers: { "X-API-Key": "invalid-key-1234567890" },
+      });
+
+      await expect(authenticate(req)).rejects.toThrow("Invalid API key");
+      await expect(authenticate(req)).rejects.toThrow("Invalid API key");
+
+      expect(mockSelect).toHaveBeenCalledTimes(1);
     });
   });
 

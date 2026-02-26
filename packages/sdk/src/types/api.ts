@@ -177,6 +177,17 @@ export interface WardApprovalResponse {
   responded_at: string | null;
 }
 
+export interface WardApprovalStatusSnapshot {
+  id: string;
+  status: WardApprovalStatus;
+  tx_hash: string | null;
+  final_tx_hash: string | null;
+  error_message: string | null;
+  created_at: string;
+  responded_at: string | null;
+  updated_at?: string | null;
+}
+
 export interface UpdateWardApprovalRequest {
   status: WardApprovalStatus;
   nonce?: string | null;

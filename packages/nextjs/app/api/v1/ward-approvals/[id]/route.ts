@@ -56,12 +56,15 @@ const TERMINAL_STATUSES = new Set([
 
 async function findWardApprovalById(
   id: string,
+  columns?: string,
 ): Promise<{ sb: ReturnType<typeof getSupabase>; row: WardApprovalRow | null }> {
   const sb = getSupabase();
+  const options: { limit: number; columns?: string } = { limit: 1 };
+  if (columns) options.columns = columns;
   const rows = await sb.select<WardApprovalRow>(
     "ward_approval_requests",
     `id=eq.${id}`,
-    { limit: 1 },
+    options,
   );
   return {
     sb,
@@ -81,7 +84,12 @@ export async function GET(
     await authenticate(req);
 
     const { id } = await params;
-    const { row } = await findWardApprovalById(id);
+    const view = req.nextUrl.searchParams.get("view");
+    const columns =
+      view === "status"
+        ? "id,status,tx_hash,final_tx_hash,error_message,created_at,responded_at,updated_at"
+        : undefined;
+    const { row } = await findWardApprovalById(id, columns);
     if (!row) {
       return notFound("Ward approval request not found");
     }
