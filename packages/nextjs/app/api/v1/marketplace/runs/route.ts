@@ -38,13 +38,34 @@ interface CreateRunBody {
   execute?: boolean;
 }
 
+function parseIntParam(raw: string | null, fallback: number, min: number, max: number): number {
+  if (raw === null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const auth = await authenticate(req);
+    const limit = parseIntParam(req.nextUrl.searchParams.get("limit"), 50, 1, 100);
+    const offset = parseIntParam(req.nextUrl.searchParams.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
+    const hireId = req.nextUrl.searchParams.get("hire_id") || undefined;
+    const agentId = req.nextUrl.searchParams.get("agent_id") || undefined;
+    const status = req.nextUrl.searchParams.get("status") || undefined;
+    const all = await listRunRecords({
+      operatorWallet: auth.wallet_address,
+      hireId,
+      agentId,
+      status: status as AgentRunResponse["status"] | undefined,
+    });
     return NextResponse.json({
-      runs: await listRunRecords({
-        operatorWallet: auth.wallet_address,
-      }),
+      runs: all.slice(offset, offset + limit),
+      pagination: {
+        limit,
+        offset,
+        total: all.length,
+      },
     });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);

@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
       DiscoverAgentsQuerySchema,
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     );
+    const statusFilter = req.nextUrl.searchParams.get("status");
     const refreshOnchain = req.nextUrl.searchParams.get("refresh_onchain") === "true";
     const limit = query.limit ?? 50;
     const offset = query.offset ?? 0;
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
       .filter((agent) => {
         if (query.agent_type && agent.agent_type !== query.agent_type) return false;
         if (query.verified_only && !agent.verified) return false;
+        if (statusFilter && agent.status !== statusFilter) return false;
         if (
           query.capability &&
           !agent.capabilities.some(
@@ -68,8 +70,7 @@ export async function GET(req: NextRequest) {
           return false;
         }
         return true;
-      })
-      .slice(offset, offset + limit);
+      });
 
     if (refreshOnchain) {
       incrementRegistryMetric("onchain_refreshes");
@@ -84,12 +85,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const total = agents.length;
+    const paged = agents.slice(offset, offset + limit);
     return NextResponse.json({
-      agents,
+      agents: paged,
       pagination: {
         limit,
         offset,
-        total: agents.length,
+        total,
       },
     });
   } catch (err) {

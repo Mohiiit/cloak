@@ -99,7 +99,7 @@ describe("marketplace runs route", () => {
   });
 
   it("lists created runs", async () => {
-    const req = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+    const req = new NextRequest("http://localhost/api/v1/marketplace/runs?limit=1&offset=0", {
       method: "GET",
       headers: {
         "X-API-Key": "test-key-1234567890",
@@ -109,6 +109,9 @@ describe("marketplace runs route", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.runs)).toBe(true);
+    expect(body.pagination).toBeTruthy();
+    expect(body.pagination.limit).toBe(1);
+    expect(body.pagination.offset).toBe(0);
   });
 
   it("blocks run creation when authenticated operator does not own the hire", async () => {
@@ -136,5 +139,51 @@ describe("marketplace runs route", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toMatch(/Only operator can create runs/);
+  });
+
+  it("supports status filtering with pagination", async () => {
+    const createBody = (hireId: string, action: string) =>
+      JSON.stringify({
+        hire_id: hireId,
+        agent_id: "staking_steward",
+        action,
+        params: { pool: "0xpool", amount: "100" },
+        billable: false,
+      });
+
+    const first = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+      },
+      body: createBody("hire_filter_1", "stake"),
+    });
+    const second = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+      },
+      body: createBody("hire_filter_2", "rebalance"),
+    });
+    expect((await POST(first)).status).toBe(201);
+    expect((await POST(second)).status).toBe(201);
+
+    const listReq = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs?status=completed&limit=1&offset=0",
+      {
+        method: "GET",
+        headers: {
+          "X-API-Key": "test-key-1234567890",
+        },
+      },
+    );
+    const listRes = await GET(listReq);
+    expect(listRes.status).toBe(200);
+    const listJson = await listRes.json();
+    expect(Array.isArray(listJson.runs)).toBe(true);
+    expect(listJson.runs.length).toBe(1);
+    expect(listJson.pagination.total).toBeGreaterThanOrEqual(2);
   });
 });

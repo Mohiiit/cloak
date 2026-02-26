@@ -19,6 +19,13 @@ import {
 
 export const runtime = "nodejs";
 
+function parseIntParam(raw: string | null, fallback: number, min: number, max: number): number {
+  if (raw === null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const auth = await authenticate(req);
@@ -37,11 +44,23 @@ export async function GET(req: NextRequest) {
         { status: 429 },
       );
     }
-    const hires = await listHireRecords({
+    const limit = parseIntParam(req.nextUrl.searchParams.get("limit"), 50, 1, 100);
+    const offset = parseIntParam(req.nextUrl.searchParams.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
+    const status = req.nextUrl.searchParams.get("status") || undefined;
+    const all = await listHireRecords({
       operatorWallet: auth.wallet_address,
       agentId: req.nextUrl.searchParams.get("agent_id") || undefined,
+      status: status as "active" | "paused" | "revoked" | undefined,
     });
-    return NextResponse.json({ hires });
+    const hires = all.slice(offset, offset + limit);
+    return NextResponse.json({
+      hires,
+      pagination: {
+        limit,
+        offset,
+        total: all.length,
+      },
+    });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
     console.error("[GET /api/v1/marketplace/hires]", err);

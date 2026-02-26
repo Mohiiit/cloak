@@ -62,7 +62,42 @@ describe("marketplace registry routes", () => {
     const profile = await registerRes.json();
     expect(profile.agent_id).toBe("staking_steward_v1");
 
-    const listReq = new NextRequest("http://localhost/api/v1/marketplace/agents", {
+    const registerReq2 = new NextRequest("http://localhost/api/v1/marketplace/agents", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+      },
+      body: JSON.stringify({
+        agent_id: "staking_steward_v2",
+        name: "Staking Steward V2",
+        description: "Auto-manages staking positions",
+        agent_type: "staking_steward",
+        capabilities: ["stake", "unstake", "rebalance"],
+        endpoints: ["https://agents.cloak.local/staking-v2"],
+        endpoint_proofs: [
+          {
+            endpoint: "https://agents.cloak.local/staking-v2",
+            nonce: "nonce_a2",
+            digest: buildEndpointOwnershipDigest({
+              endpoint: "https://agents.cloak.local/staking-v2",
+              operatorWallet: "0xabc123",
+              nonce: "nonce_a2",
+            }),
+          },
+        ],
+        pricing: {
+          mode: "per_run",
+          amount: "1000",
+          token: "STRK",
+        },
+        operator_wallet: "0xabc123",
+        service_wallet: "0xbeef1234",
+      }),
+    });
+    await agentsPOST(registerReq2);
+
+    const listReq = new NextRequest("http://localhost/api/v1/marketplace/agents?limit=1&offset=1", {
       method: "GET",
       headers: { "X-API-Key": "test-key-1234567890" },
     });
@@ -70,6 +105,11 @@ describe("marketplace registry routes", () => {
     expect(listRes.status).toBe(200);
     const listJson = await listRes.json();
     expect(listJson.agents).toHaveLength(1);
+    expect(listJson.pagination).toEqual({
+      limit: 1,
+      offset: 1,
+      total: 2,
+    });
 
     const pauseReq = new NextRequest(
       "http://localhost/api/v1/marketplace/agents/staking_steward_v1",
@@ -155,6 +195,11 @@ describe("marketplace registry routes", () => {
     expect(listRes.status).toBe(200);
     const listJson = await listRes.json();
     expect(listJson.hires).toHaveLength(1);
+    expect(listJson.pagination).toEqual({
+      limit: 50,
+      offset: 0,
+      total: 1,
+    });
 
     const patchReq = new NextRequest(`http://localhost/api/v1/marketplace/hires/${hire.id}`, {
       method: "PATCH",

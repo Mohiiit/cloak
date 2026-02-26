@@ -137,21 +137,29 @@ export async function listRunRecords(filters?: {
   operatorWallet?: string;
   hireId?: string;
   agentId?: string;
+  status?: AgentRunResponse["status"];
   limit?: number;
   offset?: number;
 }): Promise<AgentRunResponse[]> {
   if (!hasSupabaseEnv()) {
     const runs = listRuns();
-    return runs
+    const filtered = runs
       .filter((run) => {
         if (filters?.operatorWallet && run.hire_operator_wallet !== filters.operatorWallet) {
           return false;
         }
         if (filters?.hireId && run.hire_id !== filters.hireId) return false;
         if (filters?.agentId && run.agent_id !== filters.agentId) return false;
+        if (filters?.status && run.status !== filters.status) return false;
         return true;
-      })
-      .slice(filters?.offset || 0, (filters?.offset || 0) + (filters?.limit || 50));
+      });
+
+    if (filters?.limit === undefined && filters?.offset === undefined) {
+      return filtered;
+    }
+    const offset = filters?.offset ?? 0;
+    const limit = filters?.limit ?? 50;
+    return filtered.slice(offset, offset + limit);
   }
 
   try {
@@ -165,18 +173,30 @@ export async function listRunRecords(filters?: {
     if (filters?.agentId) {
       parts.push(`agent_id=eq.${encodeURIComponent(filters.agentId)}`);
     }
+    if (filters?.status) {
+      parts.push(`status=eq.${encodeURIComponent(filters.status)}`);
+    }
     const sb = getSupabase();
     const rows = await sb.select<AgentRunRow>(
       "agent_runs",
       parts.join("&") || undefined,
       {
         orderBy: "created_at.desc",
-        limit: filters?.limit ?? 50,
+        limit: filters?.limit ?? 1000,
         offset: filters?.offset ?? 0,
       },
     );
     return rows.map(fromRow);
   } catch {
-    return listRuns();
+    const runs = listRuns();
+    return runs.filter((run) => {
+      if (filters?.operatorWallet && run.hire_operator_wallet !== filters.operatorWallet) {
+        return false;
+      }
+      if (filters?.hireId && run.hire_id !== filters.hireId) return false;
+      if (filters?.agentId && run.agent_id !== filters.agentId) return false;
+      if (filters?.status && run.status !== filters.status) return false;
+      return true;
+    });
   }
 }

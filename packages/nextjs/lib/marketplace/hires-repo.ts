@@ -97,8 +97,25 @@ export async function updateHireStatusRecord(
 export async function listHireRecords(filters?: {
   operatorWallet?: string;
   agentId?: string;
+  status?: AgentHireStatus;
+  limit?: number;
+  offset?: number;
 }): Promise<AgentHireResponse[]> {
-  if (!hasSupabaseEnv()) return listHires(filters);
+  if (!hasSupabaseEnv()) {
+    const items = listHires({
+      operatorWallet: filters?.operatorWallet,
+      agentId: filters?.agentId,
+    }).filter((hire) => {
+      if (filters?.status && hire.status !== filters.status) return false;
+      return true;
+    });
+    if (filters?.limit === undefined && filters?.offset === undefined) {
+      return items;
+    }
+    const offset = filters?.offset ?? 0;
+    const limit = filters?.limit ?? 50;
+    return items.slice(offset, offset + limit);
+  }
 
   try {
     const filterParts: string[] = [];
@@ -108,14 +125,24 @@ export async function listHireRecords(filters?: {
     if (filters?.agentId) {
       filterParts.push(`agent_id=eq.${encodeURIComponent(filters.agentId)}`);
     }
+    if (filters?.status) {
+      filterParts.push(`status=eq.${encodeURIComponent(filters.status)}`);
+    }
     const sb = getSupabase();
     const rows = await sb.select<AgentHireRow>(
       "agent_hires",
       filterParts.join("&") || undefined,
-      { orderBy: "created_at.desc", limit: 1000 },
+      {
+        orderBy: "created_at.desc",
+        limit: filters?.limit ?? 1000,
+        offset: filters?.offset ?? 0,
+      },
     );
     return rows.map(fromRow);
   } catch {
-    return listHires(filters);
+    return listHires({
+      operatorWallet: filters?.operatorWallet,
+      agentId: filters?.agentId,
+    });
   }
 }
