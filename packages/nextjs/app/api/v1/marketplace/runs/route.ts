@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate, AuthError } from "~~/app/api/v1/_lib/auth";
-import { badRequest, unauthorized, serverError } from "~~/app/api/v1/_lib/errors";
+import {
+  badRequest,
+  forbidden,
+  unauthorized,
+  serverError,
+} from "~~/app/api/v1/_lib/errors";
 import {
   createRunRecord,
   listRunRecords,
@@ -35,9 +40,11 @@ interface CreateRunBody {
 
 export async function GET(req: NextRequest) {
   try {
-    await authenticate(req);
+    const auth = await authenticate(req);
     return NextResponse.json({
-      runs: await listRunRecords(),
+      runs: await listRunRecords({
+        operatorWallet: auth.wallet_address,
+      }),
     });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
@@ -75,6 +82,12 @@ export async function POST(req: NextRequest) {
     if (hire && body.agent_id && hire.agent_id !== body.agent_id) {
       return badRequest("agent_id does not match hire");
     }
+    if (
+      hire &&
+      hire.operator_wallet.toLowerCase() !== auth.wallet_address.toLowerCase()
+    ) {
+      return forbidden("Only operator can create runs for this hire");
+    }
     const resolvedAgentId = hire?.agent_id || body.agent_id;
     if (!resolvedAgentId) {
       return badRequest("agent_id is required when hire does not exist");
@@ -103,7 +116,7 @@ export async function POST(req: NextRequest) {
     const run = await createRunRecord({
       hireId: body.hire_id,
       agentId: resolvedAgentId,
-      hireOperatorWallet: hire?.operator_wallet ?? null,
+      hireOperatorWallet: hire?.operator_wallet ?? auth.wallet_address,
       action: body.action,
       params: body.params || {},
       billable: body.billable ?? true,

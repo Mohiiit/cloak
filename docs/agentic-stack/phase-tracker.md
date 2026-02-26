@@ -63,7 +63,7 @@ Legend:
 | 51 | client integration contract freeze | done | docs/agentic-stack/client-integration-contract-freeze.md |
 | 52 | marketplace run persistence migration | done | supabase-migration-agent-runs.sql |
 | 53 | supabase-backed marketplace repositories | done | packages/nextjs/lib/marketplace/*.repo.ts |
-| 54 | operator-scoped run/hire access controls | pending | packages/nextjs/app/api/v1/marketplace/runs/route.ts |
+| 54 | operator-scoped run/hire access controls | done | packages/nextjs/app/api/v1/marketplace/runs/route.ts |
 | 55 | pagination and filtering contract rollout | pending | packages/nextjs/app/api/v1/marketplace/*/route.ts |
 | 56 | sdk marketplace session unification | pending | packages/sdk/src/marketplace-session.ts |
 | 57 | x402 proof provider interface | pending | packages/sdk/src/x402.ts |

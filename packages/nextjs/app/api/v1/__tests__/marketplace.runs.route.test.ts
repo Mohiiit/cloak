@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { clearHires, createHire } from "~~/lib/marketplace/hires-store";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -16,6 +17,7 @@ import { GET, POST } from "../marketplace/runs/route";
 describe("marketplace runs route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearHires();
   });
 
   it("returns 402 challenge when billable payment headers are absent", async () => {
@@ -107,5 +109,32 @@ describe("marketplace runs route", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.runs)).toBe(true);
+  });
+
+  it("blocks run creation when authenticated operator does not own the hire", async () => {
+    const hire = createHire({
+      agent_id: "staking_steward",
+      operator_wallet: "0xdeadbeef",
+      policy_snapshot: {},
+      billing_mode: "per_run",
+    });
+
+    const req = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+      },
+      body: JSON.stringify({
+        hire_id: hire.id,
+        action: "stake",
+        params: { pool: "0xpool", amount: "100" },
+        billable: false,
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/Only operator can create runs/);
   });
 });
