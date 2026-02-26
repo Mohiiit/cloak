@@ -70,7 +70,7 @@ Legend:
 | 58 | backend x402 proof adapter boundary | done | packages/nextjs/lib/marketplace/x402/facilitator.ts |
 | 59 | web marketplace discovery page | done | packages/nextjs/app/marketplace/page.tsx |
 | 60 | web agent profile page | done | packages/nextjs/app/marketplace/[agentId]/page.tsx |
-| 61 | web hire flow | pending | packages/nextjs/app/marketplace/page.tsx |
+| 61 | web hire flow | done | packages/nextjs/app/marketplace/[agentId]/page.tsx |
 | 62 | web paid run flow with x402 retry | pending | packages/nextjs/app/marketplace/[agentId]/page.tsx |
 | 63 | web operator dashboard | pending | packages/nextjs/app/marketplace/dashboard/page.tsx |
 | 64 | mobile marketplace entry integration | pending | packages/mobile/src/screens/AgentScreen.tsx |
