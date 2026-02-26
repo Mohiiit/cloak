@@ -68,7 +68,7 @@ Legend:
 | 56 | sdk marketplace session unification | done | packages/sdk/src/marketplace-session.ts |
 | 57 | x402 proof provider interface | done | packages/sdk/src/x402.ts |
 | 58 | backend x402 proof adapter boundary | done | packages/nextjs/lib/marketplace/x402/facilitator.ts |
-| 59 | web marketplace discovery page | pending | packages/nextjs/app/marketplace/page.tsx |
+| 59 | web marketplace discovery page | done | packages/nextjs/app/marketplace/page.tsx |
 | 60 | web agent profile page | pending | packages/nextjs/app/marketplace/[agentId]/page.tsx |
 | 61 | web hire flow | pending | packages/nextjs/app/marketplace/page.tsx |
 | 62 | web paid run flow with x402 retry | pending | packages/nextjs/app/marketplace/[agentId]/page.tsx |
