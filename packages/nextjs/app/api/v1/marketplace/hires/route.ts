@@ -16,6 +16,10 @@ import {
   consumeRateLimit,
   MARKETPLACE_RATE_LIMITS,
 } from "~~/lib/marketplace/rate-limit";
+import {
+  createTraceId,
+  logMarketplaceFunnelEvent,
+} from "~~/lib/observability/agentic";
 
 export const runtime = "nodejs";
 
@@ -69,6 +73,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const traceId = createTraceId("marketplace-hires-post");
   try {
     const auth = await authenticate(req);
     const writeLimit = consumeRateLimit(
@@ -102,7 +107,22 @@ export async function POST(req: NextRequest) {
     }
 
     const hire = await createHireRecord(data);
-    return NextResponse.json(hire, { status: 201 });
+    logMarketplaceFunnelEvent({
+      stage: "hire_created",
+      traceId,
+      actor: auth.wallet_address,
+      metadata: {
+        hire_id: hire.id,
+        agent_id: hire.agent_id,
+        billing_mode: hire.billing_mode,
+      },
+    });
+    return NextResponse.json(hire, {
+      status: 201,
+      headers: {
+        "x-agentic-trace-id": traceId,
+      },
+    });
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
     if (err instanceof ValidationError) return err.response;

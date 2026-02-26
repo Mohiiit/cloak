@@ -14,10 +14,15 @@ import {
   MARKETPLACE_RATE_LIMITS,
 } from "~~/lib/marketplace/rate-limit";
 import { incrementRegistryMetric } from "~~/lib/marketplace/registry-metrics";
+import {
+  createTraceId,
+  logMarketplaceFunnelEvent,
+} from "~~/lib/observability/agentic";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
+  const traceId = createTraceId("marketplace-discover-get");
   try {
     const auth = await authenticate(req);
     const readLimit = consumeRateLimit(
@@ -80,16 +85,40 @@ export async function GET(req: NextRequest) {
       capability: query.capability,
     });
 
-    return NextResponse.json({
-      agents: ranked.slice(offset, offset + limit),
-      pagination: {
-        limit,
-        offset,
-        total: ranked.length,
+    const paged = ranked.slice(offset, offset + limit);
+    logMarketplaceFunnelEvent({
+      stage: "discover_loaded",
+      traceId,
+      actor: auth.wallet_address,
+      metadata: {
+        query: {
+          capability: query.capability ?? null,
+          agent_type: query.agent_type ?? null,
+          verified_only: !!query.verified_only,
+          refresh_onchain: refreshOnchain,
+        },
+        result_count: paged.length,
+        total_ranked: ranked.length,
       },
-      ranking_version: "v1",
-      generated_at: new Date().toISOString(),
     });
+
+    return NextResponse.json(
+      {
+        agents: paged,
+        pagination: {
+          limit,
+          offset,
+          total: ranked.length,
+        },
+        ranking_version: "v1",
+        generated_at: new Date().toISOString(),
+      },
+      {
+        headers: {
+          "x-agentic-trace-id": traceId,
+        },
+      },
+    );
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
     if (err instanceof ValidationError) return err.response;

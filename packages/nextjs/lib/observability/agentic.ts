@@ -11,6 +11,13 @@ export interface AgenticEvent {
   metadata?: Record<string, unknown>;
 }
 
+export type MarketplaceFunnelStage =
+  | "discover_loaded"
+  | "hire_created"
+  | "run_requested"
+  | "run_completed"
+  | "run_failed";
+
 const LOG_LEVELS: Record<AgenticEventLevel, number> = {
   debug: 10,
   info: 20,
@@ -57,4 +64,20 @@ export function logAgenticEvent(event: AgenticEvent): void {
   } else {
     console.log(line);
   }
+}
+
+export function logMarketplaceFunnelEvent(input: {
+  stage: MarketplaceFunnelStage;
+  traceId: string;
+  actor?: string;
+  metadata?: Record<string, unknown>;
+  level?: AgenticEventLevel;
+}): void {
+  logAgenticEvent({
+    level: input.level ?? "info",
+    event: `marketplace.funnel.${input.stage}`,
+    traceId: input.traceId,
+    actor: input.actor,
+    metadata: input.metadata,
+  });
 }

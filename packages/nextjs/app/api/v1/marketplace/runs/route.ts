@@ -12,7 +12,11 @@ import {
   updateRunRecord,
 } from "~~/lib/marketplace/runs-repo";
 import { shieldedPaywall } from "~~/lib/marketplace/x402/paywall";
-import { createTraceId, logAgenticEvent } from "~~/lib/observability/agentic";
+import {
+  createTraceId,
+  logAgenticEvent,
+  logMarketplaceFunnelEvent,
+} from "~~/lib/observability/agentic";
 import { getHireRecord } from "~~/lib/marketplace/hires-repo";
 import { getAgentProfileRecord } from "~~/lib/marketplace/agents-repo";
 import type { AgentRunResponse } from "@cloak-wallet/sdk";
@@ -115,6 +119,18 @@ export async function POST(req: NextRequest) {
     }
     const agentProfile = await getAgentProfileRecord(resolvedAgentId);
 
+    logMarketplaceFunnelEvent({
+      stage: "run_requested",
+      traceId,
+      actor: auth.wallet_address,
+      metadata: {
+        hire_id: body.hire_id,
+        agent_id: resolvedAgentId,
+        action: body.action,
+        billable: body.billable ?? true,
+      },
+    });
+
     let paymentRef: string | null = null;
     let settlementTxHash: string | null = null;
 
@@ -175,6 +191,20 @@ export async function POST(req: NextRequest) {
         paymentRef: finalizedRun.payment_ref,
         status: finalizedRun.status,
       },
+    });
+    logMarketplaceFunnelEvent({
+      stage: finalizedRun.status === "completed" ? "run_completed" : "run_failed",
+      traceId,
+      actor: auth.wallet_address,
+      metadata: {
+        run_id: finalizedRun.id,
+        hire_id: finalizedRun.hire_id,
+        agent_id: finalizedRun.agent_id,
+        action: finalizedRun.action,
+        status: finalizedRun.status,
+        payment_ref: finalizedRun.payment_ref,
+      },
+      level: finalizedRun.status === "completed" ? "info" : "warn",
     });
 
     return NextResponse.json(finalizedRun, {

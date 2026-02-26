@@ -80,7 +80,7 @@ Legend:
 | 68 | extension agents screen integration | done | packages/extension/src/popup/components/MarketplaceScreen.tsx |
 | 69 | extension discover and hire flow | done | packages/extension/src/popup/components/MarketplaceScreen.tsx |
 | 70 | extension paid run x402 flow | done | packages/extension/src/popup/components/MarketplaceScreen.tsx |
-| 71 | marketplace telemetry funnel events | pending | packages/nextjs/lib/observability/agentic.ts |
+| 71 | marketplace telemetry funnel events | done | packages/nextjs/lib/observability/agentic.ts |
 | 72 | resilience and idempotency controls | pending | packages/nextjs/lib/marketplace/*.ts |
 | 73 | cross-surface test matrix execution | pending | docs/agentic-stack/post-phase-50-test-matrix.md |
 | 74 | demo launch assets and runbook | pending | docs/agentic-stack/client-rollout-demo-runbook.md |
