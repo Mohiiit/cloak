@@ -38,6 +38,25 @@ export interface X402PaymentPayload {
   createdAt: string;
 }
 
+export interface X402ProofProviderInput {
+  challenge: X402Challenge;
+  tongoAddress: string;
+  amount: string;
+  contextHash: string;
+}
+
+export interface X402ProofProviderOutput {
+  proof: string;
+  replayKey?: string;
+  nonce?: string;
+}
+
+export interface X402ProofProvider {
+  createProof(
+    input: X402ProofProviderInput,
+  ): Promise<X402ProofProviderOutput> | X402ProofProviderOutput;
+}
+
 export interface X402VerifyResponse {
   status: "accepted" | "rejected";
   reasonCode?: X402ErrorCode;
@@ -57,6 +76,15 @@ export interface X402FetchOptions {
   paymentHeaderName?: string;
   fetchImpl?: typeof fetch;
   createPayload: (challenge: X402Challenge) => Promise<X402PaymentPayload> | X402PaymentPayload;
+}
+
+export interface X402FetchWithProofProviderOptions {
+  tongoAddress: string;
+  amount?: string;
+  proofProvider: X402ProofProvider;
+  challengeHeaderName?: string;
+  paymentHeaderName?: string;
+  fetchImpl?: typeof fetch;
 }
 
 const DEFAULT_CHALLENGE_HEADER = "x-x402-challenge";
@@ -213,6 +241,41 @@ export function createShieldedPaymentPayload(
   return payload;
 }
 
+export class StaticX402ProofProvider implements X402ProofProvider {
+  constructor(private readonly staticProof: string) {}
+
+  createProof(): X402ProofProviderOutput {
+    return {
+      proof: this.staticProof,
+    };
+  }
+}
+
+export async function createShieldedPaymentPayloadWithProofProvider(
+  challenge: X402Challenge,
+  input: {
+    tongoAddress: string;
+    amount?: string;
+    proofProvider: X402ProofProvider;
+  },
+): Promise<X402PaymentPayload> {
+  const resolvedAmount = input.amount ?? challenge.minAmount;
+  const proofPayload = await input.proofProvider.createProof({
+    challenge,
+    tongoAddress: input.tongoAddress,
+    amount: resolvedAmount,
+    contextHash: challenge.contextHash,
+  });
+
+  return createShieldedPaymentPayload(challenge, {
+    tongoAddress: input.tongoAddress,
+    amount: resolvedAmount,
+    proof: proofPayload.proof,
+    replayKey: proofPayload.replayKey,
+    nonce: proofPayload.nonce,
+  });
+}
+
 export async function x402Fetch(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -236,6 +299,24 @@ export async function x402Fetch(
   return fetchImpl(input, {
     ...init,
     headers: retryHeaders,
+  });
+}
+
+export async function x402FetchWithProofProvider(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  options: X402FetchWithProofProviderOptions,
+): Promise<Response> {
+  return x402Fetch(input, init, {
+    challengeHeaderName: options.challengeHeaderName,
+    paymentHeaderName: options.paymentHeaderName,
+    fetchImpl: options.fetchImpl,
+    createPayload: challenge =>
+      createShieldedPaymentPayloadWithProofProvider(challenge, {
+        tongoAddress: options.tongoAddress,
+        amount: options.amount,
+        proofProvider: options.proofProvider,
+      }),
   });
 }
 
