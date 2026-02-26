@@ -8,6 +8,10 @@ import type {
 } from "@cloak-wallet/sdk";
 import { verifyChallengeSignature, isChallengeExpired } from "./challenge";
 import { X402ReplayStore } from "./replay-store";
+import {
+  createX402ProofVerifier,
+  type X402ProofVerifier,
+} from "./proof-adapter";
 
 export interface X402PolicyInput {
   payment: X402PaymentPayloadRequest;
@@ -30,7 +34,10 @@ function reject(
 }
 
 export class X402Facilitator {
-  constructor(private readonly replayStore = new X402ReplayStore()) {}
+  constructor(
+    private readonly replayStore = new X402ReplayStore(),
+    private readonly proofVerifier: X402ProofVerifier = createX402ProofVerifier(),
+  ) {}
 
   async verify(req: X402VerifyRequest): Promise<X402VerifyResponse> {
     const paymentRef = `pay_${req.payment.replayKey}`;
@@ -60,8 +67,12 @@ export class X402Facilitator {
     } catch {
       return reject("INVALID_PAYLOAD", paymentRef, false);
     }
-    if (!req.payment.proof || req.payment.proof.length < 4) {
-      return reject("INVALID_PAYLOAD", paymentRef, false);
+    const proofResult = await this.proofVerifier.verify({
+      challenge: req.challenge,
+      payment: req.payment,
+    });
+    if (!proofResult.ok) {
+      return reject(proofResult.reasonCode || "INVALID_PAYLOAD", paymentRef, false);
     }
     return {
       status: "accepted",

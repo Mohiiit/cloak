@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildChallenge } from "./challenge";
 import { X402Facilitator } from "./facilitator";
 import { X402ReplayStore } from "./replay-store";
+import type { X402ProofVerifier } from "./proof-adapter";
 
 describe("X402Facilitator", () => {
   const replayStore = new X402ReplayStore();
@@ -61,5 +62,18 @@ describe("X402Facilitator", () => {
     expect(verifyAgain.status).toBe("rejected");
     expect(verifyAgain.reasonCode).toBe("REPLAY_DETECTED");
   });
-});
 
+  it("rejects payments when proof verifier denies payload", async () => {
+    const rejectingVerifier: X402ProofVerifier = {
+      verify: () => ({
+        ok: false,
+        reasonCode: "INVALID_PAYLOAD",
+      }),
+    };
+    const rejectingFacilitator = new X402Facilitator(replayStore, rejectingVerifier);
+    const env = makeEnvelope({ replayKey: "rk_bad_proof" });
+    const res = await rejectingFacilitator.verify(env);
+    expect(res.status).toBe("rejected");
+    expect(res.reasonCode).toBe("INVALID_PAYLOAD");
+  });
+});
