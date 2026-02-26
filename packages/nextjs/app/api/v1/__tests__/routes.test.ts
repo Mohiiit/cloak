@@ -202,10 +202,9 @@ describe("GET /api/v1/wards/:address", () => {
     const row = { id: "w1", ward_address: "0x456", status: "active" };
     mockSb.select.mockResolvedValue([row]);
 
-    const res = await GET(
-      makeReq("http://localhost/api/v1/wards/0x456"),
-      { params: Promise.resolve({ address: "0x456" }) },
-    );
+    const res = await GET(makeReq("http://localhost/api/v1/wards/0x456"), {
+      params: Promise.resolve({ address: "0x456" }),
+    });
 
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -215,10 +214,9 @@ describe("GET /api/v1/wards/:address", () => {
   it("returns 404 when ward not found", async () => {
     mockSb.select.mockResolvedValue([]);
 
-    const res = await GET(
-      makeReq("http://localhost/api/v1/wards/0xNOTFOUND"),
-      { params: Promise.resolve({ address: "0xNOTFOUND" }) },
-    );
+    const res = await GET(makeReq("http://localhost/api/v1/wards/0xNOTFOUND"), {
+      params: Promise.resolve({ address: "0xNOTFOUND" }),
+    });
 
     expect(res.status).toBe(404);
   });
@@ -373,9 +371,7 @@ describe("GET /api/v1/ward-approvals", () => {
   it("returns all approvals when no filters", async () => {
     mockSb.select.mockResolvedValue([]);
 
-    const res = await GET(
-      makeReq("http://localhost/api/v1/ward-approvals"),
-    );
+    const res = await GET(makeReq("http://localhost/api/v1/ward-approvals"));
 
     expect(res.status).toBe(200);
     // Called with undefined filter when no params given
@@ -641,9 +637,7 @@ describe("GET /api/v1/ward-approvals/history", () => {
   it("defaults to limit=50 and offset=0", async () => {
     mockSb.select.mockResolvedValue([]);
 
-    await GET(
-      makeReq("http://localhost/api/v1/ward-approvals/history"),
-    );
+    await GET(makeReq("http://localhost/api/v1/ward-approvals/history"));
 
     expect(mockSb.select).toHaveBeenCalledWith(
       "ward_approval_requests",
@@ -779,9 +773,7 @@ describe("GET /api/v1/transactions", () => {
   });
 
   it("returns 400 when missing wallet param", async () => {
-    const res = await GET(
-      makeReq("http://localhost/api/v1/transactions"),
-    );
+    const res = await GET(makeReq("http://localhost/api/v1/transactions"));
 
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -1121,9 +1113,7 @@ describe("GET /api/v1/swaps/steps", () => {
     mockSb.select.mockResolvedValue(steps);
 
     const res = await GET(
-      makeReq(
-        "http://localhost/api/v1/swaps/steps?execution_ids=e1,e2",
-      ),
+      makeReq("http://localhost/api/v1/swaps/steps?execution_ids=e1,e2"),
     );
 
     expect(res.status).toBe(200);
@@ -1137,9 +1127,7 @@ describe("GET /api/v1/swaps/steps", () => {
   });
 
   it("returns 400 when missing execution_ids param", async () => {
-    const res = await GET(
-      makeReq("http://localhost/api/v1/swaps/steps"),
-    );
+    const res = await GET(makeReq("http://localhost/api/v1/swaps/steps"));
 
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -1192,6 +1180,21 @@ describe("GET /api/v1/activity", () => {
       error_message: null,
       created_at: "2026-02-20T11:00:00Z",
     };
+    const agentRun = {
+      id: "run_1",
+      hire_operator_wallet: "0x123",
+      agent_id: "staking_steward",
+      action: "stake",
+      params: { amount: "25", token: "STRK" },
+      billable: true,
+      status: "completed",
+      payment_ref: "pay_1",
+      settlement_tx_hash: "0xRUN_TX",
+      execution_tx_hashes: ["0xEXEC_1"],
+      result: { ok: true },
+      created_at: "2026-02-20T13:00:00Z",
+      updated_at: "2026-02-20T13:01:00Z",
+    };
 
     // The activity route makes many select calls. We need to mock them in sequence.
     // fanOutQuery for transactions: 2 parallel + ward_configs
@@ -1214,7 +1217,9 @@ describe("GET /api/v1/activity", () => {
       // ward_approval_requests as guardian
       .mockResolvedValueOnce([wardApproval])
       // ward_approval_requests as ward
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([])
+      // agent_runs by hire_operator_wallet
+      .mockResolvedValueOnce([agentRun]);
 
     const res = await GET(
       makeReq("http://localhost/api/v1/activity?wallet=0x123"),
@@ -1241,6 +1246,15 @@ describe("GET /api/v1/activity", () => {
     expect(wardRecord.type).toBe("configure_ward");
     expect(wardRecord.status).toBe("pending");
     expect(wardRecord.status_detail).toBe("pending_guardian");
+
+    const agentRunRecord = json.records.find(
+      (r: { source: string }) => r.source === "agent_run",
+    );
+    expect(agentRunRecord).toBeDefined();
+    expect(agentRunRecord.type).toBe("agent_run");
+    expect(agentRunRecord.status).toBe("confirmed");
+    expect(agentRunRecord.platform).toBe("marketplace");
+    expect(agentRunRecord.agent_run.run_id).toBe("run_1");
   });
 
   it("returns 400 when missing wallet param", async () => {
@@ -1478,9 +1492,7 @@ describe("GET /api/v1/compliance/viewing-grants", () => {
     mockSb.select.mockResolvedValue([]);
 
     const res = await GET(
-      makeReq(
-        "http://localhost/api/v1/compliance/viewing-grants?role=viewer",
-      ),
+      makeReq("http://localhost/api/v1/compliance/viewing-grants?role=viewer"),
     );
 
     expect(res.status).toBe(200);
@@ -1509,9 +1521,7 @@ describe("GET /api/v1/compliance/viewing-grants", () => {
   it("excludes revoked grants by default", async () => {
     mockSb.select.mockResolvedValue([]);
 
-    await GET(
-      makeReq("http://localhost/api/v1/compliance/viewing-grants"),
-    );
+    await GET(makeReq("http://localhost/api/v1/compliance/viewing-grants"));
 
     const filterArg = mockSb.select.mock.calls[0][1] as string;
     expect(filterArg).toContain("status=eq.active");
@@ -1543,10 +1553,10 @@ describe("PATCH /api/v1/compliance/viewing-grants/:id/revoke", () => {
     mockSb.update.mockResolvedValue([updated]);
 
     const res = await PATCH(
-      makeReq(
-        "http://localhost/api/v1/compliance/viewing-grants/vg1/revoke",
-        { method: "PATCH", body: { reason: "no longer needed" } },
-      ),
+      makeReq("http://localhost/api/v1/compliance/viewing-grants/vg1/revoke", {
+        method: "PATCH",
+        body: { reason: "no longer needed" },
+      }),
       { params: Promise.resolve({ id: "vg1" }) },
     );
 
@@ -1567,10 +1577,9 @@ describe("PATCH /api/v1/compliance/viewing-grants/:id/revoke", () => {
     mockSb.select.mockResolvedValue([]);
 
     const res = await PATCH(
-      makeReq(
-        "http://localhost/api/v1/compliance/viewing-grants/nope/revoke",
-        { method: "PATCH" },
-      ),
+      makeReq("http://localhost/api/v1/compliance/viewing-grants/nope/revoke", {
+        method: "PATCH",
+      }),
       { params: Promise.resolve({ id: "nope" }) },
     );
 
@@ -1586,10 +1595,9 @@ describe("PATCH /api/v1/compliance/viewing-grants/:id/revoke", () => {
     mockSb.select.mockResolvedValue([existing]);
 
     const res = await PATCH(
-      makeReq(
-        "http://localhost/api/v1/compliance/viewing-grants/vg1/revoke",
-        { method: "PATCH" },
-      ),
+      makeReq("http://localhost/api/v1/compliance/viewing-grants/vg1/revoke", {
+        method: "PATCH",
+      }),
       { params: Promise.resolve({ id: "vg1" }) },
     );
 
@@ -1676,9 +1684,7 @@ describe("GET /api/v1/compliance/innocence-proofs", () => {
   });
 
   it("lists proofs for authenticated user", async () => {
-    const rows = [
-      { id: "ip1", owner_address: "0x123abc", proof_hash: "abc" },
-    ];
+    const rows = [{ id: "ip1", owner_address: "0x123abc", proof_hash: "abc" }];
     mockSb.select.mockResolvedValue(rows);
 
     const res = await GET(

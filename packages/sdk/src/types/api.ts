@@ -275,8 +275,17 @@ export interface UpdateTransactionRequest {
 
 // ─── Swaps ───────────────────────────────────────────────────────────────────
 
-export type SwapExecutionStatus = "pending" | "running" | "confirmed" | "failed";
-export type SwapStepStatus = "pending" | "running" | "success" | "failed" | "skipped";
+export type SwapExecutionStatus =
+  | "pending"
+  | "running"
+  | "confirmed"
+  | "failed";
+export type SwapStepStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failed"
+  | "skipped";
 
 export interface SaveSwapRequest {
   execution_id: string;
@@ -363,7 +372,7 @@ export interface SwapStepResponse {
 
 // ─── Activity ────────────────────────────────────────────────────────────────
 
-export type ActivitySource = "transaction" | "ward_request";
+export type ActivitySource = "transaction" | "ward_request" | "agent_run";
 export type ActivityStatus =
   | "pending"
   | "confirmed"
@@ -394,6 +403,15 @@ export interface ActivityRecordResponse {
   platform: string | null;
   created_at: string;
   responded_at?: string | null;
+  agent_run?: {
+    run_id: string;
+    agent_id: string;
+    action: string;
+    billable: boolean;
+    payment_ref: string | null;
+    settlement_tx_hash: string | null;
+    execution_tx_hashes: string[] | null;
+  } | null;
   swap?: {
     execution_id?: string;
     provider: string;
@@ -566,7 +584,10 @@ export type AgentRunStatus =
 
 export type AgentHireStatus = "active" | "paused" | "revoked";
 
-export type AgentType = "staking_steward" | "treasury_dispatcher" | "swap_runner";
+export type AgentType =
+  | "staking_steward"
+  | "treasury_dispatcher"
+  | "swap_runner";
 export type AgentPricingMode = "per_run" | "subscription" | "success_fee";
 export type AgentProfileStatus = "active" | "paused" | "retired";
 

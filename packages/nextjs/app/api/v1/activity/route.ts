@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ActivitySource = "transaction" | "ward_request";
+type ActivitySource = "transaction" | "ward_request" | "agent_run";
 type ActivityStatus =
   | "pending"
   | "confirmed"
@@ -89,6 +89,22 @@ interface WardApprovalRow {
   responded_at?: string | null;
 }
 
+interface AgentRunRow {
+  id: string;
+  hire_operator_wallet: string | null;
+  agent_id: string;
+  action: string;
+  params: unknown;
+  billable: boolean;
+  status: string;
+  payment_ref: string | null;
+  settlement_tx_hash: string | null;
+  execution_tx_hashes: unknown;
+  result: unknown;
+  created_at?: string;
+  updated_at?: string | null;
+}
+
 interface ActivityRecord {
   id: string;
   source: ActivitySource;
@@ -111,6 +127,15 @@ interface ActivityRecord {
   platform?: string | null;
   created_at?: string;
   responded_at?: string | null;
+  agent_run?: {
+    run_id: string;
+    agent_id: string;
+    action: string;
+    billable: boolean;
+    payment_ref: string | null;
+    settlement_tx_hash: string | null;
+    execution_tx_hashes: string[] | null;
+  } | null;
   swap?: {
     execution_id?: string;
     provider: string;
@@ -180,7 +205,11 @@ function statusNoteForWardRequest(status: string): string | null {
 function normalizeWardActionType(action?: string | null): string {
   const normalized = (action || "").trim().toLowerCase();
   if (!normalized) return "transfer";
-  if (normalized === "deploy" || normalized === "deploy_account" || normalized === "deploy_contract") {
+  if (
+    normalized === "deploy" ||
+    normalized === "deploy_account" ||
+    normalized === "deploy_contract"
+  ) {
     return "deploy_ward";
   }
   if (normalized === "fund") return "fund_ward";
@@ -192,11 +221,163 @@ function normalizeWardActionType(action?: string | null): string {
 
 function normalizeWardAmountUnit(row: WardApprovalRow): string | null {
   const unit = row.amount_unit;
-  if (unit === "tongo_units" || unit === "erc20_wei" || unit === "erc20_display") {
+  if (
+    unit === "tongo_units" ||
+    unit === "erc20_wei" ||
+    unit === "erc20_display"
+  ) {
     return unit;
   }
   if (row.action === "erc20_transfer") return "erc20_display";
   return row.amount ? "tongo_units" : null;
+}
+
+function mapAgentRunStatus(status: string): ActivityStatus {
+  switch (status) {
+    case "completed":
+      return "confirmed";
+    case "failed":
+      return "failed";
+    case "blocked_policy":
+      return "rejected";
+    case "queued":
+    case "running":
+    case "pending_payment":
+    default:
+      return "pending";
+  }
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function parseExecutionHashes(value: unknown): string[] | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (!Array.isArray(parsed)) return null;
+      const hashes = parsed.filter(
+        (entry): entry is string => typeof entry === "string",
+      );
+      return hashes.length > 0 ? hashes : null;
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(value)) {
+    const hashes = value.filter(
+      (entry): entry is string => typeof entry === "string",
+    );
+    return hashes.length > 0 ? hashes : null;
+  }
+  return null;
+}
+
+function inferTokenFromAgentRunParams(
+  params: Record<string, unknown> | null,
+): string {
+  if (!params) return "STRK";
+  const direct = params.token;
+  if (typeof direct === "string" && direct.trim())
+    return direct.trim().toUpperCase();
+  const sellToken = params.sell_token;
+  if (typeof sellToken === "string" && sellToken.trim()) {
+    return sellToken.trim().toUpperCase();
+  }
+  const fromToken = params.from_token;
+  if (typeof fromToken === "string" && fromToken.trim()) {
+    return fromToken.trim().toUpperCase();
+  }
+  const transfers = params.transfers;
+  if (Array.isArray(transfers)) {
+    for (const item of transfers) {
+      if (!item || typeof item !== "object") continue;
+      const token = (item as Record<string, unknown>).token;
+      if (typeof token === "string" && token.trim()) {
+        return token.trim().toUpperCase();
+      }
+    }
+  }
+  return "STRK";
+}
+
+function inferAmountFromAgentRunParams(
+  params: Record<string, unknown> | null,
+): string | null {
+  if (!params) return null;
+  const amount = params.amount;
+  if (typeof amount === "string" && amount.trim()) return amount.trim();
+  if (typeof amount === "number" && Number.isFinite(amount))
+    return String(amount);
+  const transfers = params.transfers;
+  if (Array.isArray(transfers)) {
+    for (const item of transfers) {
+      if (!item || typeof item !== "object") continue;
+      const transferAmount = (item as Record<string, unknown>).amount;
+      if (typeof transferAmount === "string" && transferAmount.trim()) {
+        return transferAmount.trim();
+      }
+      if (
+        typeof transferAmount === "number" &&
+        Number.isFinite(transferAmount)
+      ) {
+        return String(transferAmount);
+      }
+    }
+  }
+  return null;
+}
+
+function inferRecipientFromAgentRunParams(
+  params: Record<string, unknown> | null,
+): string | null {
+  if (!params) return null;
+  const to = params.to;
+  if (typeof to === "string" && to.trim()) return to.trim();
+  const recipient = params.recipient;
+  if (typeof recipient === "string" && recipient.trim())
+    return recipient.trim();
+  const transfers = params.transfers;
+  if (Array.isArray(transfers)) {
+    for (const item of transfers) {
+      if (!item || typeof item !== "object") continue;
+      const transferTo = (item as Record<string, unknown>).to;
+      if (typeof transferTo === "string" && transferTo.trim())
+        return transferTo.trim();
+    }
+  }
+  return null;
+}
+
+function extractAgentRunError(result: unknown): string | null {
+  const resultObj = parseJsonObject(result);
+  if (!resultObj) return null;
+  const direct = resultObj.error;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const payload = resultObj.payload;
+  if (payload && typeof payload === "object") {
+    const nestedError = (payload as Record<string, unknown>).error;
+    if (typeof nestedError === "string" && nestedError.trim())
+      return nestedError;
+  }
+  return null;
 }
 
 /** Fan-out query pattern: direct + ward + managed wards, deduplicated. */
@@ -243,7 +424,8 @@ async function fanOutQuery<T extends object>(
   const seen = new Set<string>();
   const all: T[] = [];
   for (const row of [...byWallet, ...byWard, ...byManagedWards]) {
-    const key = ((row as Record<string, unknown>)[deduplicateKey] as string) || "";
+    const key =
+      ((row as Record<string, unknown>)[deduplicateKey] as string) || "";
     if (key && !seen.has(key)) {
       seen.add(key);
       all.push(row);
@@ -360,7 +542,19 @@ export async function GET(req: NextRequest) {
       console.warn("[activity] ward request lookup failed:", err);
     }
 
-    // 5. Map transactions to activity records (attach swap data)
+    // 5. Get marketplace agent runs for the operator wallet
+    let agentRunRows: AgentRunRow[] = [];
+    try {
+      agentRunRows = await sb.select<AgentRunRow>(
+        "agent_runs",
+        `hire_operator_wallet=eq.${normalized}`,
+        { orderBy: "created_at.desc" },
+      );
+    } catch (err) {
+      console.warn("[activity] marketplace run lookup failed:", err);
+    }
+
+    // 6. Map transactions to activity records (attach swap data)
     const seenTxHashes = new Set(
       txRows.map((row) => row.tx_hash).filter(Boolean),
     );
@@ -391,6 +585,7 @@ export async function GET(req: NextRequest) {
         network: tx.network,
         platform: tx.platform ?? null,
         created_at: tx.created_at,
+        agent_run: null,
         swap: swap
           ? {
               execution_id: swap.execution_id,
@@ -402,8 +597,7 @@ export async function GET(req: NextRequest) {
               min_buy_amount_wei: swap.min_buy_amount_wei,
               buy_actual_amount_wei: swap.buy_actual_amount_wei ?? null,
               tx_hashes: swap.tx_hashes ?? null,
-              primary_tx_hash:
-                swap.primary_tx_hash ?? swap.tx_hash ?? null,
+              primary_tx_hash: swap.primary_tx_hash ?? swap.tx_hash ?? null,
               status: swap.status,
               failure_step_key: swap.failure_step_key ?? null,
               failure_reason: swap.failure_reason ?? null,
@@ -424,7 +618,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // 6. Map ward requests to activity records (skip if tx_hash already in transactions)
+    // 7. Map ward requests to activity records (skip if tx_hash already in transactions)
     const wardActivities: ActivityRecord[] = wardRows
       .filter((row) => {
         const hash = row.final_tx_hash || row.tx_hash || "";
@@ -435,9 +629,7 @@ export async function GET(req: NextRequest) {
         const viewer = normalized;
         const guardian = normalizeAddress(row.guardian_address);
         const walletAddr =
-          guardian === viewer
-            ? guardian
-            : normalizeAddress(row.ward_address);
+          guardian === viewer ? guardian : normalizeAddress(row.ward_address);
         const txHash = row.final_tx_hash || row.tx_hash || "";
         const note = statusNoteForWardRequest(row.status);
 
@@ -463,17 +655,71 @@ export async function GET(req: NextRequest) {
           platform: "approval",
           created_at: row.created_at,
           responded_at: row.responded_at ?? null,
+          agent_run: null,
           swap: null,
         };
       });
 
-    // 7. Combine, sort by created_at desc
-    const combined = [...txActivities, ...wardActivities];
+    // 8. Map marketplace agent runs to activity records
+    const agentRunActivities: ActivityRecord[] = agentRunRows
+      .map((run) => {
+        const params = parseJsonObject(run.params);
+        const executionTxHashes = parseExecutionHashes(run.execution_tx_hashes);
+        const amount = inferAmountFromAgentRunParams(params);
+        const txHash =
+          run.settlement_tx_hash ||
+          executionTxHashes?.[0] ||
+          `agent_run:${run.id}`;
+        return {
+          id: run.id,
+          source: "agent_run" as const,
+          wallet_address: run.hire_operator_wallet || normalized,
+          tx_hash: txHash,
+          type: "agent_run",
+          token: inferTokenFromAgentRunParams(params),
+          amount,
+          amount_unit: amount ? "erc20_display" : null,
+          recipient: inferRecipientFromAgentRunParams(params),
+          recipient_name: run.agent_id,
+          note: `Agent ${run.agent_id} · ${run.action}`,
+          status: mapAgentRunStatus(run.status),
+          status_detail: run.status,
+          error_message: extractAgentRunError(run.result),
+          account_type: "normal",
+          ward_address: null,
+          fee: null,
+          network: "sepolia",
+          platform: "marketplace",
+          created_at: run.created_at,
+          responded_at: run.updated_at ?? null,
+          agent_run: {
+            run_id: run.id,
+            agent_id: run.agent_id,
+            action: run.action,
+            billable: run.billable,
+            payment_ref: run.payment_ref,
+            settlement_tx_hash: run.settlement_tx_hash,
+            execution_tx_hashes: executionTxHashes,
+          },
+          swap: null,
+        };
+      })
+      .filter((row) => {
+        if (!row.tx_hash) return true;
+        return !seenTxHashes.has(row.tx_hash);
+      });
+
+    // 9. Combine, sort by created_at desc
+    const combined = [
+      ...txActivities,
+      ...wardActivities,
+      ...agentRunActivities,
+    ];
     combined.sort(
       (a, b) => asTimestamp(b.created_at) - asTimestamp(a.created_at),
     );
 
-    // 8. Apply offset/limit and return with pagination metadata
+    // 10. Apply offset/limit and return with pagination metadata
     const total = combined.length;
     const page = combined.slice(offset, offset + limit);
     const hasMore = offset + limit < total;

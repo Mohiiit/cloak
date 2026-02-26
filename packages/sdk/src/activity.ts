@@ -4,7 +4,7 @@ import type { AccountType, TransactionType } from "./transactions";
 import { normalizeAddress } from "./ward";
 import type { AmountUnit } from "./token-convert";
 
-export type ActivitySource = "transaction" | "ward_request";
+export type ActivitySource = "transaction" | "ward_request" | "agent_run";
 
 export type ActivityStatus =
   | "pending"
@@ -36,6 +36,15 @@ export interface ActivityRecord {
   platform?: string | null;
   created_at?: string;
   responded_at?: string | null;
+  agent_run?: {
+    run_id: string;
+    agent_id: string;
+    action: string;
+    billable: boolean;
+    payment_ref: string | null;
+    settlement_tx_hash: string | null;
+    execution_tx_hashes: string[] | null;
+  } | null;
   swap?: {
     execution_id?: string;
     provider: string;
@@ -85,6 +94,7 @@ function toActivityRecord(res: ActivityRecordResponse): ActivityRecord {
     platform: res.platform,
     created_at: res.created_at,
     responded_at: res.responded_at,
+    agent_run: res.agent_run ?? null,
     swap: res.swap ?? null,
   };
 }

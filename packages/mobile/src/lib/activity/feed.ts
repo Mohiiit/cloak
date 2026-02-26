@@ -2,21 +2,21 @@ import {
   getActivityRecords,
   type ActivityRecord,
   type AmountUnit,
-} from "@cloak-wallet/sdk";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getTxNotes, type TxMetadata } from "../storage";
-import { getApiClient } from "../apiClient";
-import { isMockMode } from "../../testing/runtimeConfig";
+} from '@cloak-wallet/sdk';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getTxNotes, type TxMetadata } from '../storage';
+import { getApiClient } from '../apiClient';
+import { isMockMode } from '../../testing/runtimeConfig';
 
 export interface ActivityFeedItem {
   txHash: string;
-  source?: "transaction" | "ward_request" | "local";
+  source?: 'transaction' | 'ward_request' | 'agent_run' | 'local';
   recipient?: string;
   recipientName?: string;
   note?: string;
-  privacyLevel: "public" | "friends" | "private";
+  privacyLevel: 'public' | 'friends' | 'private';
   timestamp: number;
-  type: TxMetadata["type"] | string;
+  type: TxMetadata['type'] | string;
   token: string;
   amount?: string;
   amount_unit?: AmountUnit | null;
@@ -28,7 +28,8 @@ export interface ActivityFeedItem {
   wardAddress?: string;
   walletAddress?: string;
   executionId?: string;
-  swap?: ActivityRecord["swap"] | null;
+  agentRun?: ActivityRecord['agent_run'] | null;
+  swap?: ActivityRecord['swap'] | null;
 }
 
 type LoadActivityByTxHashOptions = {
@@ -36,7 +37,7 @@ type LoadActivityByTxHashOptions = {
   limit?: number;
 };
 
-const ACTIVITY_CACHE_PREFIX = "cloak_activity_history_v1:";
+const ACTIVITY_CACHE_PREFIX = 'cloak_activity_history_v1:';
 const ACTIVITY_CACHE_TTL_MS = 60_000;
 
 type ActivityCachePayload = {
@@ -123,15 +124,15 @@ function toTimestamp(value?: string): number {
 
 function activityToFeedItem(row: ActivityRecord): ActivityFeedItem {
   return {
-    txHash: row.tx_hash || "",
+    txHash: row.tx_hash || '',
     source: row.source,
     recipient: row.recipient || undefined,
     recipientName: row.recipient_name || undefined,
     note: row.note || undefined,
-    privacyLevel: "private",
+    privacyLevel: 'private',
     timestamp: toTimestamp(row.created_at),
-    type: row.type === "transfer" ? "send" : (row.type as any),
-    token: row.token || "STRK",
+    type: row.type === 'transfer' ? 'send' : (row.type as any),
+    token: row.token || 'STRK',
     amount: row.amount || undefined,
     amount_unit: row.amount_unit || undefined,
     status: row.status,
@@ -142,6 +143,7 @@ function activityToFeedItem(row: ActivityRecord): ActivityFeedItem {
     wardAddress: row.ward_address || undefined,
     walletAddress: row.wallet_address || undefined,
     executionId: row.swap?.execution_id || undefined,
+    agentRun: row.agent_run ?? null,
     swap: row.swap ?? null,
   };
 }
@@ -149,7 +151,7 @@ function activityToFeedItem(row: ActivityRecord): ActivityFeedItem {
 function localNoteToFeedItem(note: TxMetadata): ActivityFeedItem {
   return {
     txHash: note.txHash,
-    source: "local",
+    source: 'local',
     recipient: note.recipient,
     recipientName: note.recipientName,
     note: note.note,
@@ -207,86 +209,86 @@ function buildMockActivityFeed(now = Date.now()): ActivityFeedItem[] {
 
   return [
     {
-      txHash: "0xmock_swap_strk_eth_1",
-      source: "transaction",
-      privacyLevel: "private",
+      txHash: '0xmock_swap_strk_eth_1',
+      source: 'transaction',
+      privacyLevel: 'private',
       timestamp: pinToToday(now - 4 * minute),
-      type: "swap",
-      token: "STRK",
-      amount: "12.00",
-      amount_unit: "erc20_display",
-      status: "pending",
-      statusDetail: "Pending · route public->shielded · min 0.031 ETH",
-      note: "Swap STRK -> ETH",
+      type: 'swap',
+      token: 'STRK',
+      amount: '12.00',
+      amount_unit: 'erc20_display',
+      status: 'pending',
+      statusDetail: 'Pending · route public->shielded · min 0.031 ETH',
+      note: 'Swap STRK -> ETH',
       swap: {
-        provider: "AVNU",
-        sell_token: "STRK",
-        buy_token: "ETH",
-        sell_amount_wei: "12000000000000000000",
-        estimated_buy_amount_wei: "32000000000000000",
-        min_buy_amount_wei: "31000000000000000",
+        provider: 'AVNU',
+        sell_token: 'STRK',
+        buy_token: 'ETH',
+        sell_amount_wei: '12000000000000000000',
+        estimated_buy_amount_wei: '32000000000000000',
+        min_buy_amount_wei: '31000000000000000',
         buy_actual_amount_wei: null,
       },
     },
     {
-      txHash: "0xmock_fund_usdc_1",
-      source: "transaction",
-      privacyLevel: "private",
+      txHash: '0xmock_fund_usdc_1',
+      source: 'transaction',
+      privacyLevel: 'private',
       timestamp: pinToToday(now - 15 * minute),
-      type: "fund",
-      token: "USDC",
-      amount: "85.00",
-      amount_unit: "erc20_display",
-      status: "confirmed",
-      statusDetail: "Public 420.50 USDC",
-      note: "Shielded deposit (USDC)",
+      type: 'fund',
+      token: 'USDC',
+      amount: '85.00',
+      amount_unit: 'erc20_display',
+      status: 'confirmed',
+      statusDetail: 'Public 420.50 USDC',
+      note: 'Shielded deposit (USDC)',
     },
     {
-      txHash: "0xmock_approval_ward_1",
-      source: "transaction",
-      privacyLevel: "private",
+      txHash: '0xmock_approval_ward_1',
+      source: 'transaction',
+      privacyLevel: 'private',
       timestamp: pinToToday(now - 60 * minute),
-      type: "approval",
-      token: "STRK",
-      amount: "25",
-      amount_unit: "erc20_display",
-      status: "confirmed",
-      statusDetail: "Status: Confirmed",
-      note: "Approval granted (ward spend)",
+      type: 'approval',
+      token: 'STRK',
+      amount: '25',
+      amount_unit: 'erc20_display',
+      status: 'confirmed',
+      statusDetail: 'Status: Confirmed',
+      note: 'Approval granted (ward spend)',
     },
     {
-      txHash: "0xmock_withdraw_eth_1",
-      source: "transaction",
-      privacyLevel: "public",
+      txHash: '0xmock_withdraw_eth_1',
+      source: 'transaction',
+      privacyLevel: 'public',
       timestamp: pinToYesterday(now - 16 * hour),
-      type: "withdraw",
-      token: "ETH",
-      amount: "0.200",
-      amount_unit: "erc20_display",
-      status: "confirmed",
-      statusDetail: "to public wallet",
-      note: "Unshielded 0.200 ETH",
+      type: 'withdraw',
+      token: 'ETH',
+      amount: '0.200',
+      amount_unit: 'erc20_display',
+      status: 'confirmed',
+      statusDetail: 'to public wallet',
+      note: 'Unshielded 0.200 ETH',
     },
     {
-      txHash: "0xmock_swap_eth_usdc_1",
-      source: "transaction",
-      privacyLevel: "private",
+      txHash: '0xmock_swap_eth_usdc_1',
+      source: 'transaction',
+      privacyLevel: 'private',
       timestamp: pinToYesterday(now - 18 * hour),
-      type: "swap",
-      token: "ETH",
-      amount: "0.030",
-      amount_unit: "erc20_display",
-      status: "confirmed",
-      statusDetail: "Confirmed · actual 79.8 USDC · min 79.2",
-      note: "Swap ETH -> USDC",
+      type: 'swap',
+      token: 'ETH',
+      amount: '0.030',
+      amount_unit: 'erc20_display',
+      status: 'confirmed',
+      statusDetail: 'Confirmed · actual 79.8 USDC · min 79.2',
+      note: 'Swap ETH -> USDC',
       swap: {
-        provider: "AVNU",
-        sell_token: "ETH",
-        buy_token: "USDC",
-        sell_amount_wei: "30000000000000000",
-        estimated_buy_amount_wei: "80000000",
-        min_buy_amount_wei: "79200000",
-        buy_actual_amount_wei: "79800000",
+        provider: 'AVNU',
+        sell_token: 'ETH',
+        buy_token: 'USDC',
+        sell_amount_wei: '30000000000000000',
+        estimated_buy_amount_wei: '80000000',
+        min_buy_amount_wei: '79200000',
+        buy_actual_amount_wei: '79800000',
       },
     },
   ];
@@ -317,7 +319,7 @@ export async function loadActivityHistory(
   const notes = await getTxNotes();
   const localItems = Object.values(notes || {})
     .filter(Boolean)
-    .map((note) => localNoteToFeedItem(note as TxMetadata))
+    .map(note => localNoteToFeedItem(note as TxMetadata))
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   if (localItems.length > 0) {
@@ -355,7 +357,7 @@ export async function loadActivityByTxHash(
   let cachedMatch: ActivityFeedItem | null = null;
   try {
     const cached = await loadCachedActivityHistory(walletAddress, 500);
-    cachedMatch = cached.find((r) => r.txHash === txHash) || null;
+    cachedMatch = cached.find(r => r.txHash === txHash) || null;
     // Fast path for detail views: return cached data immediately.
     if (cachedMatch && !network) {
       return mergeLocalNoteWithRemote(cachedMatch, localMatch);
@@ -378,7 +380,7 @@ export async function loadActivityByTxHash(
         .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       await saveActivityCache(walletAddress, items);
     }
-    const match = records.find((r) => r.tx_hash === txHash);
+    const match = records.find(r => r.tx_hash === txHash);
     if (match) {
       return mergeLocalNoteWithRemote(activityToFeedItem(match), localMatch);
     }
@@ -397,7 +399,7 @@ export async function loadActivityByTxHash(
   // 4. Fallback: search mock data
   if (isMockMode()) {
     const mock = buildMockActivityFeed();
-    return mock.find((row) => row.txHash === txHash) || null;
+    return mock.find(row => row.txHash === txHash) || null;
   }
 
   return null;
