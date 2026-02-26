@@ -21,8 +21,15 @@ export interface SessionScope {
 }
 
 const EXPLICIT_STORE_PATH = process.env.CLOAK_AGENT_STORE_PATH?.trim();
-const DEFAULT_STORE_PATH = path.join(process.cwd(), ".agent-data", "sessions.json");
 const TMP_STORE_PATH = path.join(process.env.TMPDIR || os.tmpdir(), "cloak-agent", "sessions.json");
+const CWD_STORE_PATH = path.join(process.cwd(), ".agent-data", "sessions.json");
+const USE_TMP_BY_DEFAULT =
+  process.env.CLOAK_AGENT_STORE_USE_TMP === "1" ||
+  process.cwd().startsWith("/var/task") ||
+  Boolean(process.env.VERCEL) ||
+  Boolean(process.env.LAMBDA_TASK_ROOT) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DEFAULT_STORE_PATH = USE_TMP_BY_DEFAULT ? TMP_STORE_PATH : CWD_STORE_PATH;
 let activeStorePath = EXPLICIT_STORE_PATH
   ? path.resolve(EXPLICIT_STORE_PATH)
   : DEFAULT_STORE_PATH;
@@ -103,14 +110,20 @@ async function ensureStore(): Promise<void> {
   }
 }
 
-function isReadonlyFsError(err: unknown): boolean {
+function isFallbackEligibleFsError(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException | undefined)?.code;
-  return code === "EROFS" || code === "EPERM" || code === "EACCES";
+  return (
+    code === "EROFS" ||
+    code === "EPERM" ||
+    code === "EACCES" ||
+    code === "ENOENT" ||
+    code === "ENOTDIR"
+  );
 }
 
 function activateTmpFallback(err: unknown): boolean {
   if (EXPLICIT_STORE_PATH) return false;
-  if (!isReadonlyFsError(err)) return false;
+  if (!isFallbackEligibleFsError(err)) return false;
   if (activeStorePath === TMP_STORE_PATH) return false;
   activeStorePath = TMP_STORE_PATH;
   if (!warnedWritableFallback) {
