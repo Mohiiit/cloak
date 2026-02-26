@@ -4,8 +4,8 @@ import {
   type AgentHireResponse,
   type AgentProfileResponse,
   type AgentRunResponse,
-} from "@cloak-wallet/sdk";
-import { getApiClient, getApiConfig } from "./apiClient";
+} from '@cloak-wallet/sdk';
+import { getApiClient, getApiConfig } from './apiClient';
 
 type ApiClientLike = {
   discoverAgents: (query?: {
@@ -18,12 +18,18 @@ type ApiClientLike = {
     agent_id: string;
     operator_wallet: string;
     policy_snapshot: Record<string, unknown>;
-    billing_mode: "per_run" | "subscription";
+    billing_mode: 'per_run' | 'subscription';
   }) => Promise<AgentHireResponse>;
+  listHires: (params?: {
+    agent_id?: string;
+    status?: 'active' | 'paused' | 'revoked';
+    limit?: number;
+    offset?: number;
+  }) => Promise<AgentHireResponse[]>;
   listRuns: (params?: {
     hire_id?: string;
     agent_id?: string;
-    status?: "queued" | "running" | "completed" | "failed";
+    status?: 'queued' | 'running' | 'completed' | 'failed';
     limit?: number;
     offset?: number;
   }) => Promise<AgentRunResponse[]>;
@@ -81,7 +87,7 @@ export async function hireMarketplaceAgent(
     wallet?: MarketplaceWalletContext;
     agentId: string;
     policySnapshot: Record<string, unknown>;
-    billingMode?: "per_run" | "subscription";
+    billingMode?: 'per_run' | 'subscription';
   },
   deps?: MarketplaceApiDeps,
 ): Promise<AgentHireResponse> {
@@ -91,7 +97,7 @@ export async function hireMarketplaceAgent(
     agent_id: input.agentId,
     operator_wallet: auth.wallet_address,
     policy_snapshot: input.policySnapshot,
-    billing_mode: input.billingMode ?? "per_run",
+    billing_mode: input.billingMode ?? 'per_run',
   });
 }
 
@@ -100,7 +106,7 @@ export async function listMarketplaceRuns(
     wallet?: MarketplaceWalletContext;
     hireId?: string;
     agentId?: string;
-    status?: "queued" | "running" | "completed" | "failed";
+    status?: 'queued' | 'running' | 'completed' | 'failed';
     limit?: number;
     offset?: number;
   },
@@ -109,6 +115,25 @@ export async function listMarketplaceRuns(
   const client = await createClient(input?.wallet, deps);
   return client.listRuns({
     hire_id: input?.hireId,
+    agent_id: input?.agentId,
+    status: input?.status,
+    limit: input?.limit ?? 100,
+    offset: input?.offset ?? 0,
+  });
+}
+
+export async function listMarketplaceHires(
+  input?: {
+    wallet?: MarketplaceWalletContext;
+    agentId?: string;
+    status?: 'active' | 'paused' | 'revoked';
+    limit?: number;
+    offset?: number;
+  },
+  deps?: MarketplaceApiDeps,
+): Promise<AgentHireResponse[]> {
+  const client = await createClient(input?.wallet, deps);
+  return client.listHires({
     agent_id: input?.agentId,
     status: input?.status,
     limit: input?.limit ?? 100,
@@ -132,18 +157,18 @@ export async function executeMarketplacePaidRun(
 ): Promise<AgentRunResponse> {
   const { getApiConfigFn, x402Executor } = withDeps(deps);
   const config = await getApiConfigFn();
-  const baseUrl = config.url.replace(/\/$/, "");
+  const baseUrl = config.url.replace(/\/$/, '');
   if (!config.key) {
-    throw new Error("Missing API key for marketplace paid run");
+    throw new Error('Missing API key for marketplace paid run');
   }
 
   const response = await x402Executor(
     `${baseUrl}/api/v1/marketplace/runs`,
     {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": config.key,
+        'Content-Type': 'application/json',
+        'X-API-Key': config.key,
       },
       body: JSON.stringify({
         hire_id: input.hireId,
@@ -158,14 +183,16 @@ export async function executeMarketplacePaidRun(
     },
     {
       tongoAddress: input.payerTongoAddress,
-      proofProvider: new StaticX402ProofProvider(input.proof || "proof-mobile-demo"),
+      proofProvider: new StaticX402ProofProvider(
+        input.proof || 'proof-mobile-demo',
+      ),
     },
   );
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(
-      typeof payload?.error === "string"
+      typeof payload?.error === 'string'
         ? payload.error
         : `Marketplace paid run failed (${response.status})`,
     );

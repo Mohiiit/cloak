@@ -23,6 +23,7 @@ import {
   discoverMarketplaceAgents,
   executeMarketplacePaidRun,
   hireMarketplaceAgent,
+  listMarketplaceHires,
 } from '../lib/marketplaceApi';
 import { useWallet } from '../lib/WalletContext';
 import {
@@ -138,19 +139,37 @@ export default function MarketplaceScreen() {
     setError(null);
     setStatus(null);
     try {
-      const discovered = await discoverMarketplaceAgents({
-        wallet: {
-          walletAddress: wallet.keys?.starkAddress,
-          publicKey: wallet.keys?.starkPublicKey,
-        },
-        capability: capability || undefined,
-        limit: 50,
-        offset: 0,
-      });
+      const walletContext = {
+        walletAddress: wallet.keys?.starkAddress,
+        publicKey: wallet.keys?.starkPublicKey,
+      };
+      const [discovered, activeHires] = await Promise.all([
+        discoverMarketplaceAgents({
+          wallet: walletContext,
+          capability: capability || undefined,
+          limit: 50,
+          offset: 0,
+        }),
+        listMarketplaceHires({
+          wallet: walletContext,
+          status: 'active',
+          limit: 200,
+          offset: 0,
+        }),
+      ]);
       setAgents(discovered);
+      const hiresByAgent: Record<string, string> = {};
+      for (const hire of activeHires) {
+        if (!hire?.agent_id || !hire?.id) continue;
+        if (!hiresByAgent[hire.agent_id]) {
+          hiresByAgent[hire.agent_id] = hire.id;
+        }
+      }
+      setHireIdsByAgent(hiresByAgent);
     } catch (err: any) {
       setError(err?.message || 'Failed to load marketplace agents');
       setAgents([]);
+      setHireIdsByAgent({});
     } finally {
       setLoading(false);
     }
