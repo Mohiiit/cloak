@@ -16,8 +16,9 @@ import { Settings } from "./components/Settings";
 import { ActivityScreen } from "./components/ActivityScreen";
 import { ContactsScreen } from "./components/ContactsScreen";
 import { ClaimSuccessScreen } from "./components/ClaimSuccessScreen";
+import { MarketplaceScreen } from "./components/MarketplaceScreen";
 
-type Screen = "main" | "shield" | "send" | "withdraw" | "receive" | "settings" | "activity" | "contacts" | "claim-success";
+type Screen = "main" | "shield" | "send" | "withdraw" | "receive" | "settings" | "activity" | "contacts" | "marketplace" | "claim-success";
 
 export default function App() {
   const w = useExtensionWallet();
@@ -90,6 +91,9 @@ export default function App() {
   }
   if (screen === "contacts") {
     return <ContactsScreen onBack={() => setScreen("main")} />;
+  }
+  if (screen === "marketplace") {
+    return <MarketplaceScreen onBack={() => setScreen("main")} />;
   }
   if (screen === "claim-success" && claimTxHash) {
     return <ClaimSuccessScreen txHash={claimTxHash} onBack={() => setScreen("main")} />;
@@ -249,6 +253,14 @@ export default function App() {
             <span className="text-[11px] font-semibold text-cloak-text">Receive</span>
           </button>
         </div>
+
+        <button
+          onClick={() => setScreen("marketplace")}
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-cloak-card border border-cloak-border h-[40px] hover:border-cloak-primary/50 transition-all"
+        >
+          <Users className="w-4 h-4 text-cloak-primary" />
+          <span className="text-[11px] font-semibold text-cloak-text">Open Agent Marketplace</span>
+        </button>
 
         {/* Address display */}
         <div className="flex items-center gap-2 rounded-[10px] bg-cloak-input-bg px-3 py-2">
