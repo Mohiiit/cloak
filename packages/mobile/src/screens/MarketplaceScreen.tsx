@@ -10,8 +10,11 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { ArrowLeft, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react-native";
-import type { AgentProfileResponse, CreateAgentHireRequest } from "@cloak-wallet/sdk";
-import { getApiClient } from "../lib/apiClient";
+import type { AgentProfileResponse } from "@cloak-wallet/sdk";
+import {
+  discoverMarketplaceAgents,
+  hireMarketplaceAgent,
+} from "../lib/marketplaceApi";
 import { useWallet } from "../lib/WalletContext";
 import { borderRadius, colors, fontSize, spacing, typography } from "../lib/theme";
 
@@ -55,11 +58,11 @@ export default function MarketplaceScreen() {
     setError(null);
     setStatus(null);
     try {
-      const client = await getApiClient({
-        walletAddress: wallet.keys?.starkAddress,
-        publicKey: wallet.keys?.publicKey,
-      });
-      const discovered = await client.discoverAgents({
+      const discovered = await discoverMarketplaceAgents({
+        wallet: {
+          walletAddress: wallet.keys?.starkAddress,
+          publicKey: wallet.keys?.publicKey,
+        },
         capability: capability || undefined,
         limit: 50,
         offset: 0,
@@ -90,19 +93,15 @@ export default function MarketplaceScreen() {
           throw new Error("Policy JSON is invalid");
         }
 
-        const client = await getApiClient({
-          walletAddress: wallet.keys?.starkAddress,
-          publicKey: wallet.keys?.publicKey,
+        const hire = await hireMarketplaceAgent({
+          wallet: {
+            walletAddress: wallet.keys?.starkAddress,
+            publicKey: wallet.keys?.publicKey,
+          },
+          agentId: agent.agent_id,
+          policySnapshot,
+          billingMode: "per_run",
         });
-        const auth = await client.verify();
-        const payload: CreateAgentHireRequest = {
-          agent_id: agent.agent_id,
-          operator_wallet: auth.wallet_address,
-          policy_snapshot: policySnapshot,
-          billing_mode: "per_run",
-        };
-
-        const hire = await client.createHire(payload);
         setHireIdsByAgent(prev => ({
           ...prev,
           [agent.agent_id]: hire.id,
