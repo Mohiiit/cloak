@@ -74,7 +74,7 @@ Legend:
 | 62 | web paid run flow with x402 retry | done | packages/nextjs/app/marketplace/[agentId]/page.tsx |
 | 63 | web operator dashboard | done | packages/nextjs/app/marketplace/dashboard/page.tsx |
 | 64 | mobile marketplace entry integration | done | packages/mobile/src/screens/AgentScreen.tsx |
-| 65 | mobile discover and hire flow | pending | packages/mobile/src/screens/MarketplaceScreen.tsx |
+| 65 | mobile discover and hire flow | done | packages/mobile/src/screens/MarketplaceScreen.tsx |
 | 66 | mobile paid run x402 flow | pending | packages/mobile/src/lib/marketplaceApi.ts |
 | 67 | mobile run evidence views | pending | packages/mobile/src/screens/MarketplaceRunDetailScreen.tsx |
 | 68 | extension agents screen integration | pending | packages/extension/src/popup/components/MarketplaceScreen.tsx |

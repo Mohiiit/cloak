@@ -9,6 +9,7 @@ export type AppTabParamList = {
 
 export type RootStackParamList = {
   AppTabs: NavigatorScreenParams<AppTabParamList>;
+  Marketplace: undefined;
   Send: { openScanner?: boolean } | undefined;
   Shield: undefined;
   Unshield: undefined;

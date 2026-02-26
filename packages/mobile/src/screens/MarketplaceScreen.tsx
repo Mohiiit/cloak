@@ -1,0 +1,484 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { ArrowLeft, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react-native";
+import type { AgentProfileResponse, CreateAgentHireRequest } from "@cloak-wallet/sdk";
+import { getApiClient } from "../lib/apiClient";
+import { useWallet } from "../lib/WalletContext";
+import { borderRadius, colors, fontSize, spacing, typography } from "../lib/theme";
+
+type AgentCard = AgentProfileResponse & { discovery_score?: number };
+
+const CAPABILITY_FILTERS = ["", "stake", "dispatch", "swap", "x402_shielded"] as const;
+
+export default function MarketplaceScreen() {
+  const navigation = useNavigation<any>();
+  const wallet = useWallet();
+  const [agents, setAgents] = useState<AgentCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [hiringAgent, setHiringAgent] = useState<string | null>(null);
+  const [capability, setCapability] = useState<(typeof CAPABILITY_FILTERS)[number]>("");
+  const [searchText, setSearchText] = useState("");
+  const [policyDraft, setPolicyDraft] = useState(
+    JSON.stringify(
+      {
+        max_usd_per_run: 25,
+        allowed_actions: ["stake", "dispatch", "swap"],
+      },
+      null,
+      2,
+    ),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [hireIdsByAgent, setHireIdsByAgent] = useState<Record<string, string>>({});
+
+  const filteredAgents = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return agents;
+    return agents.filter(agent => {
+      const haystack = `${agent.name} ${agent.description} ${agent.agent_type}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [agents, searchText]);
+
+  const loadAgents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const client = await getApiClient({
+        walletAddress: wallet.keys?.starkAddress,
+        publicKey: wallet.keys?.publicKey,
+      });
+      const discovered = await client.discoverAgents({
+        capability: capability || undefined,
+        limit: 50,
+        offset: 0,
+      });
+      setAgents(discovered);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load marketplace agents");
+      setAgents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [capability, wallet.keys?.publicKey, wallet.keys?.starkAddress]);
+
+  useEffect(() => {
+    void loadAgents();
+  }, [loadAgents]);
+
+  const createHire = useCallback(
+    async (agent: AgentCard) => {
+      setHiringAgent(agent.agent_id);
+      setError(null);
+      setStatus(null);
+      try {
+        let policySnapshot: Record<string, unknown> = {};
+        try {
+          policySnapshot = JSON.parse(policyDraft) as Record<string, unknown>;
+        } catch {
+          throw new Error("Policy JSON is invalid");
+        }
+
+        const client = await getApiClient({
+          walletAddress: wallet.keys?.starkAddress,
+          publicKey: wallet.keys?.publicKey,
+        });
+        const auth = await client.verify();
+        const payload: CreateAgentHireRequest = {
+          agent_id: agent.agent_id,
+          operator_wallet: auth.wallet_address,
+          policy_snapshot: policySnapshot,
+          billing_mode: "per_run",
+        };
+
+        const hire = await client.createHire(payload);
+        setHireIdsByAgent(prev => ({
+          ...prev,
+          [agent.agent_id]: hire.id,
+        }));
+        setStatus(`Hire created for ${agent.name}: ${hire.id}`);
+      } catch (err: any) {
+        setError(err?.message || "Failed to hire agent");
+      } finally {
+        setHiringAgent(null);
+      }
+    },
+    [policyDraft, wallet.keys?.publicKey, wallet.keys?.starkAddress],
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <ArrowLeft size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <View style={styles.headerTitleWrap}>
+          <Sparkles size={15} color={colors.primaryLight} />
+          <Text style={styles.headerTitle}>Agent Marketplace</Text>
+        </View>
+        <TouchableOpacity style={styles.backButton} onPress={() => void loadAgents()}>
+          <RefreshCw size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.filtersCard}>
+        <View style={styles.searchWrap}>
+          <Search size={14} color={colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Search agents"
+            placeholderTextColor={colors.textMuted}
+          />
+        </View>
+        <View style={styles.capabilityRow}>
+          {CAPABILITY_FILTERS.map(option => {
+            const label = option || "all";
+            const selected = capability === option;
+            return (
+              <TouchableOpacity
+                key={label}
+                style={[styles.capabilityChip, selected && styles.capabilityChipActive]}
+                onPress={() => setCapability(option)}
+              >
+                <Text style={[styles.capabilityText, selected && styles.capabilityTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.policyCard}>
+        <Text style={styles.policyTitle}>Hire policy JSON</Text>
+        <TextInput
+          style={styles.policyInput}
+          value={policyDraft}
+          onChangeText={setPolicyDraft}
+          multiline
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+        />
+      </View>
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {status ? <Text style={styles.statusText}>{status}</Text> : null}
+
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.loadingText}>Loading agents…</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {filteredAgents.length === 0 ? (
+            <Text style={styles.emptyText}>No agents matched current filters.</Text>
+          ) : (
+            filteredAgents.map(agent => (
+              <View key={agent.agent_id} style={styles.agentCard}>
+                <View style={styles.agentHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.agentName}>{agent.name}</Text>
+                    <Text style={styles.agentType}>{agent.agent_type}</Text>
+                  </View>
+                  <View style={styles.scorePill}>
+                    <Text style={styles.scoreText}>score {agent.discovery_score ?? agent.trust_score}</Text>
+                  </View>
+                </View>
+                <Text style={styles.agentDescription}>{agent.description}</Text>
+                <View style={styles.metaRow}>
+                  <ShieldCheck size={12} color={agent.verified ? colors.success : colors.warning} />
+                  <Text style={styles.metaText}>
+                    {agent.verified ? "verified" : "unverified"} · trust {agent.trust_score}
+                  </Text>
+                </View>
+                <View style={styles.capabilityRow}>
+                  {agent.capabilities.slice(0, 5).map(cap => (
+                    <View key={`${agent.agent_id}-${cap}`} style={styles.capabilityTag}>
+                      <Text style={styles.capabilityTagText}>{cap}</Text>
+                    </View>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={styles.hireButton}
+                  disabled={hiringAgent === agent.agent_id}
+                  onPress={() => void createHire(agent)}
+                >
+                  {hiringAgent === agent.agent_id ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.hireButtonText}>
+                      {hireIdsByAgent[agent.agent_id] ? "Hire active" : "Hire agent"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                {hireIdsByAgent[agent.agent_id] ? (
+                  <Text style={styles.hireIdText}>hire: {hireIdsByAgent[agent.agent_id]}</Text>
+                ) : null}
+              </View>
+            ))
+          )}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  header: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  headerTitleWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  headerTitle: {
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontFamily: typography.primarySemibold,
+  },
+  filtersCard: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
+  },
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.inputBg,
+    paddingHorizontal: spacing.sm,
+    gap: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    height: 38,
+    color: colors.text,
+    fontFamily: typography.secondary,
+    fontSize: fontSize.sm,
+  },
+  capabilityRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  capabilityChip: {
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.inputBg,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  capabilityChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryDim,
+  },
+  capabilityText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondary,
+  },
+  capabilityTextActive: {
+    color: colors.primaryLight,
+    fontFamily: typography.secondarySemibold,
+  },
+  policyCard: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  policyTitle: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondarySemibold,
+  },
+  policyInput: {
+    minHeight: 92,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.inputBg,
+    color: colors.text,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    fontSize: fontSize.xs,
+    fontFamily: typography.primary,
+    textAlignVertical: "top",
+  },
+  errorText: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    color: colors.error,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondary,
+  },
+  statusText: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    color: colors.success,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondary,
+  },
+  loadingWrap: {
+    marginTop: spacing.xl,
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  loadingText: {
+    color: colors.textMuted,
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondary,
+  },
+  list: {
+    flex: 1,
+    marginTop: spacing.sm,
+  },
+  listContent: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.sm,
+  },
+  emptyText: {
+    color: colors.textMuted,
+    textAlign: "center",
+    marginTop: spacing.lg,
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondary,
+  },
+  agentCard: {
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  agentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  agentName: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontFamily: typography.primarySemibold,
+  },
+  agentType: {
+    marginTop: 2,
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondary,
+  },
+  scorePill: {
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.inputBg,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  scoreText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondary,
+  },
+  agentDescription: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    fontFamily: typography.secondary,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  metaText: {
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondary,
+  },
+  capabilityTag: {
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primaryDim,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  capabilityTagText: {
+    color: colors.primaryLight,
+    fontSize: fontSize.xs,
+    fontFamily: typography.secondary,
+  },
+  hireButton: {
+    marginTop: spacing.xs,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hireButtonText: {
+    color: "#fff",
+    fontSize: fontSize.sm,
+    fontFamily: typography.primarySemibold,
+  },
+  hireIdText: {
+    color: colors.success,
+    fontSize: fontSize.xs,
+    fontFamily: typography.primary,
+  },
+});

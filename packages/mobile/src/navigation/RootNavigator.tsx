@@ -13,6 +13,7 @@ import ImportAccountScreen from "../screens/onboarding/ImportAccountScreen";
 import ImportWardScreen from "../screens/onboarding/ImportWardScreen";
 import AddressInfoScreen from "../screens/AddressInfoScreen";
 import AddContactScreen from "../screens/AddContactScreen";
+import MarketplaceScreen from "../screens/MarketplaceScreen";
 import SplashScreen from "../screens/SplashScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import SwapDetailScreen from "../screens/swap/SwapDetailScreen";
@@ -51,6 +52,11 @@ export default function RootNavigator() {
           <Stack.Screen
             name="SettingsHub"
             component={SettingsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Marketplace"
+            component={MarketplaceScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
