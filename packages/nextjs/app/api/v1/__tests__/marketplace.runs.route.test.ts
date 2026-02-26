@@ -63,24 +63,29 @@ describe("marketplace runs route", () => {
     expect(res.status).toBe(400);
     expect(res.headers.get("x-x402-challenge")).toBeNull();
     const body = await res.json();
-    expect(body.error).toContain('Action "swap" is not supported for staking_steward');
+    expect(body.error).toContain(
+      'Action "swap" is not supported for staking_steward',
+    );
   });
 
   it("creates a run after valid x402 headers are provided", async () => {
-    const firstReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": "test-key-1234567890",
+    const firstReq = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "test-key-1234567890",
+        },
+        body: JSON.stringify({
+          hire_id: "hire_2",
+          agent_id: "staking_steward",
+          action: "stake",
+          params: { pool: "0xpool", amount: "100" },
+          billable: true,
+        }),
       },
-      body: JSON.stringify({
-        hire_id: "hire_2",
-        agent_id: "staking_steward",
-        action: "stake",
-        params: { pool: "0xpool", amount: "100" },
-        billable: true,
-      }),
-    });
+    );
     const first = await POST(firstReq);
     const firstBody = await first.json();
     const challenge = firstBody.challenge;
@@ -99,22 +104,25 @@ describe("marketplace runs route", () => {
       createdAt: new Date().toISOString(),
     };
 
-    const paidReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": "test-key-1234567890",
-        "x-x402-challenge": JSON.stringify(challenge),
-        "x-x402-payment": JSON.stringify(payment),
+    const paidReq = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "test-key-1234567890",
+          "x-x402-challenge": JSON.stringify(challenge),
+          "x-x402-payment": JSON.stringify(payment),
+        },
+        body: JSON.stringify({
+          hire_id: "hire_2",
+          agent_id: "staking_steward",
+          action: "stake",
+          params: { pool: "0xpool", amount: "100" },
+          billable: true,
+        }),
       },
-      body: JSON.stringify({
-        hire_id: "hire_2",
-        agent_id: "staking_steward",
-        action: "stake",
-        params: { pool: "0xpool", amount: "100" },
-        billable: true,
-      }),
-    });
+    );
     const paidRes = await POST(paidReq);
     expect(paidRes.status).toBe(201);
     const run = await paidRes.json();
@@ -123,12 +131,15 @@ describe("marketplace runs route", () => {
   });
 
   it("lists created runs", async () => {
-    const req = new NextRequest("http://localhost/api/v1/marketplace/runs?limit=1&offset=0", {
-      method: "GET",
-      headers: {
-        "X-API-Key": "test-key-1234567890",
+    const req = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs?limit=1&offset=0",
+      {
+        method: "GET",
+        headers: {
+          "X-API-Key": "test-key-1234567890",
+        },
       },
-    });
+    );
     const res = await GET(req);
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -220,29 +231,35 @@ describe("marketplace runs route", () => {
       billable: false,
     });
 
-    const firstReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": "test-key-1234567890",
-        "Idempotency-Key": "idem-run-1",
+    const firstReq = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "test-key-1234567890",
+          "Idempotency-Key": "idem-run-1",
+        },
+        body,
       },
-      body,
-    });
+    );
     const firstRes = await POST(firstReq);
     expect(firstRes.status).toBe(201);
     const firstRun = await firstRes.json();
     expect(firstRes.headers.get("x-idempotency-key")).toBe("idem-run-1");
 
-    const secondReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": "test-key-1234567890",
-        "Idempotency-Key": "idem-run-1",
+    const secondReq = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "test-key-1234567890",
+          "Idempotency-Key": "idem-run-1",
+        },
+        body,
       },
-      body,
-    });
+    );
     const secondRes = await POST(secondReq);
     expect(secondRes.status).toBe(201);
     expect(secondRes.headers.get("x-idempotent-replay")).toBe("true");
@@ -251,38 +268,44 @@ describe("marketplace runs route", () => {
   });
 
   it("rejects idempotency key reuse with different run payload", async () => {
-    const firstReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": "test-key-1234567890",
-        "Idempotency-Key": "idem-run-2",
+    const firstReq = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "test-key-1234567890",
+          "Idempotency-Key": "idem-run-2",
+        },
+        body: JSON.stringify({
+          hire_id: "hire_idem_2",
+          agent_id: "staking_steward",
+          action: "stake",
+          params: { amount: "100" },
+          billable: false,
+        }),
       },
-      body: JSON.stringify({
-        hire_id: "hire_idem_2",
-        agent_id: "staking_steward",
-        action: "stake",
-        params: { amount: "100" },
-        billable: false,
-      }),
-    });
+    );
     expect((await POST(firstReq)).status).toBe(201);
 
-    const secondReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": "test-key-1234567890",
-        "Idempotency-Key": "idem-run-2",
+    const secondReq = new NextRequest(
+      "http://localhost/api/v1/marketplace/runs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "test-key-1234567890",
+          "Idempotency-Key": "idem-run-2",
+        },
+        body: JSON.stringify({
+          hire_id: "hire_idem_2",
+          agent_id: "staking_steward",
+          action: "unstake",
+          params: { amount: "50" },
+          billable: false,
+        }),
       },
-      body: JSON.stringify({
-        hire_id: "hire_idem_2",
-        agent_id: "staking_steward",
-        action: "unstake",
-        params: { amount: "50" },
-        billable: false,
-      }),
-    });
+    );
     const secondRes = await POST(secondReq);
     expect(secondRes.status).toBe(409);
     const secondJson = await secondRes.json();

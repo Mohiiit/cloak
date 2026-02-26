@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,46 +7,67 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { ArrowLeft, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react-native";
-import type { AgentProfileResponse } from "@cloak-wallet/sdk";
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import {
+  ArrowLeft,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react-native';
+import type { AgentProfileResponse } from '@cloak-wallet/sdk';
 import {
   discoverMarketplaceAgents,
   executeMarketplacePaidRun,
   hireMarketplaceAgent,
-} from "../lib/marketplaceApi";
-import { useWallet } from "../lib/WalletContext";
-import { borderRadius, colors, fontSize, spacing, typography } from "../lib/theme";
+} from '../lib/marketplaceApi';
+import { useWallet } from '../lib/WalletContext';
+import {
+  borderRadius,
+  colors,
+  fontSize,
+  spacing,
+  typography,
+} from '../lib/theme';
 
 type AgentCard = AgentProfileResponse & { discovery_score?: number };
 
-const CAPABILITY_FILTERS = ["", "stake", "dispatch", "swap", "x402_shielded"] as const;
-const ACTIONS_BY_AGENT_TYPE: Record<AgentProfileResponse["agent_type"], string[]> = {
-  staking_steward: ["stake", "unstake", "rebalance"],
-  treasury_dispatcher: ["dispatch_batch", "sweep_idle"],
-  swap_runner: ["swap", "dca_tick"],
+const CAPABILITY_FILTERS = [
+  '',
+  'stake',
+  'dispatch',
+  'swap',
+  'x402_shielded',
+] as const;
+const ACTIONS_BY_AGENT_TYPE: Record<
+  AgentProfileResponse['agent_type'],
+  string[]
+> = {
+  staking_steward: ['stake', 'unstake', 'rebalance'],
+  treasury_dispatcher: ['dispatch_batch', 'sweep_idle'],
+  swap_runner: ['swap', 'dca_tick'],
 };
 
 function defaultRunParamsForAction(action: string): string {
-  if (action === "stake") {
+  if (action === 'stake') {
     return JSON.stringify(
       {
-        pool: "starkzap-staking",
-        amount: "25",
+        pool: 'starkzap-staking',
+        amount: '25',
       },
       null,
       2,
     );
   }
-  if (action === "dispatch_batch") {
+  if (action === 'dispatch_batch') {
     return JSON.stringify(
       {
         transfers: [
           {
-            token: "USDC",
-            amount: "5",
-            to: "0xrecipient",
+            token: 'USDC',
+            amount: '5',
+            to: '0xrecipient',
           },
         ],
       },
@@ -56,9 +77,9 @@ function defaultRunParamsForAction(action: string): string {
   }
   return JSON.stringify(
     {
-      from_token: "USDC",
-      to_token: "STRK",
-      amount: "25",
+      from_token: 'USDC',
+      to_token: 'STRK',
+      amount: '25',
     },
     null,
     2,
@@ -71,13 +92,14 @@ export default function MarketplaceScreen() {
   const [agents, setAgents] = useState<AgentCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [hiringAgent, setHiringAgent] = useState<string | null>(null);
-  const [capability, setCapability] = useState<(typeof CAPABILITY_FILTERS)[number]>("");
-  const [searchText, setSearchText] = useState("");
+  const [capability, setCapability] =
+    useState<(typeof CAPABILITY_FILTERS)[number]>('');
+  const [searchText, setSearchText] = useState('');
   const [policyDraft, setPolicyDraft] = useState(
     JSON.stringify(
       {
         max_usd_per_run: 25,
-        allowed_actions: ["stake", "dispatch", "swap"],
+        allowed_actions: ['stake', 'dispatch', 'swap'],
       },
       null,
       2,
@@ -85,17 +107,24 @@ export default function MarketplaceScreen() {
   );
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [hireIdsByAgent, setHireIdsByAgent] = useState<Record<string, string>>({});
+  const [hireIdsByAgent, setHireIdsByAgent] = useState<Record<string, string>>(
+    {},
+  );
   const [runningAgent, setRunningAgent] = useState<string | null>(null);
-  const [runAction, setRunAction] = useState("swap");
-  const [runParamsDraft, setRunParamsDraft] = useState(defaultRunParamsForAction("swap"));
-  const [runPayerAddress, setRunPayerAddress] = useState("tongo-mobile-operator");
+  const [runAction, setRunAction] = useState('swap');
+  const [runParamsDraft, setRunParamsDraft] = useState(
+    defaultRunParamsForAction('swap'),
+  );
+  const [runPayerAddress, setRunPayerAddress] = useState(
+    'tongo-mobile-operator',
+  );
 
   const filteredAgents = useMemo(() => {
     const query = searchText.trim().toLowerCase();
     if (!query) return agents;
     return agents.filter(agent => {
-      const haystack = `${agent.name} ${agent.description} ${agent.agent_type}`.toLowerCase();
+      const haystack =
+        `${agent.name} ${agent.description} ${agent.agent_type}`.toLowerCase();
       return haystack.includes(query);
     });
   }, [agents, searchText]);
@@ -116,7 +145,7 @@ export default function MarketplaceScreen() {
       });
       setAgents(discovered);
     } catch (err: any) {
-      setError(err?.message || "Failed to load marketplace agents");
+      setError(err?.message || 'Failed to load marketplace agents');
       setAgents([]);
     } finally {
       setLoading(false);
@@ -137,7 +166,7 @@ export default function MarketplaceScreen() {
         try {
           policySnapshot = JSON.parse(policyDraft) as Record<string, unknown>;
         } catch {
-          throw new Error("Policy JSON is invalid");
+          throw new Error('Policy JSON is invalid');
         }
 
         const hire = await hireMarketplaceAgent({
@@ -147,7 +176,7 @@ export default function MarketplaceScreen() {
           },
           agentId: agent.agent_id,
           policySnapshot,
-          billingMode: "per_run",
+          billingMode: 'per_run',
         });
         setHireIdsByAgent(prev => ({
           ...prev,
@@ -161,7 +190,7 @@ export default function MarketplaceScreen() {
         }
         setStatus(`Hire created for ${agent.name}: ${hire.id}`);
       } catch (err: any) {
-        setError(err?.message || "Failed to hire agent");
+        setError(err?.message || 'Failed to hire agent');
       } finally {
         setHiringAgent(null);
       }
@@ -173,14 +202,17 @@ export default function MarketplaceScreen() {
     async (agent: AgentCard) => {
       const hireId = hireIdsByAgent[agent.agent_id];
       if (!hireId) {
-        setError("Create a hire before running paid execution");
+        setError('Create a hire before running paid execution');
         return;
       }
       const normalizedAction = runAction.trim().toLowerCase();
       const supportedActions = ACTIONS_BY_AGENT_TYPE[agent.agent_type] ?? [];
-      if (supportedActions.length > 0 && !supportedActions.includes(normalizedAction)) {
+      if (
+        supportedActions.length > 0 &&
+        !supportedActions.includes(normalizedAction)
+      ) {
         setError(
-          `Action "${normalizedAction}" is not supported for ${agent.name}. Supported actions: ${supportedActions.join(", ")}`,
+          `Action "${normalizedAction}" is not supported for ${agent.name}. Supported actions: ${supportedActions.join(', ')}`,
         );
         return;
       }
@@ -193,7 +225,7 @@ export default function MarketplaceScreen() {
         try {
           params = JSON.parse(runParamsDraft) as Record<string, unknown>;
         } catch {
-          throw new Error("Run params JSON is invalid");
+          throw new Error('Run params JSON is invalid');
         }
 
         const run = await executeMarketplacePaidRun({
@@ -204,12 +236,12 @@ export default function MarketplaceScreen() {
           payerTongoAddress: runPayerAddress,
         });
         setStatus(`Paid run completed: ${run.id}`);
-        navigation.navigate("MarketplaceRunDetail", {
+        navigation.navigate('MarketplaceRunDetail', {
           run,
           agentName: agent.name,
         });
       } catch (err: any) {
-        setError(err?.message || "Failed to execute paid run");
+        setError(err?.message || 'Failed to execute paid run');
       } finally {
         setRunningAgent(null);
       }
@@ -220,14 +252,20 @@ export default function MarketplaceScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
           <ArrowLeft size={16} color={colors.textSecondary} />
         </TouchableOpacity>
         <View style={styles.headerTitleWrap}>
           <Sparkles size={15} color={colors.primaryLight} />
           <Text style={styles.headerTitle}>Agent Marketplace</Text>
         </View>
-        <TouchableOpacity style={styles.backButton} onPress={() => void loadAgents()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => void loadAgents()}
+        >
           <RefreshCw size={16} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -245,15 +283,23 @@ export default function MarketplaceScreen() {
         </View>
         <View style={styles.capabilityRow}>
           {CAPABILITY_FILTERS.map(option => {
-            const label = option || "all";
+            const label = option || 'all';
             const selected = capability === option;
             return (
               <TouchableOpacity
                 key={label}
-                style={[styles.capabilityChip, selected && styles.capabilityChipActive]}
+                style={[
+                  styles.capabilityChip,
+                  selected && styles.capabilityChipActive,
+                ]}
                 onPress={() => setCapability(option)}
               >
-                <Text style={[styles.capabilityText, selected && styles.capabilityTextActive]}>
+                <Text
+                  style={[
+                    styles.capabilityText,
+                    selected && styles.capabilityTextActive,
+                  ]}
+                >
                   {label}
                 </Text>
               </TouchableOpacity>
@@ -317,7 +363,9 @@ export default function MarketplaceScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {filteredAgents.length === 0 ? (
-            <Text style={styles.emptyText}>No agents matched current filters.</Text>
+            <Text style={styles.emptyText}>
+              No agents matched current filters.
+            </Text>
           ) : (
             filteredAgents.map(agent => (
               <View key={agent.agent_id} style={styles.agentCard}>
@@ -327,19 +375,28 @@ export default function MarketplaceScreen() {
                     <Text style={styles.agentType}>{agent.agent_type}</Text>
                   </View>
                   <View style={styles.scorePill}>
-                    <Text style={styles.scoreText}>score {agent.discovery_score ?? agent.trust_score}</Text>
+                    <Text style={styles.scoreText}>
+                      score {agent.discovery_score ?? agent.trust_score}
+                    </Text>
                   </View>
                 </View>
                 <Text style={styles.agentDescription}>{agent.description}</Text>
                 <View style={styles.metaRow}>
-                  <ShieldCheck size={12} color={agent.verified ? colors.success : colors.warning} />
+                  <ShieldCheck
+                    size={12}
+                    color={agent.verified ? colors.success : colors.warning}
+                  />
                   <Text style={styles.metaText}>
-                    {agent.verified ? "verified" : "unverified"} · trust {agent.trust_score}
+                    {agent.verified ? 'verified' : 'unverified'} · trust{' '}
+                    {agent.trust_score}
                   </Text>
                 </View>
                 <View style={styles.capabilityRow}>
                   {agent.capabilities.slice(0, 5).map(cap => (
-                    <View key={`${agent.agent_id}-${cap}`} style={styles.capabilityTag}>
+                    <View
+                      key={`${agent.agent_id}-${cap}`}
+                      style={styles.capabilityTag}
+                    >
                       <Text style={styles.capabilityTagText}>{cap}</Text>
                     </View>
                   ))}
@@ -353,12 +410,16 @@ export default function MarketplaceScreen() {
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
                     <Text style={styles.hireButtonText}>
-                      {hireIdsByAgent[agent.agent_id] ? "Hire active" : "Hire agent"}
+                      {hireIdsByAgent[agent.agent_id]
+                        ? 'Hire active'
+                        : 'Hire agent'}
                     </Text>
                   )}
                 </TouchableOpacity>
                 {hireIdsByAgent[agent.agent_id] ? (
-                  <Text style={styles.hireIdText}>hire: {hireIdsByAgent[agent.agent_id]}</Text>
+                  <Text style={styles.hireIdText}>
+                    hire: {hireIdsByAgent[agent.agent_id]}
+                  </Text>
                 ) : null}
                 <TouchableOpacity
                   style={[
@@ -366,7 +427,8 @@ export default function MarketplaceScreen() {
                     !hireIdsByAgent[agent.agent_id] && styles.runButtonDisabled,
                   ]}
                   disabled={
-                    !hireIdsByAgent[agent.agent_id] || runningAgent === agent.agent_id
+                    !hireIdsByAgent[agent.agent_id] ||
+                    runningAgent === agent.agent_id
                   }
                   onPress={() => void runPaidExecution(agent)}
                 >
@@ -396,23 +458,23 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   headerTitleWrap: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.xs,
   },
   headerTitle: {
@@ -431,8 +493,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   searchWrap: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.borderLight,
     borderRadius: borderRadius.sm,
@@ -448,8 +510,8 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
   },
   capabilityRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.xs,
   },
   capabilityChip: {
@@ -499,7 +561,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     fontSize: fontSize.xs,
     fontFamily: typography.primary,
-    textAlignVertical: "top",
+    textAlignVertical: 'top',
   },
   singleLineInput: {
     height: 38,
@@ -528,7 +590,7 @@ const styles = StyleSheet.create({
   },
   loadingWrap: {
     marginTop: spacing.xl,
-    alignItems: "center",
+    alignItems: 'center',
     gap: spacing.sm,
   },
   loadingText: {
@@ -547,7 +609,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: colors.textMuted,
-    textAlign: "center",
+    textAlign: 'center',
     marginTop: spacing.lg,
     fontSize: fontSize.sm,
     fontFamily: typography.secondary,
@@ -561,8 +623,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   agentHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
   agentName: {
@@ -595,8 +657,8 @@ const styles = StyleSheet.create({
     fontFamily: typography.secondary,
   },
   metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
   metaText: {
@@ -622,11 +684,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
     backgroundColor: colors.primary,
     height: 38,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hireButtonText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: fontSize.sm,
     fontFamily: typography.primarySemibold,
   },
@@ -640,14 +702,14 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
     backgroundColor: colors.secondary,
     height: 36,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   runButtonDisabled: {
     opacity: 0.45,
   },
   runButtonText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: fontSize.xs,
     fontFamily: typography.primarySemibold,
   },

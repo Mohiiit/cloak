@@ -33,7 +33,9 @@ export function inferAgentType(agentId: string): AgentType | null {
   return null;
 }
 
-export function getSupportedActionsForAgentType(agentType: AgentType): string[] {
+export function getSupportedActionsForAgentType(
+  agentType: AgentType,
+): string[] {
   return [...supportedActionsByAgentType[agentType]];
 }
 

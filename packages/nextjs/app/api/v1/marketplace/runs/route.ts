@@ -49,7 +49,12 @@ interface CreateRunBody {
   execute?: boolean;
 }
 
-function parseIntParam(raw: string | null, fallback: number, min: number, max: number): number {
+function parseIntParam(
+  raw: string | null,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   if (raw === null || raw.trim() === "") return fallback;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return fallback;
@@ -59,8 +64,18 @@ function parseIntParam(raw: string | null, fallback: number, min: number, max: n
 export async function GET(req: NextRequest) {
   try {
     const auth = await authenticate(req);
-    const limit = parseIntParam(req.nextUrl.searchParams.get("limit"), 50, 1, 100);
-    const offset = parseIntParam(req.nextUrl.searchParams.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
+    const limit = parseIntParam(
+      req.nextUrl.searchParams.get("limit"),
+      50,
+      1,
+      100,
+    );
+    const offset = parseIntParam(
+      req.nextUrl.searchParams.get("offset"),
+      0,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
     const hireId = req.nextUrl.searchParams.get("hire_id") || undefined;
     const agentId = req.nextUrl.searchParams.get("agent_id") || undefined;
     const status = req.nextUrl.searchParams.get("status") || undefined;
@@ -159,7 +174,8 @@ export async function POST(req: NextRequest) {
     }
     const agentProfile = await getAgentProfileRecord(resolvedAgentId);
     const shouldExecute = body.execute ?? true;
-    const agentType = agentProfile?.agent_type || inferAgentType(resolvedAgentId);
+    const agentType =
+      agentProfile?.agent_type || inferAgentType(resolvedAgentId);
     if (shouldExecute) {
       if (!agentType) {
         return badRequest(`Unable to infer agent type for ${resolvedAgentId}`);
@@ -189,7 +205,8 @@ export async function POST(req: NextRequest) {
 
     if (body.billable ?? true) {
       const paywall = await shieldedPaywall(req, {
-        recipient: process.env.CLOAK_AGENT_SERVICE_ADDRESS || auth.wallet_address,
+        recipient:
+          process.env.CLOAK_AGENT_SERVICE_ADDRESS || auth.wallet_address,
         token: body.token,
         minAmount: body.minAmount,
         context: {
@@ -225,9 +242,11 @@ export async function POST(req: NextRequest) {
               params: body.params || {},
               operatorWallet: hire?.operator_wallet || auth.wallet_address,
               serviceWallet:
-                agentProfile?.service_wallet || process.env.CLOAK_AGENT_SERVICE_ADDRESS || auth.wallet_address,
+                agentProfile?.service_wallet ||
+                process.env.CLOAK_AGENT_SERVICE_ADDRESS ||
+                auth.wallet_address,
             }),
-          ) || run)
+          )) || run
         : run;
 
     logAgenticEvent({
@@ -244,7 +263,8 @@ export async function POST(req: NextRequest) {
       },
     });
     logMarketplaceFunnelEvent({
-      stage: finalizedRun.status === "completed" ? "run_completed" : "run_failed",
+      stage:
+        finalizedRun.status === "completed" ? "run_completed" : "run_failed",
       traceId,
       actor: auth.wallet_address,
       metadata: {
