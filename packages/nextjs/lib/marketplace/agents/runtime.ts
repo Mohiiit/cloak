@@ -14,6 +14,12 @@ const handlers: Partial<Record<AgentType, AgentRuntimeHandler>> = {
   swap_runner: swapRunnerRuntime,
 };
 
+const supportedActionsByAgentType: Record<AgentType, ReadonlySet<string>> = {
+  staking_steward: new Set(["stake", "unstake", "rebalance"]),
+  treasury_dispatcher: new Set(["dispatch_batch", "sweep_idle"]),
+  swap_runner: new Set(["swap", "dca_tick"]),
+};
+
 export function inferAgentType(agentId: string): AgentType | null {
   if (agentId === "staking_steward" || agentId.includes("staking")) {
     return "staking_steward";
@@ -25,6 +31,17 @@ export function inferAgentType(agentId: string): AgentType | null {
     return "swap_runner";
   }
   return null;
+}
+
+export function getSupportedActionsForAgentType(agentType: AgentType): string[] {
+  return [...supportedActionsByAgentType[agentType]];
+}
+
+export function isSupportedActionForAgentType(
+  agentType: AgentType,
+  action: string,
+): boolean {
+  return supportedActionsByAgentType[agentType].has(action.toLowerCase());
 }
 
 export async function executeAgentRuntime(

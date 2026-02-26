@@ -22,6 +22,48 @@ import { borderRadius, colors, fontSize, spacing, typography } from "../lib/them
 type AgentCard = AgentProfileResponse & { discovery_score?: number };
 
 const CAPABILITY_FILTERS = ["", "stake", "dispatch", "swap", "x402_shielded"] as const;
+const ACTIONS_BY_AGENT_TYPE: Record<AgentProfileResponse["agent_type"], string[]> = {
+  staking_steward: ["stake", "unstake", "rebalance"],
+  treasury_dispatcher: ["dispatch_batch", "sweep_idle"],
+  swap_runner: ["swap", "dca_tick"],
+};
+
+function defaultRunParamsForAction(action: string): string {
+  if (action === "stake") {
+    return JSON.stringify(
+      {
+        pool: "starkzap-staking",
+        amount: "25",
+      },
+      null,
+      2,
+    );
+  }
+  if (action === "dispatch_batch") {
+    return JSON.stringify(
+      {
+        transfers: [
+          {
+            token: "USDC",
+            amount: "5",
+            to: "0xrecipient",
+          },
+        ],
+      },
+      null,
+      2,
+    );
+  }
+  return JSON.stringify(
+    {
+      from_token: "USDC",
+      to_token: "STRK",
+      amount: "25",
+    },
+    null,
+    2,
+  );
+}
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation<any>();
@@ -46,17 +88,7 @@ export default function MarketplaceScreen() {
   const [hireIdsByAgent, setHireIdsByAgent] = useState<Record<string, string>>({});
   const [runningAgent, setRunningAgent] = useState<string | null>(null);
   const [runAction, setRunAction] = useState("swap");
-  const [runParamsDraft, setRunParamsDraft] = useState(
-    JSON.stringify(
-      {
-        sell_token: "USDC",
-        buy_token: "STRK",
-        amount: "25",
-      },
-      null,
-      2,
-    ),
-  );
+  const [runParamsDraft, setRunParamsDraft] = useState(defaultRunParamsForAction("swap"));
   const [runPayerAddress, setRunPayerAddress] = useState("tongo-mobile-operator");
 
   const filteredAgents = useMemo(() => {
@@ -121,6 +153,12 @@ export default function MarketplaceScreen() {
           ...prev,
           [agent.agent_id]: hire.id,
         }));
+        const defaultActions = ACTIONS_BY_AGENT_TYPE[agent.agent_type];
+        if (defaultActions.length > 0) {
+          const nextAction = defaultActions[0];
+          setRunAction(nextAction);
+          setRunParamsDraft(defaultRunParamsForAction(nextAction));
+        }
         setStatus(`Hire created for ${agent.name}: ${hire.id}`);
       } catch (err: any) {
         setError(err?.message || "Failed to hire agent");
@@ -138,6 +176,14 @@ export default function MarketplaceScreen() {
         setError("Create a hire before running paid execution");
         return;
       }
+      const normalizedAction = runAction.trim().toLowerCase();
+      const supportedActions = ACTIONS_BY_AGENT_TYPE[agent.agent_type] ?? [];
+      if (supportedActions.length > 0 && !supportedActions.includes(normalizedAction)) {
+        setError(
+          `Action "${normalizedAction}" is not supported for ${agent.name}. Supported actions: ${supportedActions.join(", ")}`,
+        );
+        return;
+      }
 
       setRunningAgent(agent.agent_id);
       setError(null);
@@ -153,7 +199,7 @@ export default function MarketplaceScreen() {
         const run = await executeMarketplacePaidRun({
           hireId,
           agentId: agent.agent_id,
-          action: runAction,
+          action: normalizedAction,
           params,
           payerTongoAddress: runPayerAddress,
         });
@@ -235,7 +281,7 @@ export default function MarketplaceScreen() {
           style={styles.singleLineInput}
           value={runAction}
           onChangeText={setRunAction}
-          placeholder="Action (swap/stake/dispatch)"
+          placeholder="Action (swap/stake/dispatch_batch)"
           placeholderTextColor={colors.textMuted}
         />
         <TextInput

@@ -44,6 +44,28 @@ describe("marketplace runs route", () => {
     expect(res.headers.get("x-x402-challenge")).toBeTruthy();
   });
 
+  it("rejects unsupported actions before issuing x402 challenge", async () => {
+    const req = new NextRequest("http://localhost/api/v1/marketplace/runs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": "test-key-1234567890",
+      },
+      body: JSON.stringify({
+        hire_id: "hire_unsupported_action",
+        agent_id: "staking_steward",
+        action: "swap",
+        params: { from_token: "USDC", to_token: "STRK", amount: "25" },
+        billable: true,
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(res.headers.get("x-x402-challenge")).toBeNull();
+    const body = await res.json();
+    expect(body.error).toContain('Action "swap" is not supported for staking_steward');
+  });
+
   it("creates a run after valid x402 headers are provided", async () => {
     const firstReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
       method: "POST",

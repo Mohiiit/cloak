@@ -22,7 +22,9 @@ import { getAgentProfileRecord } from "~~/lib/marketplace/agents-repo";
 import type { AgentRunResponse } from "@cloak-wallet/sdk";
 import {
   executeAgentRuntime,
+  getSupportedActionsForAgentType,
   inferAgentType,
+  isSupportedActionForAgentType,
 } from "~~/lib/marketplace/agents/runtime";
 import {
   consumeRateLimit,
@@ -107,6 +109,10 @@ export async function POST(req: NextRequest) {
     if (!body.hire_id || !body.action) {
       return badRequest("hire_id and action are required");
     }
+    const normalizedAction = body.action.trim().toLowerCase();
+    if (!normalizedAction) {
+      return badRequest("action must not be empty");
+    }
     const idempotencyKey = req.headers.get("idempotency-key")?.trim() || null;
     const requestHash = hashIdempotencyRequest(body);
     if (idempotencyKey) {
@@ -152,6 +158,19 @@ export async function POST(req: NextRequest) {
       return badRequest("agent_id is required when hire does not exist");
     }
     const agentProfile = await getAgentProfileRecord(resolvedAgentId);
+    const shouldExecute = body.execute ?? true;
+    const agentType = agentProfile?.agent_type || inferAgentType(resolvedAgentId);
+    if (shouldExecute) {
+      if (!agentType) {
+        return badRequest(`Unable to infer agent type for ${resolvedAgentId}`);
+      }
+      if (!isSupportedActionForAgentType(agentType, normalizedAction)) {
+        const supported = getSupportedActionsForAgentType(agentType);
+        return badRequest(
+          `Action "${normalizedAction}" is not supported for ${agentType}. Supported actions: ${supported.join(", ")}`,
+        );
+      }
+    }
 
     logMarketplaceFunnelEvent({
       stage: "run_requested",
@@ -160,7 +179,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         hire_id: body.hire_id,
         agent_id: resolvedAgentId,
-        action: body.action,
+        action: normalizedAction,
         billable: body.billable ?? true,
       },
     });
@@ -176,7 +195,7 @@ export async function POST(req: NextRequest) {
         context: {
           hire_id: body.hire_id,
           agent_id: resolvedAgentId,
-          action: body.action,
+          action: normalizedAction,
         },
       });
       if (paywall instanceof NextResponse) return paywall;
@@ -188,7 +207,7 @@ export async function POST(req: NextRequest) {
       hireId: body.hire_id,
       agentId: resolvedAgentId,
       hireOperatorWallet: hire?.operator_wallet ?? auth.wallet_address,
-      action: body.action,
+      action: normalizedAction,
       params: body.params || {},
       billable: body.billable ?? true,
       paymentRef,
@@ -196,15 +215,13 @@ export async function POST(req: NextRequest) {
       agentTrustSnapshot: agentProfile?.trust_summary || null,
     });
 
-    const shouldExecute = body.execute ?? true;
-    const agentType = agentProfile?.agent_type || inferAgentType(resolvedAgentId);
     const finalizedRun =
       shouldExecute && agentType
         ? (await updateRunWithExecution(
             run,
             await executeAgentRuntime({
               agentType,
-              action: body.action,
+              action: normalizedAction,
               params: body.params || {},
               operatorWallet: hire?.operator_wallet || auth.wallet_address,
               serviceWallet:
