@@ -25,6 +25,7 @@ import {
   lookupIdempotencyRecord,
   saveIdempotencyRecord,
 } from "~~/lib/marketplace/idempotency-store";
+import { checkAgentOnchainIdentity } from "~~/lib/marketplace/onchain-identity";
 
 export const runtime = "nodejs";
 
@@ -136,6 +137,20 @@ export async function POST(req: NextRequest) {
     if (!profile || profile.status !== "active") {
       return NextResponse.json(
         { error: "Agent is unavailable", code: "AGENT_UNAVAILABLE" },
+        { status: 409 },
+      );
+    }
+    const onchainIdentity = await checkAgentOnchainIdentity({
+      agentId: profile.agent_id,
+      operatorWallet: profile.operator_wallet,
+    });
+    if (onchainIdentity.enforced && onchainIdentity.status === "mismatch") {
+      return NextResponse.json(
+        {
+          error: "Agent on-chain identity mismatch",
+          code: "ONCHAIN_IDENTITY_MISMATCH",
+          details: onchainIdentity.reason,
+        },
         { status: 409 },
       );
     }

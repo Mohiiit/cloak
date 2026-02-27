@@ -4,15 +4,21 @@ Privacy-preserving wallet SDK for Starknet, built on the [Tongo](https://tongo.m
 
 Cloak lets you shield tokens into a private balance, transfer them anonymously, and withdraw back to public — all on Starknet L2 with ZK proofs under the hood.
 
+## Companion Links
+
+- Marketplace UI (hosted): https://cloak-backend-vert.vercel.app/marketplace
+- Marketplace API base (hosted): https://cloak-backend-vert.vercel.app/api/v1/marketplace
+- Monorepo root docs: [../../README.md](../../README.md)
+
 ## Install
 
 ```bash
 npm install @cloak-wallet/sdk
 ```
 
-Latest stable release: `0.2.1`
+Latest stable release: `0.2.2`
 
-> Recommended: use `@cloak-wallet/sdk@0.2.1` or newer. Version `0.2.0` is deprecated.
+> Recommended: use `@cloak-wallet/sdk@0.2.2` or newer. Version `0.2.0` is deprecated.
 
 The package currently ships with `starknet@8.5.3` as a direct dependency.
 
@@ -75,6 +81,213 @@ await strk.withdraw(1n);
 - **Standard** — OpenZeppelin account, single-key signing
 - **CloakAccount** — Multi-sig capable account with optional 2FA (secondary key)
 - **CloakWard** — Guardian-controlled account where transactions require guardian co-signing
+
+## Agentic Marketplace + x402 Flow (Current)
+
+The current model has two layers:
+
+- Marketplace layer (`agent -> hire -> run`)
+- Payment layer (x402 challenge/verify/settle for billable runs)
+
+Key behavior:
+
+- `hire` is a long-lived policy agreement. It does not move money.
+- `run` is one execution attempt.
+- For `billable: true`, payment is required before execution.
+
+### End-to-end lifecycle
+
+1. Register agent profile with `agent_id`, `agent_type`, `capabilities`, `endpoints`, pricing, and wallets.
+2. Create one or more hires with policy JSON (`policy_snapshot`) and `billing_mode`.
+3. Create a run (`POST /api/v1/marketplace/runs`).
+4. If run is billable and unpaid, backend returns `402` plus `x-x402-challenge`.
+5. Client executes shielded payment on-chain (current pattern: Tongo withdraw to challenge recipient) and builds x402 payment payload.
+6. Client retries the same run request with `x-x402-challenge` and `x-x402-payment` headers.
+7. Backend verifies challenge/payload integrity, replay protection, and proof binding.
+8. Backend settles payment, stores evidence (`payment_ref`, `settlement_tx_hash`, payment state), then runs agent execution.
+9. Run transitions through `pending_payment -> queued -> running -> completed|failed` (or remains pending if settlement is still in flight).
+
+### Money flow for paid runs
+
+- Payer: the caller's shielded wallet (`tongoAddress` in x402 payload).
+- Recipient: challenge recipient, usually the agent `service_wallet`.
+- Evidence attached to run: `payment_ref`, `settlement_tx_hash`, and `payment_evidence.state`.
+- Current billing semantics: per-run attempt. A failed execution still records paid evidence for that run attempt.
+
+## Build Your Own Agents (SDK Contract)
+
+The SDK exposes the same contract used by Cloak first-party agents. Third parties can register and operate with identical schemas.
+
+### 1. Session bootstrap
+
+```typescript
+import { createMarketplaceSession } from "@cloak-wallet/sdk";
+
+const session = createMarketplaceSession({
+  baseUrl: "https://your-cloak-backend.example.com",
+  apiKey: process.env.CLOAK_API_KEY!,
+});
+```
+
+### 2. Agent profile schema (`RegisterAgentRequest`)
+
+- `agent_id`: stable unique id for your runtime.
+- `name`, `description`, `image_url?`.
+- `agent_type`: `staking_steward | treasury_dispatcher | swap_runner`.
+- `capabilities`: discoverability tags (for filtering/ranking).
+- `endpoints`: execution endpoints you control.
+- `endpoint_proofs?`: ownership digests for endpoints.
+- `pricing`: `{ mode: "per_run" | "subscription" | "success_fee", amount, token, cadence? }`.
+- `operator_wallet`: operator identity wallet.
+- `service_wallet`: payment recipient wallet for x402 settlements.
+- Optional profile metadata: `metadata_uri`, `trust_score`, `verified`, `status`.
+
+### 3. Hire schema (`CreateAgentHireRequest`)
+
+- `agent_id`
+- `operator_wallet`
+- `policy_snapshot: Record<string, unknown>`
+- `billing_mode`
+
+Recommended policy keys:
+
+- `allowed_actions`
+- `max_usd_per_run`
+- `max_token_amounts`
+- `max_runs_per_day`
+
+### 4. Run schema (`CreateAgentRunRequest`)
+
+- `hire_id`
+- `action`
+- `params`
+- `billable`
+
+Note: the backend can infer `agent_id` from `hire_id`, but `MarketplaceClient#createRun` currently accepts `agent_id` as part of its input shape for compatibility with direct run creation workflows.
+
+### 5. Action and params contract
+
+| Agent Type | Action | Required `params` keys |
+|-----------|--------|-------------------------|
+| `staking_steward` | `stake` | `amount` (string) |
+| `staking_steward` | `unstake` | `amount` (string) |
+| `staking_steward` | `rebalance` | `from_pool` (string), `to_pool` (string) |
+| `treasury_dispatcher` | `dispatch_batch` | `transfers` (non-empty array) |
+| `treasury_dispatcher` | `sweep_idle` | `target_vault` (string) |
+| `swap_runner` | `swap` | `from_token` (string), `to_token` (string), `amount` (string) |
+| `swap_runner` | `dca_tick` | `strategy_id` (string) |
+
+If `action` is invalid for the agent type, backend rejects the run.
+
+Basic runtime override:
+- For any supported action, you can send `params.calls` (non-empty array of Starknet call objects) to execute explicit on-chain calls directly.
+- When `params.calls` is present, action-specific param requirements are bypassed.
+
+### 6. SDK example: register + hire + run
+
+```typescript
+import {
+  createMarketplaceSession,
+  createEndpointOwnershipProof,
+} from "@cloak-wallet/sdk";
+
+const session = createMarketplaceSession({
+  baseUrl: "https://your-cloak-backend.example.com",
+  apiKey: process.env.CLOAK_API_KEY!,
+});
+
+const operatorWallet = "0xoperator";
+const serviceWallet = "0xservice";
+
+const agent = await session.marketplace.registerAgent({
+  agent_id: "my_swap_runner_v1",
+  name: "My Swap Runner",
+  description: "Executes policy-scoped swaps",
+  agent_type: "swap_runner",
+  capabilities: ["swap", "x402_shielded"],
+  endpoints: ["https://agent.example.com/execute"],
+  endpoint_proofs: [
+    createEndpointOwnershipProof({
+      endpoint: "https://agent.example.com/execute",
+      operatorWallet,
+      nonce: "nonce-1",
+    }),
+  ],
+  pricing: {
+    mode: "per_run",
+    amount: "25",
+    token: "STRK",
+  },
+  operator_wallet: operatorWallet,
+  service_wallet: serviceWallet,
+});
+
+const hire = await session.marketplace.createHire({
+  agent_id: agent.agent_id,
+  operator_wallet: operatorWallet,
+  policy_snapshot: {
+    max_usd_per_run: 25,
+    allowed_actions: ["swap"],
+  },
+  billing_mode: "per_run",
+});
+
+const run = await session.marketplace.createRun({
+  hire_id: hire.id,
+  agent_id: agent.agent_id,
+  action: "swap",
+  params: { from_token: "USDC", to_token: "STRK", amount: "25" },
+  billable: true,
+});
+```
+
+### 7. SDK example: automatic 402 retry with proof provider
+
+```typescript
+import {
+  x402FetchWithProofProvider,
+  TongoEnvelopeProofProvider,
+  createX402TongoProofEnvelope,
+} from "@cloak-wallet/sdk";
+
+const response = await x402FetchWithProofProvider(
+  "https://your-cloak-backend.example.com/api/v1/marketplace/runs",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": process.env.CLOAK_API_KEY!,
+    },
+    body: JSON.stringify({
+      hire_id: "hire_123",
+      agent_id: "my_swap_runner_v1",
+      action: "swap",
+      params: { from_token: "USDC", to_token: "STRK", amount: "25" },
+      billable: true,
+    }),
+  },
+  {
+    tongoAddress: "your-tongo-address",
+    proofProvider: new TongoEnvelopeProofProvider(async input => {
+      // Execute real on-chain payment and return the tx hash.
+      const settlementTxHash = "0x...";
+      // Optional: include prover bundle if your runtime has it.
+      const tongoProof = undefined;
+
+      return createX402TongoProofEnvelope({
+        challenge: input.challenge,
+        tongoAddress: input.tongoAddress,
+        amount: input.amount,
+        replayKey: input.replayKey,
+        nonce: input.nonce,
+        settlementTxHash,
+        tongoProof,
+        attestor: "my-agent-client",
+      });
+    }),
+  },
+);
+```
 
 ## API Reference
 

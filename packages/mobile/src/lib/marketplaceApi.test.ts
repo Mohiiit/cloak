@@ -7,6 +7,23 @@ jest.mock('@cloak-wallet/sdk', () => {
     constructor(resolver: any) {
       this.resolver = resolver;
     }
+
+    async createProof(input: any) {
+      const replayKey = input?.replayKey || 'rk_test';
+      const nonce = input?.nonce || 'nonce_test';
+      const envelope = await this.resolver({
+        ...input,
+        replayKey,
+        nonce,
+        intentHash: input?.intentHash || 'intent_test',
+      });
+      return {
+        proof: JSON.stringify(envelope),
+        replayKey,
+        nonce,
+        envelope,
+      };
+    }
   }
 
   return {
@@ -14,8 +31,9 @@ jest.mock('@cloak-wallet/sdk', () => {
     createX402TongoProofEnvelope: (input: any) => ({
       envelopeVersion: '1',
       proofType: 'tongo_attestation_v1',
-      intentHash: input?.metadata?.intentHash || 'intent',
+      intentHash: input?.intentHash || input?.metadata?.intentHash || 'intent',
       settlementTxHash: input?.settlementTxHash,
+      tongoProof: input?.tongoProof,
     }),
     x402FetchWithProofProvider: (...args: any[]) => mockX402Fetch(...args),
   };
@@ -168,6 +186,163 @@ describe('marketplaceApi', () => {
         },
       ),
     ).rejects.toThrow('Missing API key for marketplace paid run');
+  });
+
+  it('surfaces structured 402 errors from facilitator responses', async () => {
+    const x402Executor = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 402,
+      json: async () => ({
+        status: 'rejected',
+        reasonCode: 'INVALID_TONGO_PROOF',
+        details: 'tongo withdraw amount is not parseable',
+      }),
+    });
+
+    await expect(
+      executeMarketplacePaidRun(
+        {
+          hireId: 'hire_1',
+          agentId: 'agent_swap',
+          action: 'swap',
+          payerTongoAddress: 'tongo_abc',
+        },
+        {
+          getApiConfigFn: async () => ({
+            url: 'https://cloak.example',
+            key: 'api_key_1',
+          }),
+          x402Executor: x402Executor as any,
+        },
+      ),
+    ).rejects.toThrow(
+      'Marketplace paid run failed (402): rejected · INVALID_TONGO_PROOF · tongo withdraw amount is not parseable',
+    );
+  });
+
+  it('builds x402 envelope from on-chain payment executor output', async () => {
+    const challenge = {
+      version: '1',
+      scheme: 'cloak-shielded-x402',
+      challengeId: 'c_1',
+      network: 'sepolia',
+      token: 'STRK',
+      minAmount: '25',
+      recipient: '0xabc',
+      contextHash: 'ctx',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      facilitator: 'https://cloak.example/api/v1/marketplace/payments/x402',
+    };
+
+    const x402PaymentExecutor = jest.fn().mockResolvedValue({
+      settlementTxHash:
+        '0x111122223333444455556666777788889999aaaabbbbccccddddeeeeffff',
+      tongoProof: {
+        operation: 'withdraw',
+        inputs: {},
+        proof: {},
+      },
+    });
+
+    const x402Executor = jest.fn().mockImplementation(async (_url, _init, options) => {
+      const proofPayload = await options.proofProvider.createProof({
+        challenge,
+        tongoAddress: 'tongo_abc',
+        amount: challenge.minAmount,
+        contextHash: challenge.contextHash,
+        replayKey: 'rk_1',
+        nonce: 'nonce_1',
+        intentHash: 'intent_1',
+      });
+      const parsedProof = JSON.parse(proofPayload.proof);
+      expect(parsedProof.settlementTxHash).toBe(
+        '0x111122223333444455556666777788889999aaaabbbbccccddddeeeeffff',
+      );
+      expect(parsedProof.tongoProof.operation).toBe('withdraw');
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 'run_1',
+          hire_id: 'hire_1',
+          agent_id: 'agent_swap',
+          action: 'swap',
+          status: 'completed',
+        }),
+      };
+    });
+
+    await executeMarketplacePaidRun(
+      {
+        hireId: 'hire_1',
+        agentId: 'agent_swap',
+        action: 'swap',
+        params: { from: 'USDC', to: 'STRK' },
+        payerTongoAddress: 'tongo_abc',
+        x402PaymentExecutor,
+      },
+      {
+        getApiConfigFn: async () => ({
+          url: 'https://cloak.example',
+          key: 'api_key_1',
+        }),
+        x402Executor: x402Executor as any,
+      },
+    );
+
+    expect(x402PaymentExecutor).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when x402 proof resolver has no settlement tx hash source', async () => {
+    const challenge = {
+      version: '1',
+      scheme: 'cloak-shielded-x402',
+      challengeId: 'c_2',
+      network: 'sepolia',
+      token: 'STRK',
+      minAmount: '25',
+      recipient: '0xabc',
+      contextHash: 'ctx',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      facilitator: 'https://cloak.example/api/v1/marketplace/payments/x402',
+    };
+
+    const x402Executor = jest.fn().mockImplementation(async (_url, _init, options) => {
+      await options.proofProvider.createProof({
+        challenge,
+        tongoAddress: 'tongo_abc',
+        amount: challenge.minAmount,
+        contextHash: challenge.contextHash,
+        replayKey: 'rk_2',
+        nonce: 'nonce_2',
+        intentHash: 'intent_2',
+      });
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({}),
+      };
+    });
+
+    await expect(
+      executeMarketplacePaidRun(
+        {
+          hireId: 'hire_1',
+          agentId: 'agent_swap',
+          action: 'swap',
+          payerTongoAddress: 'tongo_abc',
+        },
+        {
+          getApiConfigFn: async () => ({
+            url: 'https://cloak.example',
+            key: 'api_key_1',
+          }),
+          x402Executor: x402Executor as any,
+        },
+      ),
+    ).rejects.toThrow(
+      'Missing x402 settlement tx hash. Provide x402PaymentExecutor or settlementTxHash.',
+    );
   });
 
   it('lists marketplace hires for wallet', async () => {

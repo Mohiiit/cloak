@@ -3,6 +3,12 @@ import type {
   X402PaymentPayloadRequest,
   X402VerifyRequest,
 } from "@cloak-wallet/sdk";
+import {
+  isX402TongoProofBundle,
+  verifyX402TongoProofBundle,
+  type X402TongoProofBundle,
+} from "./tongo-crypto-verifier";
+import { pubKeyBase58ToAffine } from "../../../node_modules/@fatsolutions/tongo-sdk/src/types";
 
 export interface X402ProofVerificationInput {
   challenge: X402VerifyRequest["challenge"];
@@ -31,6 +37,7 @@ export interface X402TongoProofEnvelope {
   attestor?: string;
   issuedAt?: string;
   signature?: string;
+  tongoProof?: X402TongoProofBundle;
   metadata?: Record<string, unknown>;
 }
 
@@ -95,48 +102,195 @@ function parseEnvelope(proof: string): X402TongoProofEnvelope | null {
     ) {
       return null;
     }
+    if (
+      parsed.tongoProof !== undefined &&
+      !isX402TongoProofBundle(parsed.tongoProof)
+    ) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;
   }
 }
 
-export class LenientX402ProofVerifier implements X402ProofVerifier {
-  verify(input: X402ProofVerificationInput): X402ProofVerificationResult {
-    const proof = input.payment.proof || "";
-    if (proof.length < 4) {
-      return {
-        ok: false,
-        reasonCode: "INVALID_PAYLOAD",
-        details: "proof too short",
-      };
+function toBigIntOrNull(value: unknown): bigint | null {
+  try {
+    if (typeof value === "bigint") return value;
+    if (typeof value === "number" && Number.isInteger(value)) {
+      return BigInt(value);
     }
-    return { ok: true };
+    if (typeof value === "string") {
+      const normalized = value.trim();
+      if (/^-?(0x[0-9a-fA-F]+|\d+)$/.test(normalized)) {
+        return BigInt(normalized);
+      }
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
+function verifyWithdrawSemanticBinding(
+  proofBundle: X402TongoProofBundle,
+  input: X402ProofVerificationInput,
+): X402ProofVerificationResult {
+  if (!isObject(proofBundle.inputs)) {
+    return {
+      ok: false,
+      reasonCode: "INVALID_TONGO_PROOF",
+      details: "tongo proof inputs missing",
+    };
+  }
+
+  const inputAmount = toBigIntOrNull(proofBundle.inputs.amount);
+  const paymentAmount = toBigIntOrNull(input.payment.amount);
+  if (inputAmount === null || paymentAmount === null) {
+    return {
+      ok: false,
+      reasonCode: "INVALID_TONGO_PROOF",
+      details: "tongo withdraw amount is not parseable",
+    };
+  }
+  if (inputAmount !== paymentAmount) {
+    return {
+      ok: false,
+      reasonCode: "CONTEXT_MISMATCH",
+      details: "tongo withdraw amount does not match x402 payment amount",
+    };
+  }
+
+  const withdrawalRecipient = toBigIntOrNull(proofBundle.inputs.to);
+  const challengeRecipient = toBigIntOrNull(input.challenge.recipient);
+  if (withdrawalRecipient === null || challengeRecipient === null) {
+    return {
+      ok: false,
+      reasonCode: "INVALID_TONGO_PROOF",
+      details: "tongo withdraw recipient is not parseable",
+    };
+  }
+  if (withdrawalRecipient !== challengeRecipient) {
+    return {
+      ok: false,
+      reasonCode: "CONTEXT_MISMATCH",
+      details: "tongo withdraw recipient does not match x402 challenge recipient",
+    };
+  }
+
+  return { ok: true };
+}
+
+function verifyTransferSemanticBinding(
+  proofBundle: X402TongoProofBundle,
+  input: X402ProofVerificationInput,
+): X402ProofVerificationResult {
+  if (!isObject(proofBundle.inputs)) {
+    return {
+      ok: false,
+      reasonCode: "INVALID_TONGO_PROOF",
+      details: "tongo proof inputs missing",
+    };
+  }
+
+  const inputAmount = toBigIntOrNull(proofBundle.inputs.amount);
+  const paymentAmount = toBigIntOrNull(input.payment.amount);
+  if (inputAmount === null || paymentAmount === null) {
+    return {
+      ok: false,
+      reasonCode: "INVALID_TONGO_PROOF",
+      details: "tongo transfer amount is not parseable",
+    };
+  }
+  if (inputAmount !== paymentAmount) {
+    return {
+      ok: false,
+      reasonCode: "CONTEXT_MISMATCH",
+      details: "tongo transfer amount does not match x402 payment amount",
+    };
+  }
+
+  // For shielded transfers, the proof's `to` field is an affine point {x, y}.
+  // Compare against the challenge's tongoRecipient (base58 Tongo address).
+  const tongoRecipient = (input.challenge as unknown as Record<string, unknown>).tongoRecipient;
+  if (typeof tongoRecipient !== "string" || !tongoRecipient) {
+    return {
+      ok: false,
+      reasonCode: "CONTEXT_MISMATCH",
+      details: "challenge missing tongoRecipient for shielded transfer verification",
+    };
+  }
+
+  try {
+    const expectedPoint = pubKeyBase58ToAffine(tongoRecipient);
+    const proofTo = proofBundle.inputs.to;
+    if (!isObject(proofTo) || !("x" in proofTo) || !("y" in proofTo)) {
+      return {
+        ok: false,
+        reasonCode: "INVALID_TONGO_PROOF",
+        details: "tongo transfer recipient is not an affine point",
+      };
+    }
+    const proofX = toBigIntOrNull(proofTo.x);
+    const proofY = toBigIntOrNull(proofTo.y);
+    if (proofX === null || proofY === null) {
+      return {
+        ok: false,
+        reasonCode: "INVALID_TONGO_PROOF",
+        details: "tongo transfer recipient point coordinates not parseable",
+      };
+    }
+    if (proofX !== expectedPoint.x || proofY !== expectedPoint.y) {
+      return {
+        ok: false,
+        reasonCode: "CONTEXT_MISMATCH",
+        details: "tongo transfer recipient does not match challenge tongoRecipient",
+      };
+    }
+  } catch {
+    return {
+      ok: false,
+      reasonCode: "INVALID_TONGO_PROOF",
+      details: "failed to decode tongoRecipient base58 address",
+    };
+  }
+
+  return { ok: true };
+}
+
+function verifyTongoProofSemanticBinding(
+  proofBundle: X402TongoProofBundle,
+  input: X402ProofVerificationInput,
+): X402ProofVerificationResult {
+  if (proofBundle.operation === "withdraw") {
+    return verifyWithdrawSemanticBinding(proofBundle, input);
+  }
+  if (proofBundle.operation === "transfer") {
+    return verifyTransferSemanticBinding(proofBundle, input);
+  }
+  return {
+    ok: false,
+    reasonCode: "CONTEXT_MISMATCH",
+    details: `unsupported tongo payment operation: ${proofBundle.operation}`,
+  };
+}
+
 export class StrictX402ProofVerifier implements X402ProofVerifier {
-  constructor(private readonly allowLegacyProof = true) {}
+  constructor(
+    private readonly enableTongoCryptoVerification = true,
+    private readonly requireTongoProofBundle = true,
+    private readonly trustSettlementTxHash = true,
+  ) {}
 
   verify(input: X402ProofVerificationInput): X402ProofVerificationResult {
     const proof = input.payment.proof || "";
     const envelope = parseEnvelope(proof);
     if (!envelope) {
-      if (!this.allowLegacyProof) {
-        return {
-          ok: false,
-          reasonCode: "INVALID_PAYLOAD",
-          details: "proof envelope invalid",
-        };
-      }
-      if (!/^[a-zA-Z0-9._:-]{8,4096}$/.test(proof)) {
-        return {
-          ok: false,
-          reasonCode: "INVALID_PAYLOAD",
-          details: "legacy proof format invalid",
-        };
-      }
-      return { ok: true };
+      return {
+        ok: false,
+        reasonCode: "INVALID_PAYLOAD",
+        details: "proof envelope invalid",
+      };
     }
 
     const expectedIntentHash = computeIntentHash(input);
@@ -147,6 +301,48 @@ export class StrictX402ProofVerifier implements X402ProofVerifier {
         details: "proof intent hash mismatch",
       };
     }
+
+    // If the envelope contains a valid settlement tx hash and
+    // trustSettlementTxHash is enabled, skip tongo proof verification.
+    // The settlement executor will verify the tx receipt on-chain
+    // (execution_status, finality_status, actual token movement).
+    if (this.trustSettlementTxHash && envelope.settlementTxHash) {
+      return {
+        ok: true,
+        proofEnvelope: envelope,
+        settlementTxHash: envelope.settlementTxHash,
+      };
+    }
+
+    if (this.requireTongoProofBundle && !envelope.tongoProof) {
+      return {
+        ok: false,
+        reasonCode: "INVALID_TONGO_PROOF",
+        details: "missing tongo proof bundle",
+      };
+    }
+
+    if (this.enableTongoCryptoVerification && envelope.tongoProof) {
+      const cryptoResult = verifyX402TongoProofBundle(envelope.tongoProof);
+      if (!cryptoResult.ok) {
+        return {
+          ok: false,
+          reasonCode: "INVALID_TONGO_PROOF",
+          details: cryptoResult.details || "tongo proof verification failed",
+        };
+      }
+    }
+
+    if (envelope.tongoProof) {
+      const semanticBinding = verifyTongoProofSemanticBinding(
+        envelope.tongoProof,
+        input,
+      );
+      if (!semanticBinding.ok) {
+        return semanticBinding;
+      }
+    }
+
     return {
       ok: true,
       proofEnvelope: envelope,
@@ -155,13 +351,53 @@ export class StrictX402ProofVerifier implements X402ProofVerifier {
   }
 }
 
+function parseBool(raw: string | undefined, fallback: boolean): boolean {
+  if (!raw) return fallback;
+  const value = raw
+    .replace(/\\r/gi, "")
+    .replace(/\\n/gi, "")
+    .replace(/\r/g, "")
+    .replace(/\n/g, "")
+    .trim()
+    .toLowerCase();
+  if (!value) return fallback;
+  if (value === "true" || value === "1" || value === "yes") return true;
+  if (value === "false" || value === "0" || value === "no") return false;
+  return fallback;
+}
+
 export function createX402ProofVerifier(
   env: NodeJS.ProcessEnv = process.env,
 ): X402ProofVerifier {
-  const mode = (env.X402_PROOF_VERIFIER_MODE || "strict").trim().toLowerCase();
-  if (mode === "strict") {
-    const allowLegacy = (env.X402_LEGACY_PROOF_COMPAT || "true").trim().toLowerCase() !== "false";
-    return new StrictX402ProofVerifier(allowLegacy);
+  const mode = (env.X402_PROOF_VERIFIER_MODE || "strict")
+    .replace(/\\r/gi, "")
+    .replace(/\\n/gi, "")
+    .replace(/\r/g, "")
+    .replace(/\n/g, "")
+    .trim()
+    .toLowerCase();
+  if (mode !== "strict") {
+    throw new Error("X402_PROOF_VERIFIER_MODE must be strict");
   }
-  return new LenientX402ProofVerifier();
+  const enableTongoCryptoVerification = parseBool(
+    env.X402_TONGO_CRYPTO_VERIFY,
+    true,
+  );
+  const requireTongoProofBundle = parseBool(
+    env.X402_REQUIRE_TONGO_PROOF_BUNDLE,
+    true,
+  );
+  // When a valid settlement tx hash is present in the envelope, trust it
+  // and skip tongo proof crypto verification. The settlement executor
+  // verifies the tx receipt on-chain (execution status, finality, token movement).
+  const trustSettlementTxHash = parseBool(
+    env.X402_TRUST_SETTLEMENT_TX_HASH,
+    true,
+  );
+
+  return new StrictX402ProofVerifier(
+    enableTongoCryptoVerification,
+    requireTongoProofBundle,
+    trustSettlementTxHash,
+  );
 }

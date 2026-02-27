@@ -2,10 +2,17 @@ import {
   getActivityRecords,
   type ActivityRecord,
   type AmountUnit,
+  type AgentHireResponse,
+  type AgentRunResponse,
 } from '@cloak-wallet/sdk';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTxNotes, type TxMetadata } from '../storage';
 import { getApiClient } from '../apiClient';
+import {
+  listMarketplaceHires,
+  listMarketplaceRuns,
+  listMarketplaceDelegations,
+} from '../marketplaceApi';
 import { isMockMode } from '../../testing/runtimeConfig';
 
 export interface ActivityFeedItem {
@@ -30,6 +37,7 @@ export interface ActivityFeedItem {
   executionId?: string;
   agentRun?: ActivityRecord['agent_run'] | null;
   swap?: ActivityRecord['swap'] | null;
+  _fullRun?: AgentRunResponse;
 }
 
 type LoadActivityByTxHashOptions = {
@@ -294,18 +302,169 @@ function buildMockActivityFeed(now = Date.now()): ActivityFeedItem[] {
   ];
 }
 
+function hireToFeedItem(hire: AgentHireResponse): ActivityFeedItem {
+  return {
+    txHash: hire.id,
+    source: 'agent_run',
+    privacyLevel: 'private',
+    timestamp: toTimestamp(hire.created_at),
+    type: 'agent_hire',
+    token: 'STRK',
+    status: hire.status === 'active' ? 'confirmed' : hire.status,
+    note: `Hired agent ${hire.agent_id}`,
+    walletAddress: hire.operator_wallet || undefined,
+  };
+}
+
+function prettyAgentAction(action: string | undefined): string {
+  if (!action) return 'Agent Run';
+  const clean = action.replace(/^agent_/, '');
+  return clean
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function runToFeedItem(run: AgentRunResponse): ActivityFeedItem {
+  const action = prettyAgentAction(run.action);
+  const token = (run.params as Record<string, unknown>)?.token as string || 'STRK';
+  const runAmount = (run.params as Record<string, unknown>)?.amount as string | undefined;
+  const feeAmount = run.payment_evidence?.payment_ref ? '1' : undefined;
+  const isPayment = run.billable && run.settlement_tx_hash;
+  const note = isPayment
+    ? `${action} · Fee paid`
+    : `${action}`;
+  const statusDetail = run.status === 'completed'
+    ? run.execution_tx_hashes?.length
+      ? `Completed · ${run.execution_tx_hashes.length} tx`
+      : 'Completed'
+    : run.status === 'failed'
+      ? (run.result as Record<string, unknown>)?.reason_code
+        ? `Failed: ${(run.result as Record<string, unknown>).reason_code}`
+        : 'Failed'
+      : run.status === 'pending_payment'
+        ? 'Awaiting settlement'
+        : run.status === 'running'
+          ? 'Running...'
+          : run.status;
+
+  return {
+    txHash: run.settlement_tx_hash || run.id,
+    source: 'agent_run',
+    privacyLevel: 'private',
+    timestamp: toTimestamp(run.created_at),
+    type: run.action?.startsWith('agent_') ? run.action : `agent_${run.action || 'run'}`,
+    token,
+    amount: runAmount || feeAmount,
+    amount_unit: runAmount ? 'erc20_display' : 'tongo_units',
+    status: run.status === 'completed' ? 'confirmed' : run.status === 'failed' ? 'failed' : 'pending',
+    statusDetail,
+    note,
+    agentRun: {
+      agent_id: run.agent_id,
+      hire_id: run.hire_id,
+      action: run.action,
+      status: run.status,
+    },
+    walletAddress: run.hire_operator_wallet || undefined,
+    _fullRun: run,
+  };
+}
+
+/** Convert a wei string to human-readable with up to 4 significant decimals. */
+function fromWeiFeed(wei: string, token: string): string {
+  const decimals = token === 'USDC' ? 6 : 18;
+  const raw = BigInt(wei || '0');
+  const divisor = 10n ** BigInt(decimals);
+  const whole = raw / divisor;
+  const frac = raw % divisor;
+  if (frac === 0n) return whole.toString();
+  const fracStr = frac.toString().padStart(decimals, '0').replace(/0+$/, '');
+  return `${whole}.${fracStr.slice(0, 4)}`;
+}
+
+function delegationToFeedItem(
+  delegation: import('@cloak-wallet/sdk').DelegationResponse,
+): ActivityFeedItem {
+  const isRevoked = delegation.status === 'revoked';
+  const token = delegation.token || 'STRK';
+  const consumedDisplay = fromWeiFeed(delegation.consumed_amount, token);
+  const totalDisplay = fromWeiFeed(delegation.total_allowance, token);
+  return {
+    txHash: delegation.onchain_tx_hash || delegation.id,
+    source: 'agent_run',
+    privacyLevel: 'private',
+    timestamp: toTimestamp(isRevoked && delegation.revoked_at ? delegation.revoked_at : delegation.created_at),
+    type: isRevoked ? 'agent_delegation_revoked' : 'agent_delegation',
+    token,
+    amount: totalDisplay,
+    amount_unit: 'erc20_display',
+    status: isRevoked ? 'confirmed' : delegation.status === 'active' ? 'confirmed' : 'pending',
+    statusDetail: isRevoked
+      ? `Revoked · ${consumedDisplay}/${totalDisplay} used`
+      : `${consumedDisplay}/${totalDisplay} consumed`,
+    note: isRevoked
+      ? `Delegation revoked (${delegation.agent_id})`
+      : `Delegation for ${delegation.agent_id}`,
+  };
+}
+
+async function loadMarketplaceActivity(
+  walletAddress: string,
+): Promise<ActivityFeedItem[]> {
+  try {
+    const wallet = { walletAddress };
+    const [hires, runs, delegations] = await Promise.all([
+      listMarketplaceHires({ wallet }).catch(() => [] as AgentHireResponse[]),
+      listMarketplaceRuns({ wallet }).catch(() => [] as AgentRunResponse[]),
+      listMarketplaceDelegations({}).catch(
+        () => [] as import('@cloak-wallet/sdk').DelegationResponse[],
+      ),
+    ]);
+    const hireItems = hires.map(hireToFeedItem);
+    const runItems = runs.map(runToFeedItem);
+    // Only show delegation items that don't already have a corresponding run.
+    // Runs with delegation_evidence already display delegation info inline.
+    const runAgentIds = new Set(runs.map(r => r.agent_id));
+    const delegationItems = delegations
+      .filter(d => d.status === 'revoked' || !runAgentIds.has(d.agent_id))
+      .map(delegationToFeedItem);
+    return [...hireItems, ...runItems, ...delegationItems];
+  } catch {
+    return [];
+  }
+}
+
 export async function loadActivityHistory(
   walletAddress: string,
   limit = 200,
   publicKey?: string,
 ): Promise<ActivityFeedItem[]> {
+  const marketplaceItems = await loadMarketplaceActivity(walletAddress);
+
   try {
     const client = await getApiClient({ walletAddress, publicKey });
     const records = await getActivityRecords(walletAddress, limit, client);
     if (records.length > 0) {
-      const items = records
-        .map(activityToFeedItem)
-        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const coreItems = records.map(activityToFeedItem);
+      // Merge _fullRun from marketplace items onto matching core items
+      const marketplaceByHash = new Map(
+        marketplaceItems
+          .filter(m => m._fullRun)
+          .map(m => [m.txHash, m._fullRun!]),
+      );
+      for (const item of coreItems) {
+        const fullRun = marketplaceByHash.get(item.txHash);
+        if (fullRun) item._fullRun = fullRun;
+      }
+      // Deduplicate marketplace items that already appear in core activity
+      const coreHashes = new Set(coreItems.map(i => i.txHash));
+      const uniqueMarketplace = marketplaceItems.filter(
+        m => !coreHashes.has(m.txHash),
+      );
+      const items = [...coreItems, ...uniqueMarketplace].sort(
+        (a, b) => (b.timestamp || 0) - (a.timestamp || 0),
+      );
       await saveActivityCache(walletAddress, items);
       return items;
     }
@@ -319,11 +478,13 @@ export async function loadActivityHistory(
   const notes = await getTxNotes();
   const localItems = Object.values(notes || {})
     .filter(Boolean)
-    .map(note => localNoteToFeedItem(note as TxMetadata))
-    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    .map(note => localNoteToFeedItem(note as TxMetadata));
 
-  if (localItems.length > 0) {
-    return localItems;
+  const combined = [...localItems, ...marketplaceItems].sort(
+    (a, b) => (b.timestamp || 0) - (a.timestamp || 0),
+  );
+  if (combined.length > 0) {
+    return combined;
   }
 
   if (isMockMode()) {

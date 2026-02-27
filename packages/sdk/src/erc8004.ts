@@ -1,8 +1,9 @@
-import { RpcProvider, num } from "starknet";
+import { RpcProvider, num, type Call } from "starknet";
 import { DEFAULT_RPC } from "./config";
 import type { Network } from "./types";
 
 export type ERC8004RegistryType = "identity" | "reputation" | "validation";
+export type ERC8004CalldataValue = string | bigint | number;
 
 export interface ERC8004RegistrySet {
   identity: string;
@@ -10,10 +11,107 @@ export interface ERC8004RegistrySet {
   validation: string;
 }
 
+export interface ERC8004ProviderLike {
+  callContract: RpcProvider["callContract"];
+  waitForTransaction?: RpcProvider["waitForTransaction"];
+  getTransactionReceipt?: RpcProvider["getTransactionReceipt"];
+}
+
+export interface ERC8004AccountLike {
+  execute: (
+    calls: Call | Call[],
+    details?: unknown,
+  ) => Promise<{ transaction_hash?: string; transactionHash?: string } | string>;
+}
+
 export interface ERC8004ClientOptions {
   network?: Network;
   rpcUrl?: string;
-  provider?: RpcProvider;
+  provider?: ERC8004ProviderLike;
+  account?: ERC8004AccountLike;
+  registryOverrides?: Partial<ERC8004RegistrySet>;
+}
+
+export interface ERC8004InvokeResult {
+  transactionHash: string;
+  registry: ERC8004RegistryType;
+  entrypoint: string;
+  calldata: string[];
+}
+
+export interface ERC8004WaitOptions {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+}
+
+export interface ERC8004WriteInput {
+  entrypoint?: string;
+  calldata: ERC8004CalldataValue[];
+}
+
+export class ERC8004ClientError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = "ERC8004ClientError";
+  }
+}
+
+export class ERC8004WriteNotConfiguredError extends ERC8004ClientError {
+  constructor() {
+    super("ERC-8004 write operations require an account executor", "WRITE_NOT_CONFIGURED");
+    this.name = "ERC8004WriteNotConfiguredError";
+  }
+}
+
+export class ERC8004TransactionTimeoutError extends ERC8004ClientError {
+  constructor(txHash: string, timeoutMs: number) {
+    super(
+      `Timed out waiting for transaction ${txHash} after ${timeoutMs}ms`,
+      "TX_TIMEOUT",
+    );
+    this.name = "ERC8004TransactionTimeoutError";
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function toBigIntOrNull(value: ERC8004CalldataValue): bigint | null {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return BigInt(value);
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (/^(0x[0-9a-fA-F]+|\d+)$/.test(normalized)) {
+      return BigInt(normalized);
+    }
+  }
+  return null;
+}
+
+function toUint256Calldata(value: ERC8004CalldataValue): [string, string] | null {
+  const parsed = toBigIntOrNull(value);
+  if (parsed === null) return null;
+  const lowMask = (1n << 128n) - 1n;
+  const low = parsed & lowMask;
+  const high = parsed >> 128n;
+  return [num.toHex(low), num.toHex(high)];
+}
+
+function extractTransactionHash(
+  value: Awaited<ReturnType<ERC8004AccountLike["execute"]>>,
+): string | null {
+  if (typeof value === "string") return value;
+  const txHash = value.transaction_hash || value.transactionHash;
+  if (typeof txHash === "string" && txHash.length > 0) return txHash;
+  return null;
 }
 
 /**
@@ -50,8 +148,10 @@ export function getERC8004RegistryAddress(
 }
 
 export class ERC8004Client {
-  private readonly provider: RpcProvider;
+  private readonly provider: ERC8004ProviderLike;
   private readonly network: Network;
+  private readonly account?: ERC8004AccountLike;
+  private readonly registryOverrides: Partial<ERC8004RegistrySet>;
 
   constructor(options: ERC8004ClientOptions = {}) {
     this.network = options.network ?? "sepolia";
@@ -60,22 +160,161 @@ export class ERC8004Client {
       new RpcProvider({
         nodeUrl: options.rpcUrl ?? DEFAULT_RPC[this.network],
       });
+    this.account = options.account;
+    this.registryOverrides = options.registryOverrides ?? {};
   }
 
   getRegistryAddress(registry: ERC8004RegistryType): string {
-    return getERC8004RegistryAddress(this.network, registry);
+    return (
+      this.registryOverrides[registry] ||
+      getERC8004RegistryAddress(this.network, registry)
+    );
   }
 
   async call(
     registry: ERC8004RegistryType,
     entrypoint: string,
-    calldata: Array<string | bigint | number> = [],
+    calldata: ERC8004CalldataValue[] = [],
   ): Promise<string[]> {
     return this.provider.callContract({
       contractAddress: this.getRegistryAddress(registry),
       entrypoint,
       calldata: calldata.map((value) => num.toHex(value)),
     });
+  }
+
+  private async callWithFlexibleAgentId(
+    registry: ERC8004RegistryType,
+    entrypoint: string,
+    agentId: ERC8004CalldataValue,
+  ): Promise<string[] | null> {
+    const uint256AgentId = toUint256Calldata(agentId);
+    if (uint256AgentId) {
+      try {
+        return await this.provider.callContract({
+          contractAddress: this.getRegistryAddress(registry),
+          entrypoint,
+          calldata: uint256AgentId,
+        });
+      } catch {
+        // Try felt-style fallback below for deployments expecting a single felt.
+      }
+    }
+
+    try {
+      return await this.provider.callContract({
+        contractAddress: this.getRegistryAddress(registry),
+        entrypoint,
+        calldata: [num.toHex(agentId)],
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async invoke(
+    registry: ERC8004RegistryType,
+    entrypoint: string,
+    calldata: ERC8004CalldataValue[] = [],
+    details?: unknown,
+  ): Promise<ERC8004InvokeResult> {
+    if (!this.account) {
+      throw new ERC8004WriteNotConfiguredError();
+    }
+
+    const formattedCalldata = calldata.map((value) => num.toHex(value));
+    const result = await this.account.execute(
+      [
+        {
+          contractAddress: this.getRegistryAddress(registry),
+          entrypoint,
+          calldata: formattedCalldata,
+        },
+      ],
+      details,
+    );
+    const txHash = extractTransactionHash(result);
+    if (!txHash) {
+      throw new ERC8004ClientError(
+        "Failed to extract transaction hash from account.execute result",
+        "MISSING_TX_HASH",
+      );
+    }
+    return {
+      transactionHash: txHash,
+      registry,
+      entrypoint,
+      calldata: formattedCalldata,
+    };
+  }
+
+  async waitForTransaction(
+    txHash: string,
+    options: ERC8004WaitOptions = {},
+  ): Promise<unknown> {
+    const timeoutMs = options.timeoutMs ?? 180_000;
+    const pollIntervalMs = options.pollIntervalMs ?? 4_000;
+
+    if (this.provider.waitForTransaction) {
+      return this.provider.waitForTransaction(txHash, {
+        retryInterval: pollIntervalMs,
+        timeout: timeoutMs,
+      } as never);
+    }
+
+    if (!this.provider.getTransactionReceipt) {
+      throw new ERC8004ClientError(
+        "Provider does not support waitForTransaction/getTransactionReceipt",
+        "WAIT_UNSUPPORTED",
+      );
+    }
+
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        return await this.provider.getTransactionReceipt(txHash);
+      } catch {
+        await sleep(pollIntervalMs);
+      }
+    }
+
+    throw new ERC8004TransactionTimeoutError(txHash, timeoutMs);
+  }
+
+  async registerAgentOnchain(
+    input: ERC8004WriteInput,
+    details?: unknown,
+  ): Promise<ERC8004InvokeResult> {
+    return this.invoke(
+      "identity",
+      input.entrypoint ?? "register_agent",
+      input.calldata,
+      details,
+    );
+  }
+
+  async updateAgentOnchain(
+    input: ERC8004WriteInput,
+    details?: unknown,
+  ): Promise<ERC8004InvokeResult> {
+    return this.invoke(
+      "identity",
+      input.entrypoint ?? "update_agent",
+      input.calldata,
+      details,
+    );
+  }
+
+  async setAgentStatusOnchain(
+    input: ERC8004WriteInput,
+    details?: unknown,
+  ): Promise<ERC8004InvokeResult> {
+    return this.invoke(
+      "identity",
+      input.entrypoint ?? "set_agent_status",
+      input.calldata,
+      details,
+    );
   }
 
   /**
@@ -87,7 +326,12 @@ export class ERC8004Client {
     entrypoint = "owner_of",
   ): Promise<string | null> {
     try {
-      const res = await this.call("identity", entrypoint, [agentId]);
+      const res = await this.callWithFlexibleAgentId(
+        "identity",
+        entrypoint,
+        agentId,
+      );
+      if (!res) return null;
       return res[0] ?? null;
     } catch {
       return null;
@@ -103,7 +347,12 @@ export class ERC8004Client {
     entrypoint = "token_uri",
   ): Promise<string | null> {
     try {
-      const res = await this.call("identity", entrypoint, [agentId]);
+      const res = await this.callWithFlexibleAgentId(
+        "identity",
+        entrypoint,
+        agentId,
+      );
+      if (!res) return null;
       return res[0] ?? null;
     } catch {
       return null;

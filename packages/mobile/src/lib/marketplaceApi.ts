@@ -5,6 +5,11 @@ import {
   type AgentHireResponse,
   type AgentProfileResponse,
   type AgentRunResponse,
+  type DelegationResponse,
+  type LeaderboardResponse,
+  type SpendAuthorization,
+  type X402Challenge,
+  type X402TongoProofBundle,
 } from '@cloak-wallet/sdk';
 import { getApiClient, getApiConfig } from './apiClient';
 
@@ -55,14 +60,21 @@ function withDeps(deps?: MarketplaceApiDeps) {
   };
 }
 
-function fallbackSettlementTxHash(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  const hex = Math.abs(hash).toString(16).padStart(8, '0');
-  return `0x${hex.repeat(8).slice(0, 62)}`;
+export interface ExecuteMarketplacePaidRunPaymentInput {
+  challenge: X402Challenge;
+  tongoAddress: string;
+  amount: string;
+  replayKey: string;
+  nonce: string;
+  intentHash: string;
+}
+
+export interface ExecuteMarketplacePaidRunPaymentOutput {
+  settlementTxHash: string;
+  tongoProof?: X402TongoProofBundle;
+  attestor?: string;
+  signature?: string;
+  metadata?: Record<string, unknown>;
 }
 
 async function createClient(
@@ -164,10 +176,17 @@ export async function executeMarketplacePaidRun(
     execute?: boolean;
     proof?: string;
     settlementTxHash?: string;
+    tongoProof?: X402TongoProofBundle;
+    spend_authorization?: SpendAuthorization;
+    x402PaymentExecutor?: (
+      input: ExecuteMarketplacePaidRunPaymentInput,
+    ) => Promise<ExecuteMarketplacePaidRunPaymentOutput>;
   },
   deps?: MarketplaceApiDeps,
 ): Promise<AgentRunResponse> {
-  const { getApiConfigFn, x402Executor } = withDeps(deps);
+  const { getApiClientFn, getApiConfigFn, x402Executor } = withDeps(deps);
+  // Ensure API key is validated (and rotated if needed) before the paid run.
+  await getApiClientFn();
   const config = await getApiConfigFn();
   const baseUrl = config.url.replace(/\/$/, '');
   if (!config.key) {
@@ -191,39 +210,157 @@ export async function executeMarketplacePaidRun(
         execute: input.execute ?? true,
         token: input.token,
         minAmount: input.minAmount,
+        ...(input.spend_authorization
+          ? { spend_authorization: input.spend_authorization }
+          : {}),
       }),
     },
     {
       tongoAddress: input.payerTongoAddress,
       proofProvider: new TongoEnvelopeProofProvider(
-        ({ challenge, tongoAddress, amount, replayKey, nonce, intentHash }) =>
-          createX402TongoProofEnvelope({
+        async ({ challenge, tongoAddress, amount, replayKey, nonce, intentHash }) => {
+          const paymentExecution = input.x402PaymentExecutor
+            ? await input.x402PaymentExecutor({
+                challenge,
+                tongoAddress,
+                amount,
+                replayKey,
+                nonce,
+                intentHash,
+              })
+            : null;
+
+          const settlementTxHash =
+            paymentExecution?.settlementTxHash || input.settlementTxHash;
+          if (!settlementTxHash) {
+            throw new Error(
+              'Missing x402 settlement tx hash. Provide x402PaymentExecutor or settlementTxHash.',
+            );
+          }
+
+          return createX402TongoProofEnvelope({
             challenge,
             tongoAddress,
             amount,
             replayKey,
             nonce,
-            settlementTxHash:
-              input.settlementTxHash ||
-              fallbackSettlementTxHash(`${intentHash}:${replayKey}`),
-            attestor: 'cloak-mobile',
-            signature: input.proof,
+            settlementTxHash,
+            attestor: paymentExecution?.attestor || 'cloak-mobile',
+            signature: paymentExecution?.signature || input.proof,
+            tongoProof: paymentExecution?.tongoProof || input.tongoProof,
             metadata: {
               source: 'mobile-marketplace',
+              ...(paymentExecution?.metadata || {}),
             },
-          }),
+          });
+        },
       ),
     },
   );
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const reasonCode =
+      typeof payload?.reasonCode === 'string'
+        ? payload.reasonCode
+        : typeof payload?.code === 'string'
+          ? payload.code
+          : null;
+    const status =
+      typeof payload?.status === 'string' ? payload.status : null;
+    const details =
+      typeof payload?.details === 'string' ? payload.details : null;
+    const structuredMessage =
+      [status, reasonCode, details].filter(Boolean).join(' · ') || null;
     throw new Error(
       typeof payload?.error === 'string'
         ? payload.error
+        : structuredMessage
+          ? `Marketplace paid run failed (${response.status}): ${structuredMessage}`
         : `Marketplace paid run failed (${response.status})`,
     );
   }
 
   return payload as AgentRunResponse;
+}
+
+export async function createMarketplaceDelegation(
+  input: {
+    agent_id: string;
+    agent_type: string;
+    allowed_actions: string[];
+    token: string;
+    max_per_run: string;
+    total_allowance: string;
+    valid_from: string;
+    valid_until: string;
+    onchain_tx_hash?: string;
+    onchain_delegation_id?: string;
+    delegation_contract?: string;
+  },
+  deps?: MarketplaceApiDeps,
+): Promise<DelegationResponse> {
+  const { getApiConfigFn } = withDeps(deps);
+  const config = await getApiConfigFn();
+  const baseUrl = config.url.replace(/\/$/, '');
+  const res = await fetch(`${baseUrl}/api/v1/marketplace/delegations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': config.key },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`createDelegation ${res.status}`);
+  return res.json();
+}
+
+export async function listMarketplaceDelegations(
+  params?: { agent_id?: string },
+  deps?: MarketplaceApiDeps,
+): Promise<DelegationResponse[]> {
+  const { getApiConfigFn } = withDeps(deps);
+  const config = await getApiConfigFn();
+  const baseUrl = config.url.replace(/\/$/, '');
+  const qs = params?.agent_id ? `?agent_id=${params.agent_id}` : '';
+  const res = await fetch(`${baseUrl}/api/v1/marketplace/delegations${qs}`, {
+    headers: { 'X-API-Key': config.key },
+  });
+  if (!res.ok) throw new Error(`listDelegations ${res.status}`);
+  const body = await res.json();
+  return body.delegations ?? body;
+}
+
+export async function revokeMarketplaceDelegation(
+  delegationId: string,
+  deps?: MarketplaceApiDeps,
+): Promise<DelegationResponse> {
+  const { getApiConfigFn } = withDeps(deps);
+  const config = await getApiConfigFn();
+  const baseUrl = config.url.replace(/\/$/, '');
+  const res = await fetch(
+    `${baseUrl}/api/v1/marketplace/delegations/${delegationId}/revoke`,
+    {
+      method: 'POST',
+      headers: { 'X-API-Key': config.key },
+    },
+  );
+  if (!res.ok) throw new Error(`revokeDelegation ${res.status}`);
+  return res.json();
+}
+
+export async function getMarketplaceLeaderboard(
+  params?: { period?: string; agent_type?: string; limit?: number },
+  deps?: MarketplaceApiDeps,
+): Promise<LeaderboardResponse> {
+  const { getApiConfigFn } = withDeps(deps);
+  const config = await getApiConfigFn();
+  const baseUrl = config.url.replace(/\/$/, '');
+  const qs = new URLSearchParams();
+  if (params?.period) qs.set('period', params.period);
+  if (params?.agent_type) qs.set('agent_type', params.agent_type);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const res = await fetch(`${baseUrl}/api/v1/marketplace/leaderboard${suffix}`, {
+    headers: { 'X-API-Key': config.key },
+  });
+  if (!res.ok) throw new Error(`getLeaderboard ${res.status}`);
+  return res.json();
 }

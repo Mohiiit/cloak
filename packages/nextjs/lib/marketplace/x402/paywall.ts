@@ -16,6 +16,8 @@ const DEFAULT_MAX_HEADER_BYTES = 32 * 1024;
 
 export interface ShieldedPaywallOptions {
   recipient: string;
+  /** Base58 Tongo address for shielded transfer payments. */
+  tongoRecipient?: string;
   token?: string;
   minAmount?: string;
   ttlSeconds?: number;
@@ -48,39 +50,56 @@ export async function shieldedPaywall(
   req: NextRequest,
   options: ShieldedPaywallOptions & {
     allowPendingSettlement?: boolean;
+    /** Pre-parsed x402 data from the request body (avoids header size limits). */
+    x402Body?: {
+      challenge: Record<string, unknown>;
+      payment: Record<string, unknown>;
+    };
   },
 ): Promise<ShieldedPaywallResult | ShieldedPaywallPendingResult | NextResponse> {
   const traceId = createTraceId("x402-paywall");
   const facilitator = options.facilitator ?? new X402Facilitator();
-  const paymentHeader = req.headers.get(PAYMENT_HEADER);
-  const challengeHeader = req.headers.get(CHALLENGE_HEADER);
+  // Support x402 data in body (for large ZK proofs that exceed header limits)
+  // or fall back to reading from headers.
+  const paymentHeader = options.x402Body
+    ? JSON.stringify(options.x402Body.payment)
+    : req.headers.get(PAYMENT_HEADER);
+  const challengeHeader = options.x402Body
+    ? JSON.stringify(options.x402Body.challenge)
+    : req.headers.get(CHALLENGE_HEADER);
   const maxHeaderBytes = parsePositiveInt(
     process.env.X402_MAX_HEADER_BYTES,
     DEFAULT_MAX_HEADER_BYTES,
   );
 
-  if (paymentHeader && paymentHeader.length > maxHeaderBytes) {
-    return NextResponse.json(
-      {
-        error: "x402 payment header too large",
-        code: "INVALID_PAYLOAD",
-      },
-      { status: 413 },
-    );
-  }
-  if (challengeHeader && challengeHeader.length > maxHeaderBytes) {
-    return NextResponse.json(
-      {
-        error: "x402 challenge header too large",
-        code: "INVALID_PAYLOAD",
-      },
-      { status: 413 },
-    );
+  // Only enforce header size limits when the data actually came from HTTP
+  // headers. Body-based x402 data (`options.x402Body`) bypasses header limits
+  // — that's the whole reason the SDK sends large ZK proofs in the body.
+  if (!options.x402Body) {
+    if (paymentHeader && paymentHeader.length > maxHeaderBytes) {
+      return NextResponse.json(
+        {
+          error: "x402 payment header too large",
+          code: "INVALID_PAYLOAD",
+        },
+        { status: 413 },
+      );
+    }
+    if (challengeHeader && challengeHeader.length > maxHeaderBytes) {
+      return NextResponse.json(
+        {
+          error: "x402 challenge header too large",
+          code: "INVALID_PAYLOAD",
+        },
+        { status: 413 },
+      );
+    }
   }
 
   if (!paymentHeader) {
     const challenge = buildChallenge({
       recipient: options.recipient,
+      tongoRecipient: options.tongoRecipient,
       token: options.token,
       minAmount: options.minAmount,
       ttlSeconds: options.ttlSeconds,

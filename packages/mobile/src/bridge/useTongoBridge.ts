@@ -9,6 +9,7 @@ import { DEFAULT_RPC } from "@cloak-wallet/sdk";
 import type {
   BridgeClient,
   BridgeInitParams,
+  BridgeX402PaymentResult,
   TongoState,
 } from "../testing/interfaces/BridgeClient";
 
@@ -165,6 +166,21 @@ class LiveBridgeClient implements BridgeClient {
     return this.sendWithRetry<{ calls: any[] }>("prepareRollover", { sender });
   }
 
+  async x402Pay(
+    amount: string,
+    recipient: string,
+    sender: string,
+    recipientBase58?: string,
+  ): Promise<BridgeX402PaymentResult> {
+    console.warn(`[TongoBridge] x402Pay — amount="${amount}", mode=${recipientBase58 ? "transfer" : "withdraw"}, sender="${sender?.slice(0,12)}…"`);
+    return this.sendWithRetry<BridgeX402PaymentResult>("x402Pay", {
+      amount,
+      recipientBase58,
+      recipient,
+      sender,
+    });
+  }
+
   async switchToken(tongoPrivateKey: string, token: string): Promise<any> {
     const result = await this.sendWithRetry<any>("switchToken", { tongoPrivateKey, token });
     if (this.initParams) {
@@ -315,6 +331,13 @@ export function useTongoBridge() {
     [requireClient],
   );
 
+  const x402Pay = useCallback(
+    async (amount: string, recipient: string, sender: string, recipientBase58?: string) => {
+      return requireClient().x402Pay(amount, recipient, sender, recipientBase58);
+    },
+    [requireClient],
+  );
+
   const switchToken = useCallback(
     async (tongoPrivateKey: string, token: string) => {
       return requireClient().switchToken(tongoPrivateKey, token);
@@ -370,6 +393,7 @@ export function useTongoBridge() {
     prepareTransfer,
     prepareWithdraw,
     prepareRollover,
+    x402Pay,
     switchToken,
     generateKeypair,
     derivePublicKey,

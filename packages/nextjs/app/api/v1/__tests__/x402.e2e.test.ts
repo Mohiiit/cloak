@@ -8,6 +8,10 @@ import {
   createShieldedPaymentPayload,
   x402Fetch,
 } from "../../../../../sdk/src/x402";
+import {
+  createWithdrawProofBundle,
+  ensureX402FacilitatorSecretForTests,
+} from "~~/lib/marketplace/x402/test-helpers";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -47,6 +51,8 @@ async function routeFetch(input: RequestInfo | URL, init?: RequestInit): Promise
 
 describe("x402 e2e", () => {
   it("creates a billable run via SDK x402 retry flow", async () => {
+    ensureX402FacilitatorSecretForTests();
+    process.env.X402_VERIFY_ONCHAIN_SETTLEMENT = "false";
     const runBody = {
       hire_id: "hire_e2e_1",
       agent_id: "staking_steward",
@@ -77,6 +83,10 @@ describe("x402 e2e", () => {
             nonce,
             settlementTxHash: "0x1234",
             attestor: "test-suite",
+            tongoProof: createWithdrawProofBundle(
+              challenge.recipient,
+              challenge.minAmount,
+            ),
           });
           return createShieldedPaymentPayload(challenge, {
             tongoAddress: "tongo1payer",

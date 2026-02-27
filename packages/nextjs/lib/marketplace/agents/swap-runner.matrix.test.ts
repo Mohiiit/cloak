@@ -1,7 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swapRunnerRuntime } from "./swap-runner";
 
 describe("swap runner full matrix", () => {
+  beforeEach(() => {
+    process.env.STARKZAP_EXECUTOR_URL = "https://starkzap.test/execute";
+    process.env.MARKETPLACE_RUNTIME_PROTOCOL = "starkzap";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          tx_hashes: ["0xswap-matrix"],
+          receipt: { upstream: true },
+        }),
+        { status: 200 },
+      ),
+    );
+  });
+
+  afterEach(() => {
+    delete process.env.STARKZAP_EXECUTOR_URL;
+    delete process.env.MARKETPLACE_RUNTIME_PROTOCOL;
+    vi.restoreAllMocks();
+  });
+
   it("supports swap action", async () => {
     const result = await swapRunnerRuntime.execute({
       agentType: "swap_runner",
@@ -23,6 +43,25 @@ describe("swap runner full matrix", () => {
       action: "dca_tick",
       params: {
         strategy_id: "strat_1",
+      },
+      operatorWallet: "0xabc",
+      serviceWallet: "0xdef",
+    });
+    expect(result.status).toBe("completed");
+  });
+
+  it("supports explicit calls payload for swap", async () => {
+    const result = await swapRunnerRuntime.execute({
+      agentType: "swap_runner",
+      action: "swap",
+      params: {
+        calls: [
+          {
+            contractAddress: "0x1",
+            entrypoint: "swap",
+            calldata: ["0x1", "0x2", "0x3"],
+          },
+        ],
       },
       operatorWallet: "0xabc",
       serviceWallet: "0xdef",
@@ -52,4 +91,3 @@ describe("swap runner full matrix", () => {
     expect(result.status).toBe("failed");
   });
 });
-

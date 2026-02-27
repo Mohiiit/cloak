@@ -18,6 +18,8 @@ import {
 } from "~~/lib/marketplace/agents-repo";
 import { adaptAgentProfileWithRegistry } from "~~/lib/marketplace/profile-adapter";
 import { incrementRegistryMetric } from "~~/lib/marketplace/registry-metrics";
+import { checkAgentOnchainIdentity } from "~~/lib/marketplace/onchain-identity";
+import { reconcilePendingAgentRegistrationWrite } from "~~/lib/marketplace/onchain-registration";
 
 export const runtime = "nodejs";
 
@@ -33,11 +35,23 @@ export async function GET(
     const refreshOnchain = req.nextUrl.searchParams.get("refresh_onchain") === "true";
     if (!refreshOnchain) return NextResponse.json(profile);
     incrementRegistryMetric("onchain_refreshes");
+    const writeOutcome = await reconcilePendingAgentRegistrationWrite({
+      status: profile.onchain_write_status,
+      txHash: profile.onchain_write_tx_hash,
+    });
+    const maybeUpdatedProfile = writeOutcome
+      ? ((await updateAgentProfileRecord(agentId, {
+          onchain_write_status: writeOutcome.status,
+          onchain_write_tx_hash: writeOutcome.txHash,
+          onchain_write_reason: writeOutcome.reason,
+          onchain_write_checked_at: writeOutcome.checkedAt,
+        })) ?? profile)
+      : profile;
     try {
-      const adapted = await adaptAgentProfileWithRegistry(profile);
+      const adapted = await adaptAgentProfileWithRegistry(maybeUpdatedProfile);
       return NextResponse.json(adapted);
     } catch {
-      return NextResponse.json(profile);
+      return NextResponse.json(maybeUpdatedProfile);
     }
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
@@ -63,6 +77,20 @@ export async function PATCH(
     const patch = validate(UpdateAgentProfileSchema, body);
     if (Object.keys(patch).length === 0) {
       return badRequest("At least one updatable field is required");
+    }
+    const onchainIdentity = await checkAgentOnchainIdentity({
+      agentId,
+      operatorWallet: profile.operator_wallet,
+    });
+    if (onchainIdentity.enforced && onchainIdentity.status === "mismatch") {
+      return NextResponse.json(
+        {
+          error: "On-chain identity mismatch",
+          code: "ONCHAIN_IDENTITY_MISMATCH",
+          details: onchainIdentity.reason,
+        },
+        { status: 409 },
+      );
     }
 
     const updated = await updateAgentProfileRecord(agentId, patch);

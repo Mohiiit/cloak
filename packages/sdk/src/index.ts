@@ -94,6 +94,8 @@ export type {
 export {
   DEFAULT_RPC,
   CLOAK_WARD_CLASS_HASH,
+  CLOAK_DELEGATION_CLASS_HASH,
+  CLOAK_DELEGATION_ADDRESS,
   STRK_ADDRESS,
 } from "./config";
 
@@ -181,14 +183,23 @@ export type { StarknetProfile, StarknetIdClientOptions } from "./starknet-id";
 // ERC-8004 registry helpers
 export {
   ERC8004Client,
+  ERC8004ClientError,
+  ERC8004WriteNotConfiguredError,
+  ERC8004TransactionTimeoutError,
   ERC8004_REGISTRIES,
   getERC8004Registries,
   getERC8004RegistryAddress,
 } from "./erc8004";
 export type {
+  ERC8004CalldataValue,
   ERC8004RegistryType,
   ERC8004RegistrySet,
+  ERC8004ProviderLike,
+  ERC8004AccountLike,
   ERC8004ClientOptions,
+  ERC8004InvokeResult,
+  ERC8004WaitOptions,
+  ERC8004WriteInput,
 } from "./erc8004";
 export {
   buildEndpointOwnershipDigest,
@@ -197,15 +208,20 @@ export {
 export {
   MarketplaceClient,
   createMarketplaceClient,
+  buildCreateDelegationCalls,
+  buildRevokeDelegationCall,
 } from "./marketplace";
 export type {
   MarketplaceClientOptions,
   UpdateAgentProfileInput,
   UpdateHireInput,
+  DelegationCallInput,
+  DelegationCall,
 } from "./marketplace";
 export type {
   AgentType,
   AgentProfileStatus,
+  AgentOnchainStatus,
   AgentHireStatus,
   AgentEndpointOwnershipProof,
   RegisterAgentRequest,
@@ -218,6 +234,14 @@ export type {
   WardApprovalStatusSnapshot,
   X402ChallengeResponse,
   X402PaymentPayloadRequest,
+  DelegationStatus,
+  CreateDelegationRequest,
+  DelegationResponse,
+  SpendAuthorization,
+  SpendAuthorizationEvidence,
+  LeaderboardPeriod,
+  LeaderboardEntry,
+  LeaderboardResponse,
 } from "./types/api";
 export {
   createMarketplaceSession,
@@ -260,6 +284,8 @@ export type {
   X402Scheme,
   X402ErrorCode,
   X402TongoProofType,
+  X402TongoProofOperation,
+  X402TongoProofBundle,
   X402TongoProofEnvelope,
   X402IntentHashInput,
   CreateX402TongoProofEnvelopeInput,

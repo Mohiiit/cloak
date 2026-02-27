@@ -14,22 +14,12 @@ describe("starkzap adapter", () => {
   afterEach(() => {
     delete process.env.STARKZAP_EXECUTOR_URL;
     delete process.env.STARKZAP_EXECUTOR_API_KEY;
-    delete process.env.STARKZAP_ALLOW_SIMULATED_EXECUTION;
-    delete process.env.MARKETPLACE_STRICT_ONCHAIN_EXECUTION;
     vi.restoreAllMocks();
   });
 
-  it("falls back to deterministic simulated tx hash by default", async () => {
-    const result = await executeWithStarkZap(baseInput);
-    expect(result.txHashes.length).toBe(1);
-    expect(result.receipt.simulated).toBe(true);
-  });
-
-  it("throws when strict mode is enabled without executor URL", async () => {
-    process.env.MARKETPLACE_STRICT_ONCHAIN_EXECUTION = "true";
-    process.env.STARKZAP_ALLOW_SIMULATED_EXECUTION = "false";
+  it("throws when executor URL is missing", async () => {
     await expect(executeWithStarkZap(baseInput)).rejects.toThrow(
-      /executor URL is required/i,
+      /STARKZAP_EXECUTOR_URL is required/i,
     );
   });
 
@@ -53,16 +43,35 @@ describe("starkzap adapter", () => {
     expect(result.receipt.simulated).toBe(false);
   });
 
-  it("falls back to simulated when executor fails and fallback is enabled", async () => {
+  it("throws when executor fails", async () => {
     process.env.STARKZAP_EXECUTOR_URL = "https://starkzap.test/execute";
-    process.env.STARKZAP_ALLOW_SIMULATED_EXECUTION = "true";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("boom", { status: 502 }),
     );
 
-    const result = await executeWithStarkZap(baseInput);
-    expect(result.txHashes.length).toBe(1);
-    expect(result.receipt.simulated).toBe(true);
-    expect(result.receipt.fallback_reason).toBeTruthy();
+    await expect(executeWithStarkZap(baseInput)).rejects.toThrow(
+      /starkzap executor failed: 502/i,
+    );
+  });
+
+  it("surfaces rpc-style error responses clearly", async () => {
+    process.env.STARKZAP_EXECUTOR_URL = "https://starkzap.test/rpc";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          error: {
+            code: -32600,
+            message: "Invalid request",
+          },
+          id: null,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(executeWithStarkZap(baseInput)).rejects.toThrow(
+      /starkzap executor returned rpc error: Invalid request/i,
+    );
   });
 });

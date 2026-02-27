@@ -1,6 +1,13 @@
 function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value === "") return defaultValue;
-  const normalized = value.trim().toLowerCase();
+  const normalized = value
+    .replace(/\\r/gi, "")
+    .replace(/\\n/gi, "")
+    .replace(/\r/g, "")
+    .replace(/\n/g, "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return defaultValue;
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return defaultValue;
@@ -13,6 +20,9 @@ export interface MarketplaceFeatureFlags {
   extensionEnabled: boolean;
   operatorScopedRuns: boolean;
   requireBillableRuns: boolean;
+  delegationEnabled: boolean;
+  spendAuthRequired: boolean;
+  leaderboardEnabled: boolean;
 }
 
 export function getMarketplaceFeatureFlags(
@@ -31,5 +41,11 @@ export function getMarketplaceFeatureFlags(
       parseBoolean(env.CLOAK_MARKETPLACE_RUNS_OPERATOR_SCOPING, true),
     requireBillableRuns:
       marketplaceEnabled && parseBoolean(env.CLOAK_MARKETPLACE_REQUIRE_BILLABLE, true),
+    delegationEnabled:
+      marketplaceEnabled && parseBoolean(env.ERC8004_DELEGATION_ENABLED, false),
+    spendAuthRequired:
+      marketplaceEnabled && parseBoolean(env.ERC8004_SPEND_AUTH_REQUIRED, false),
+    leaderboardEnabled:
+      marketplaceEnabled && parseBoolean(env.MARKETPLACE_LEADERBOARD_ENABLED, false),
   };
 }

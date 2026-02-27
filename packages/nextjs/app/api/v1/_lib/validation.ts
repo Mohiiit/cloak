@@ -12,6 +12,9 @@ import { badRequest } from "./errors";
 
 /** Hex string starting with 0x (any length). */
 const hexString = z.string().regex(/^0x[0-9a-fA-F]+$/, "Must be a hex string starting with 0x");
+const hexOrDecimalString = z
+  .string()
+  .regex(/^(0x[0-9a-fA-F]+|[0-9]+)$/, "Must be a 0x hex or decimal numeric string");
 
 /** Non-empty string. */
 const nonEmpty = z.string().min(1, "Must not be empty");
@@ -304,6 +307,7 @@ export const X402ChallengeSchema = z.object({
   token: nonEmpty,
   minAmount: nonEmpty,
   recipient: hexString,
+  tongoRecipient: z.string().optional(),
   contextHash: z.string().min(16),
   expiresAt: isoDatetime,
   facilitator: z.string().url("Must be a valid URL"),
@@ -363,6 +367,12 @@ export const RegisterAgentSchema = z.object({
   trust_score: z.number().min(0).max(100).optional(),
   verified: z.boolean().optional(),
   status: AgentProfileStatusEnum.optional(),
+  onchain_write: z.object({
+    entrypoint: nonEmpty.optional(),
+    calldata: z.array(hexOrDecimalString).min(1).optional(),
+    wait_for_confirmation: z.boolean().optional(),
+    timeout_ms: z.number().int().positive().max(300_000).optional(),
+  }).optional(),
 });
 
 export const DiscoverAgentsQuerySchema = z.object({

@@ -1,7 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Search, ShieldCheck, Sparkles, Trophy, Users, X } from "lucide-react";
+import {
+  CLOAK_DELEGATION_ADDRESS,
+  STRK_ADDRESS,
+  buildCreateDelegationCalls,
+  buildRevokeDelegationCall,
+} from "@cloak-wallet/sdk";
 import { getApiConfig } from "../../shared/api-config";
+import { sendMessage } from "../../shared/messages";
 import { Header } from "./ShieldForm";
+
+// Token address map for on-chain delegation calls
+const TOKEN_ERC20_ADDRESS: Record<string, string> = {
+  STRK: STRK_ADDRESS,
+  ETH: "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+  USDC: "0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080",
+};
 
 interface Props {
   onBack: () => void;
@@ -26,56 +40,38 @@ type RunCard = {
   execution_tx_hashes?: string[] | null;
 };
 
-const CAPABILITIES = ["", "stake", "dispatch", "swap", "x402_shielded"] as const;
-
-function randomRef(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
-}
-
-function hashHex(input: string): string {
-  let h1 = 0x811c9dc5;
-  let h2 = 0x811c9dc5;
-  for (let i = 0; i < input.length; i += 1) {
-    const c = input.charCodeAt(i);
-    h1 ^= c;
-    h1 = Math.imul(h1, 0x01000193);
-    h2 ^= c;
-    h2 = Math.imul(h2, 0x27d4eb2d);
-  }
-  const part1 = (h1 >>> 0).toString(16).padStart(8, "0");
-  const part2 = (h2 >>> 0).toString(16).padStart(8, "0");
-  return `${part1}${part2}${part1}${part2}${part1}${part2}${part1}${part2}`;
-}
-
-function fallbackSettlementTxHash(seed: string): string {
-  return `0x${hashHex(seed).slice(0, 62)}`;
-}
-
-function computeIntentHash(input: {
-  challengeId: string;
-  contextHash: string;
-  recipient: string;
+type DelegationCard = {
+  id: string;
+  agent_id: string;
   token: string;
-  tongoAddress: string;
-  amount: string;
-  replayKey: string;
-  nonce: string;
-  expiresAt: string;
-}): string {
-  return hashHex(
-    JSON.stringify({
-      amount: input.amount,
-      challengeId: input.challengeId,
-      contextHash: input.contextHash,
-      expiresAt: input.expiresAt,
-      nonce: input.nonce,
-      recipient: input.recipient.toLowerCase(),
-      replayKey: input.replayKey,
-      tongoAddress: input.tongoAddress,
-      token: input.token,
-    }),
-  );
+  max_per_run: string;
+  total_allowance: string;
+  consumed_amount: string;
+  remaining_allowance: string;
+  status: string;
+  valid_until: string;
+  created_at: string;
+};
+
+type LeaderboardEntry = {
+  agent_id: string;
+  name: string;
+  work_score: number;
+  successful_runs: number;
+  success_rate: number;
+  trust_score: number;
+};
+
+function durationToMs(d: "1h" | "24h" | "7d" | "30d"): number {
+  const map = { "1h": 3600000, "24h": 86400000, "7d": 604800000, "30d": 2592000000 };
+  return map[d];
 }
+
+const DURATION_OPTIONS = ["1h", "24h", "7d", "30d"] as const;
+const TOKEN_OPTIONS = ["STRK", "ETH", "USDC"] as const;
+const LB_PERIODS = ["24h", "7d", "30d"] as const;
+
+const CAPABILITIES = ["", "stake", "dispatch", "swap", "x402_shielded"] as const;
 
 async function postRunWithX402(input: {
   baseUrl: string;
@@ -109,52 +105,9 @@ async function postRunWithX402(input: {
     contextHash: string;
     expiresAt: string;
   };
-
-  const paymentPayload = {
-    version: "1",
-    scheme: "cloak-shielded-x402",
-    challengeId: challenge.challengeId,
-    tongoAddress: input.payerTongoAddress,
-    token: challenge.token,
-    amount: challenge.minAmount,
-    proof: "",
-    replayKey: randomRef("rk"),
-    contextHash: challenge.contextHash,
-    expiresAt: challenge.expiresAt,
-    nonce: randomRef("nonce"),
-    createdAt: new Date().toISOString(),
-  };
-  const intentHash = computeIntentHash({
-    challengeId: challenge.challengeId,
-    contextHash: challenge.contextHash,
-    recipient: challenge.recipient || "0x0",
-    token: challenge.token,
-    tongoAddress: paymentPayload.tongoAddress,
-    amount: paymentPayload.amount,
-    replayKey: paymentPayload.replayKey,
-    nonce: paymentPayload.nonce,
-    expiresAt: challenge.expiresAt,
-  });
-  paymentPayload.proof = JSON.stringify({
-    envelopeVersion: "1",
-    proofType: "tongo_attestation_v1",
-    intentHash,
-    settlementTxHash: fallbackSettlementTxHash(
-      `${intentHash}:${paymentPayload.replayKey}`,
-    ),
-    attestor: "cloak-extension",
-    issuedAt: new Date().toISOString(),
-  });
-
-  return fetch(`${input.baseUrl}/api/v1/marketplace/runs`, {
-    method: "POST",
-    headers: {
-      ...baseHeaders,
-      "x-x402-challenge": rawChallenge,
-      "x-x402-payment": JSON.stringify(paymentPayload),
-    },
-    body: JSON.stringify(input.body),
-  });
+  throw new Error(
+    `x402 payment requires a real Tongo proof bundle + settlement tx hash for challenge ${challenge.challengeId}; synthetic extension fallback proofs are disabled`,
+  );
 }
 
 export function MarketplaceScreen({ onBack }: Props) {
@@ -191,6 +144,23 @@ export function MarketplaceScreen({ onBack }: Props) {
     ),
   );
   const [lastRunByAgent, setLastRunByAgent] = useState<Record<string, RunCard>>({});
+
+  // Delegation state
+  const [delegationsOpen, setDelegationsOpen] = useState(false);
+  const [delegations, setDelegations] = useState<DelegationCard[]>([]);
+  const [dlgAgentId, setDlgAgentId] = useState("");
+  const [dlgToken, setDlgToken] = useState<(typeof TOKEN_OPTIONS)[number]>("STRK");
+  const [dlgMaxPerRun, setDlgMaxPerRun] = useState("");
+  const [dlgTotalAllowance, setDlgTotalAllowance] = useState("");
+  const [dlgDuration, setDlgDuration] = useState<(typeof DURATION_OPTIONS)[number]>("24h");
+  const [creatingDlg, setCreatingDlg] = useState(false);
+  const [loadingDlg, setLoadingDlg] = useState(false);
+
+  // Leaderboard state
+  const [lbOpen, setLbOpen] = useState(false);
+  const [lbEntries, setLbEntries] = useState<LeaderboardEntry[]>([]);
+  const [lbPeriod, setLbPeriod] = useState<(typeof LB_PERIODS)[number]>("7d");
+  const [loadingLb, setLoadingLb] = useState(false);
 
   const filteredAgents = useMemo(() => {
     const query = searchText.trim().toLowerCase();
@@ -229,9 +199,162 @@ export function MarketplaceScreen({ onBack }: Props) {
     }
   }, [capability]);
 
+  const fetchDelegations = useCallback(async () => {
+    setLoadingDlg(true);
+    try {
+      const cfg = await getApiConfig();
+      const res = await fetch(`${cfg.url.replace(/\/$/, "")}/api/v1/marketplace/delegations`, {
+        headers: { "Content-Type": "application/json", "X-API-Key": cfg.key },
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Failed to load delegations (${res.status})`);
+      setDelegations((payload?.delegations || payload || []) as DelegationCard[]);
+    } catch (err: any) {
+      setDelegations([]);
+      setError(err?.message || "Failed to load delegations");
+    } finally {
+      setLoadingDlg(false);
+    }
+  }, []);
+
+  const createDelegation = useCallback(async () => {
+    if (!dlgAgentId.trim() || !dlgMaxPerRun.trim() || !dlgTotalAllowance.trim()) {
+      setError("Fill in agent ID, max per run, and total allowance");
+      return;
+    }
+    setCreatingDlg(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const cfg = await getApiConfig();
+      const now = new Date();
+      const validFrom = Math.floor(now.getTime() / 1000);
+      const validUntil = Math.floor((now.getTime() + durationToMs(dlgDuration)) / 1000);
+
+      // Attempt on-chain delegation creation if the contract is deployed
+      let onchainTxHash: string | undefined;
+      if (CLOAK_DELEGATION_ADDRESS !== "0x0") {
+        try {
+          const tokenAddress = TOKEN_ERC20_ADDRESS[dlgToken] || STRK_ADDRESS;
+          const calls = buildCreateDelegationCalls({
+            delegationContract: CLOAK_DELEGATION_ADDRESS,
+            tokenAddress,
+            totalAllowance: dlgTotalAllowance.trim(),
+            operator: dlgAgentId.trim(), // agent's operator address
+            agentId: dlgAgentId.trim(),
+            maxPerRun: dlgMaxPerRun.trim(),
+            validFrom,
+            validUntil,
+          });
+          const result = await sendMessage({
+            type: "EXECUTE_DELEGATION_CALLS",
+            calls,
+            action: "create_delegation",
+          });
+          onchainTxHash = result?.txHash as string | undefined;
+        } catch (onchainErr: any) {
+          // On-chain step failed — surface error and abort so we don't create an orphaned DB record
+          throw new Error(`On-chain delegation tx failed: ${onchainErr?.message || String(onchainErr)}`);
+        }
+      }
+
+      const res = await fetch(`${cfg.url.replace(/\/$/, "")}/api/v1/marketplace/delegations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": cfg.key },
+        body: JSON.stringify({
+          agent_id: dlgAgentId.trim(),
+          token: dlgToken,
+          max_per_run: dlgMaxPerRun.trim(),
+          total_allowance: dlgTotalAllowance.trim(),
+          valid_from: now.toISOString(),
+          valid_until: new Date(validUntil * 1000).toISOString(),
+          ...(onchainTxHash ? { onchain_tx_hash: onchainTxHash } : {}),
+          ...(CLOAK_DELEGATION_ADDRESS !== "0x0" ? { delegation_contract: CLOAK_DELEGATION_ADDRESS } : {}),
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Failed to create delegation (${res.status})`);
+      setStatus(`Delegation created: ${payload.id || "ok"}`);
+      setDlgAgentId("");
+      setDlgMaxPerRun("");
+      setDlgTotalAllowance("");
+      void fetchDelegations();
+    } catch (err: any) {
+      setError(err?.message || "Failed to create delegation");
+    } finally {
+      setCreatingDlg(false);
+    }
+  }, [dlgAgentId, dlgToken, dlgMaxPerRun, dlgTotalAllowance, dlgDuration, fetchDelegations]);
+
+  const revokeDelegation = useCallback(async (id: string) => {
+    setError(null);
+    setStatus(null);
+    try {
+      // Attempt on-chain revocation if the contract is deployed
+      let onchainTxHash: string | undefined;
+      if (CLOAK_DELEGATION_ADDRESS !== "0x0") {
+        try {
+          const call = buildRevokeDelegationCall(CLOAK_DELEGATION_ADDRESS, id);
+          const result = await sendMessage({
+            type: "EXECUTE_DELEGATION_CALLS",
+            calls: [call],
+            action: "revoke_delegation",
+          });
+          onchainTxHash = result?.txHash as string | undefined;
+        } catch (onchainErr: any) {
+          // On-chain step failed — surface error and abort so the DB record stays consistent
+          throw new Error(`On-chain revoke tx failed: ${onchainErr?.message || String(onchainErr)}`);
+        }
+      }
+
+      const cfg = await getApiConfig();
+      const res = await fetch(`${cfg.url.replace(/\/$/, "")}/api/v1/marketplace/delegations/${id}/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": cfg.key },
+        body: JSON.stringify({
+          ...(onchainTxHash ? { onchain_tx_hash: onchainTxHash } : {}),
+          ...(CLOAK_DELEGATION_ADDRESS !== "0x0" ? { delegation_contract: CLOAK_DELEGATION_ADDRESS } : {}),
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Failed to revoke delegation (${res.status})`);
+      setStatus(`Delegation ${id.slice(0, 8)}... revoked`);
+      void fetchDelegations();
+    } catch (err: any) {
+      setError(err?.message || "Failed to revoke delegation");
+    }
+  }, [fetchDelegations]);
+
+  const fetchLeaderboard = useCallback(async () => {
+    setLoadingLb(true);
+    try {
+      const cfg = await getApiConfig();
+      const params = new URLSearchParams({ period: lbPeriod, limit: "5" });
+      const res = await fetch(`${cfg.url.replace(/\/$/, "")}/api/v1/marketplace/leaderboard?${params.toString()}`, {
+        headers: { "Content-Type": "application/json", "X-API-Key": cfg.key },
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Failed to load leaderboard (${res.status})`);
+      setLbEntries((payload?.entries || payload || []) as LeaderboardEntry[]);
+    } catch (err: any) {
+      setLbEntries([]);
+      setError(err?.message || "Failed to load leaderboard");
+    } finally {
+      setLoadingLb(false);
+    }
+  }, [lbPeriod]);
+
   useEffect(() => {
     void loadAgents();
   }, [loadAgents]);
+
+  useEffect(() => {
+    if (delegationsOpen) void fetchDelegations();
+  }, [delegationsOpen, fetchDelegations]);
+
+  useEffect(() => {
+    if (lbOpen) void fetchLeaderboard();
+  }, [lbOpen, fetchLeaderboard]);
 
   const createHire = useCallback(
     async (agent: AgentCard) => {
@@ -497,6 +620,208 @@ export function MarketplaceScreen({ onBack }: Props) {
               )}
             </div>
           ))
+        )}
+      </div>
+
+      {/* ── Delegations Section ── */}
+      <div className="rounded-xl border border-cloak-border bg-cloak-card mb-3">
+        <button
+          onClick={() => setDelegationsOpen(o => !o)}
+          className="w-full flex items-center justify-between p-3"
+        >
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-cloak-primary" />
+            <p className="text-sm font-semibold text-cloak-text">Delegations</p>
+          </div>
+          {delegationsOpen
+            ? <ChevronDown className="w-4 h-4 text-cloak-muted" />
+            : <ChevronRight className="w-4 h-4 text-cloak-muted" />}
+        </button>
+
+        {delegationsOpen && (
+          <div className="px-3 pb-3">
+            {/* Create delegation form */}
+            <div className="rounded-lg border border-cloak-border bg-cloak-input-bg p-2.5 mb-2">
+              <p className="text-[10px] text-cloak-muted uppercase tracking-wider mb-2">New delegation</p>
+              <input
+                value={dlgAgentId}
+                onChange={e => setDlgAgentId(e.target.value)}
+                className="w-full h-7 px-2 mb-1.5 rounded-md bg-cloak-bg border border-cloak-border text-[11px] text-cloak-text outline-none"
+                placeholder="Agent ID"
+              />
+              <div className="flex gap-1.5 mb-1.5">
+                {TOKEN_OPTIONS.map(t => {
+                  const selected = dlgToken === t;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setDlgToken(t)}
+                      className={`px-2 py-1 rounded-full border text-[10px] ${
+                        selected
+                          ? "border-cloak-primary text-cloak-primary bg-blue-500/10"
+                          : "border-cloak-border text-cloak-muted bg-cloak-bg"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1.5 mb-1.5">
+                <input
+                  value={dlgMaxPerRun}
+                  onChange={e => setDlgMaxPerRun(e.target.value)}
+                  className="flex-1 h-7 px-2 rounded-md bg-cloak-bg border border-cloak-border text-[11px] text-cloak-text outline-none"
+                  placeholder="Max per run"
+                />
+                <input
+                  value={dlgTotalAllowance}
+                  onChange={e => setDlgTotalAllowance(e.target.value)}
+                  className="flex-1 h-7 px-2 rounded-md bg-cloak-bg border border-cloak-border text-[11px] text-cloak-text outline-none"
+                  placeholder="Total allowance"
+                />
+              </div>
+              <div className="flex gap-1.5 mb-2">
+                {DURATION_OPTIONS.map(d => {
+                  const selected = dlgDuration === d;
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => setDlgDuration(d)}
+                      className={`px-2 py-1 rounded-full border text-[10px] ${
+                        selected
+                          ? "border-cloak-primary text-cloak-primary bg-blue-500/10"
+                          : "border-cloak-border text-cloak-muted bg-cloak-bg"
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => void createDelegation()}
+                disabled={creatingDlg}
+                className="w-full h-7 rounded-lg bg-cloak-primary hover:bg-cloak-primary-hover text-white text-[11px] font-medium disabled:opacity-50"
+              >
+                {creatingDlg ? "Creating..." : "Create"}
+              </button>
+            </div>
+
+            {/* Active delegations list */}
+            {loadingDlg ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-cloak-primary" />
+              </div>
+            ) : delegations.length === 0 ? (
+              <p className="text-[10px] text-cloak-muted text-center py-3">No delegations yet.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {delegations.map(dlg => (
+                  <div
+                    key={dlg.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-cloak-border bg-cloak-input-bg px-2 py-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-cloak-text font-mono truncate">
+                        {dlg.agent_id.length > 16
+                          ? `${dlg.agent_id.slice(0, 8)}...${dlg.agent_id.slice(-6)}`
+                          : dlg.agent_id}
+                      </p>
+                      <p className="text-[10px] text-cloak-muted">
+                        {dlg.token} &middot; {dlg.consumed_amount}/{dlg.total_allowance}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          dlg.status === "active" ? "bg-emerald-400" : "bg-red-400"
+                        }`}
+                      />
+                      <button
+                        onClick={() => void revokeDelegation(dlg.id)}
+                        className="p-1 rounded-md hover:bg-red-500/20"
+                        title="Revoke delegation"
+                      >
+                        <X className="w-3 h-3 text-red-400" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Leaderboard Section ── */}
+      <div className="rounded-xl border border-cloak-border bg-cloak-card mb-3">
+        <button
+          onClick={() => setLbOpen(o => !o)}
+          className="w-full flex items-center justify-between p-3"
+        >
+          <div className="flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-amber-400" />
+            <p className="text-sm font-semibold text-cloak-text">Leaderboard</p>
+          </div>
+          {lbOpen
+            ? <ChevronDown className="w-4 h-4 text-cloak-muted" />
+            : <ChevronRight className="w-4 h-4 text-cloak-muted" />}
+        </button>
+
+        {lbOpen && (
+          <div className="px-3 pb-3">
+            <div className="flex gap-1.5 mb-2">
+              {LB_PERIODS.map(p => {
+                const selected = lbPeriod === p;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setLbPeriod(p)}
+                    className={`px-2 py-1 rounded-full border text-[10px] ${
+                      selected
+                        ? "border-amber-400 text-amber-400 bg-amber-500/10"
+                        : "border-cloak-border text-cloak-muted bg-cloak-input-bg"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+
+            {loadingLb ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-cloak-primary" />
+              </div>
+            ) : lbEntries.length === 0 ? (
+              <p className="text-[10px] text-cloak-muted text-center py-3">No leaderboard data.</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {lbEntries.map((entry, idx) => (
+                  <div
+                    key={entry.agent_id}
+                    className="flex items-center gap-2 rounded-lg border border-cloak-border bg-cloak-input-bg px-2 py-1.5"
+                  >
+                    <span className="text-[11px] font-bold text-amber-400 w-5 text-center">
+                      #{idx + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-cloak-text font-medium truncate">
+                        {entry.name}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-cloak-muted">
+                      {entry.work_score} pts
+                    </span>
+                    <span className="text-[10px] text-cloak-muted">
+                      {entry.successful_runs} runs
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

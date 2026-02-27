@@ -12,6 +12,15 @@ interface StoredAgentProfile extends AgentProfileResponse {
   endpoint_proofs: RegisterAgentRequest["endpoint_proofs"];
 }
 
+interface UpsertAgentProfileOptions {
+  onchainWrite?: {
+    status: AgentProfileResponse["onchain_write_status"];
+    txHash: string | null;
+    reason: string | null;
+    checkedAt: string;
+  };
+}
+
 const inMemoryAgents = new Map<string, StoredAgentProfile>();
 
 function nowIso(): string {
@@ -47,9 +56,11 @@ export function hasAgentProfile(agentId: string): boolean {
 
 export function upsertAgentProfile(
   input: RegisterAgentRequest,
+  options: UpsertAgentProfileOptions = {},
 ): AgentProfileResponse {
   const existing = inMemoryAgents.get(input.agent_id);
   const timestamp = nowIso();
+  const onchainWrite = options.onchainWrite;
   const profile: StoredAgentProfile = {
     id: existing?.id || createProfileId(input.agent_id),
     agent_id: input.agent_id,
@@ -67,6 +78,10 @@ export function upsertAgentProfile(
     trust_summary: existing?.trust_summary ?? defaultTrustSummary(),
     verified: input.verified ?? existing?.verified ?? false,
     status: input.status ?? existing?.status ?? "active",
+    onchain_write_status: onchainWrite?.status ?? existing?.onchain_write_status,
+    onchain_write_tx_hash: onchainWrite?.txHash ?? existing?.onchain_write_tx_hash ?? null,
+    onchain_write_reason: onchainWrite?.reason ?? existing?.onchain_write_reason ?? null,
+    onchain_write_checked_at: onchainWrite?.checkedAt ?? existing?.onchain_write_checked_at ?? null,
     registry_version: "erc8004-v1",
     last_indexed_at: timestamp,
     created_at: existing?.created_at ?? timestamp,
@@ -88,6 +103,10 @@ export function updateAgentProfile(
     metadata_uri: string | null;
     status: AgentProfileStatus;
     trust_summary: AgentProfileResponse["trust_summary"];
+    onchain_write_status: AgentProfileResponse["onchain_write_status"];
+    onchain_write_tx_hash: string | null;
+    onchain_write_reason: string | null;
+    onchain_write_checked_at: string | null;
   }>,
 ): AgentProfileResponse | null {
   const existing = inMemoryAgents.get(agentId);
@@ -100,6 +119,11 @@ export function updateAgentProfile(
     metadata_uri: patch.metadata_uri ?? existing.metadata_uri,
     status: patch.status ?? existing.status,
     trust_summary: patch.trust_summary ?? existing.trust_summary,
+    onchain_write_status: patch.onchain_write_status ?? existing.onchain_write_status,
+    onchain_write_tx_hash: patch.onchain_write_tx_hash ?? existing.onchain_write_tx_hash ?? null,
+    onchain_write_reason: patch.onchain_write_reason ?? existing.onchain_write_reason ?? null,
+    onchain_write_checked_at:
+      patch.onchain_write_checked_at ?? existing.onchain_write_checked_at ?? null,
     last_indexed_at: nowIso(),
     updated_at: nowIso(),
   };

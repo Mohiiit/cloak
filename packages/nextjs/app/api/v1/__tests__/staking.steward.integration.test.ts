@@ -1,11 +1,12 @@
 // @vitest-environment node
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { clearAgentProfiles } from "~~/lib/marketplace/agents-store";
 import { clearHires } from "~~/lib/marketplace/hires-store";
 import { clearRateLimits } from "~~/lib/marketplace/rate-limit";
 import { buildEndpointOwnershipDigest } from "~~/lib/marketplace/endpoint-proof";
+import { createStrictX402Payment } from "~~/lib/marketplace/x402/test-helpers";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -21,6 +22,26 @@ import { POST as hiresPOST } from "../marketplace/hires/route";
 import { POST as runsPOST } from "../marketplace/runs/route";
 
 describe("staking steward listing + x402 integration", () => {
+  beforeEach(() => {
+    process.env.STARKZAP_EXECUTOR_URL = "https://starkzap.test/execute";
+    process.env.MARKETPLACE_RUNTIME_PROTOCOL = "starkzap";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          tx_hashes: ["0xstaking"],
+          receipt: { provider_receipt: true },
+        }),
+        { status: 200 },
+      ),
+    );
+  });
+
+  afterEach(() => {
+    delete process.env.STARKZAP_EXECUTOR_URL;
+    delete process.env.MARKETPLACE_RUNTIME_PROTOCOL;
+    vi.restoreAllMocks();
+  });
+
   it("discovers staking steward and runs paid stake execution", async () => {
     clearAgentProfiles();
     clearHires();
@@ -112,20 +133,12 @@ describe("staking steward listing + x402 integration", () => {
     const firstJson = await firstRes.json();
     const challenge = firstJson.challenge;
 
-    const payment = {
-      version: "1",
-      scheme: "cloak-shielded-x402",
-      challengeId: challenge.challengeId,
+    const payment = createStrictX402Payment(challenge, {
       tongoAddress: "tongo1payer",
-      token: challenge.token,
       amount: challenge.minAmount,
-      proof: "proof-staking",
       replayKey: "rk_staking_1",
-      contextHash: challenge.contextHash,
-      expiresAt: challenge.expiresAt,
       nonce: "nonce_staking_run_1",
-      createdAt: new Date().toISOString(),
-    };
+    });
 
     const paidReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
       method: "POST",
@@ -145,4 +158,3 @@ describe("staking steward listing + x402 integration", () => {
     expect(run.payment_ref).toBe("pay_rk_staking_1");
   });
 });
-

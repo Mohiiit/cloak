@@ -195,6 +195,7 @@ export const testIDs = {
   // Backward-compatible aliases for existing imports while migrating call-sites.
   navigation: {
     tabHome: "nav.tab.home.press",
+    tabMarketplace: "nav.tab.marketplace.press",
     tabAgent: "nav.tab.agent.press",
     tabActivity: "nav.tab.activity.press",
     tabSettings: "nav.tab.settings.press",

@@ -523,6 +523,19 @@ export type X402ErrorCode =
   | "TIMEOUT";
 
 export type X402TongoProofType = "tongo_attestation_v1";
+export type X402TongoProofOperation =
+  | "fund"
+  | "transfer"
+  | "withdraw"
+  | "ragequit"
+  | "rollover"
+  | "audit";
+
+export interface X402TongoProofBundle {
+  operation: X402TongoProofOperation;
+  inputs: unknown;
+  proof: unknown;
+}
 
 export interface X402TongoProofEnvelope {
   envelopeVersion: "1";
@@ -532,6 +545,7 @@ export interface X402TongoProofEnvelope {
   attestor?: string;
   issuedAt?: string;
   signature?: string;
+  tongoProof?: X402TongoProofBundle;
   metadata?: Record<string, unknown>;
 }
 
@@ -543,6 +557,8 @@ export interface X402ChallengeResponse {
   token: string;
   minAmount: string;
   recipient: string;
+  /** Base58 Tongo address for shielded transfer payments (if available). */
+  tongoRecipient?: string;
   contextHash: string;
   expiresAt: string;
   facilitator: string;
@@ -606,6 +622,16 @@ export type AgentType =
   | "swap_runner";
 export type AgentPricingMode = "per_run" | "subscription" | "success_fee";
 export type AgentProfileStatus = "active" | "paused" | "retired";
+export type AgentOnchainStatus =
+  | "skipped"
+  | "verified"
+  | "mismatch"
+  | "unknown";
+export type AgentOnchainWriteStatus =
+  | "skipped"
+  | "pending"
+  | "confirmed"
+  | "failed";
 
 export interface AgentEndpointOwnershipProof {
   endpoint: string;
@@ -618,6 +644,13 @@ export interface AgentTrustSummary {
   reputation_score: number;
   validation_score: number;
   freshness_seconds: number;
+}
+
+export interface AgentOnchainWriteRequest {
+  entrypoint?: string;
+  calldata?: string[];
+  wait_for_confirmation?: boolean;
+  timeout_ms?: number;
 }
 
 export interface RegisterAgentRequest {
@@ -641,6 +674,7 @@ export interface RegisterAgentRequest {
   trust_score?: number;
   verified?: boolean;
   status?: AgentProfileStatus;
+  onchain_write?: AgentOnchainWriteRequest;
 }
 
 export interface AgentProfileResponse {
@@ -661,6 +695,14 @@ export interface AgentProfileResponse {
   verified: boolean;
   status?: AgentProfileStatus;
   registry_version?: string;
+  onchain_status?: AgentOnchainStatus;
+  onchain_owner?: string | null;
+  onchain_reason?: string | null;
+  onchain_checked_at?: string | null;
+  onchain_write_status?: AgentOnchainWriteStatus;
+  onchain_write_tx_hash?: string | null;
+  onchain_write_reason?: string | null;
+  onchain_write_checked_at?: string | null;
   last_indexed_at?: string | null;
   created_at: string;
   updated_at: string | null;
@@ -697,6 +739,7 @@ export interface CreateAgentRunRequest {
   action: string;
   params: Record<string, unknown>;
   billable: boolean;
+  spend_authorization?: SpendAuthorization;
 }
 
 export interface AgentRunResponse {
@@ -724,8 +767,99 @@ export interface AgentRunResponse {
   agent_trust_snapshot?: AgentTrustSummary | null;
   execution_tx_hashes: string[] | null;
   result: Record<string, unknown> | null;
+  delegation_evidence?: SpendAuthorizationEvidence | null;
   created_at: string;
   updated_at: string | null;
+}
+
+// ─── Delegations ─────────────────────────────────────────────────────────────
+
+export type DelegationStatus = "active" | "revoked" | "expired";
+
+export interface CreateDelegationRequest {
+  agent_id: string;
+  agent_type: AgentType;
+  allowed_actions: string[];
+  token: string;
+  max_per_run: string;
+  total_allowance: string;
+  daily_cap?: string;
+  valid_from: string;
+  valid_until: string;
+  onchain_tx_hash?: string;
+  onchain_delegation_id?: string;
+  delegation_contract?: string;
+}
+
+export interface DelegationResponse {
+  id: string;
+  operator_wallet: string;
+  agent_id: string;
+  agent_type: AgentType;
+  allowed_actions: string[];
+  token: string;
+  max_per_run: string;
+  total_allowance: string;
+  daily_cap: string | null;
+  consumed_amount: string;
+  remaining_allowance: string;
+  nonce: number;
+  valid_from: string;
+  valid_until: string;
+  status: DelegationStatus;
+  onchain_tx_hash: string | null;
+  onchain_delegation_id: string | null;
+  escrow_tx_hash: string | null;
+  delegation_contract: string | null;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export interface SpendAuthorization {
+  delegation_id: string;
+  onchain_delegation_id?: string;
+  run_id: string;
+  agent_id: string;
+  action: string;
+  amount: string;
+  token: string;
+  expires_at: string;
+  nonce: string;
+}
+
+export interface SpendAuthorizationEvidence {
+  delegation_id: string;
+  authorized_amount: string;
+  consumed_amount: string;
+  remaining_allowance_snapshot: string;
+  delegation_consume_tx_hash: string | null;
+  escrow_transfer_tx_hash: string | null;
+}
+
+// ─── Leaderboard ─────────────────────────────────────────────────────────────
+
+export type LeaderboardPeriod = "24h" | "7d" | "30d";
+
+export interface LeaderboardEntry {
+  agent_id: string;
+  name: string;
+  agent_type: AgentType;
+  work_score: number;
+  successful_runs: number;
+  settled_runs: number;
+  settled_volume: string;
+  success_rate: number;
+  avg_execution_latency_ms: number;
+  trust_score: number;
+  onchain_status: AgentOnchainStatus;
+  updated_at: string;
+}
+
+export interface LeaderboardResponse {
+  period: LeaderboardPeriod;
+  entries: LeaderboardEntry[];
+  total: number;
+  computed_at: string;
 }
 
 // ─── Generic API ─────────────────────────────────────────────────────────────

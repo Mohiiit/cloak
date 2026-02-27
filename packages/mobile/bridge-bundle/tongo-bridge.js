@@ -77,6 +77,35 @@ function serializeCall(call) {
   };
 }
 
+function isPlainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function serializeTongoValue(value) {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map(item => serializeTongoValue(item));
+
+  if (isPlainObject(value)) {
+    if (typeof value.toAffine === "function") {
+      const affine = value.toAffine();
+      const result = {
+        x: affine.x.toString(),
+        y: affine.y.toString(),
+      };
+      if ("z" in value && value.z !== undefined && value.z !== null) {
+        result.z = value.z.toString();
+      }
+      return result;
+    }
+
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, serializeTongoValue(nested)]),
+    );
+  }
+
+  return value;
+}
+
 // Command handlers
 const handlers = {
   // System
@@ -192,6 +221,91 @@ const handlers = {
     const nonce = await freshNonce();
     const tx = await starkAccount.execute([withdrawOp.toCalldata()], { nonce });
     return { txHash: tx.transaction_hash };
+  },
+
+  // x402 payment: execute shielded transfer (or withdraw fallback) and return verifiable bundle + tx hash.
+  x402Pay: async ({ amount, recipientBase58, recipient, sender }) => {
+    if (!tongoAccount) throw new Error("Tongo account not initialized");
+    if (!starkAccount) throw new Error("Stark account not initialized");
+    if (!provider) throw new Error("Provider not initialized");
+
+    const normalizedSender = padAddress(sender || starkAccount.address);
+    const paymentAmount = BigInt(amount);
+    const bitSize = await tongoAccount.bit_size();
+    const preState = await tongoAccount.rawState();
+    const chainId = BigInt(await provider.getChainId());
+
+    // Shielded transfer mode: recipientBase58 is a Tongo base58 address.
+    if (recipientBase58) {
+      console.log("[tongo-bridge] x402Pay shielded transfer — amount=" + paymentAmount.toString() + " recipientBase58=" + recipientBase58.slice(0, 12) + "…");
+      const recipientPubKey = pubKeyBase58ToAffine(recipientBase58);
+      const transferOp = await tongoAccount.transfer({
+        amount: paymentAmount,
+        to: recipientPubKey,
+        sender: normalizedSender,
+      });
+
+      const proofInputs = {
+        y: transferOp.from,
+        nonce: preState.nonce,
+        to: transferOp.to,
+        amount: transferOp.amount,
+        currentBalance: preState.balance,
+        auxiliarCipher: transferOp.auxiliarCipher,
+        bit_size: bitSize,
+        prefix_data: {
+          chain_id: chainId,
+          tongo_address: BigInt(tongoAccount.Tongo.address),
+          sender_address: BigInt(normalizedSender),
+        },
+      };
+
+      const txNonce = await freshNonce();
+      const tx = await starkAccount.execute([transferOp.toCalldata()], { nonce: txNonce });
+      return {
+        txHash: tx.transaction_hash,
+        tongoProof: {
+          operation: "transfer",
+          inputs: serializeTongoValue(proofInputs),
+          proof: serializeTongoValue(transferOp.proof),
+        },
+      };
+    }
+
+    // Fallback: withdraw mode (unshielded to Starknet hex address).
+    console.log("[tongo-bridge] x402Pay withdraw fallback — amount=" + paymentAmount.toString() + " recipient=" + recipient);
+    const normalizedRecipient = padAddress(recipient);
+    const withdrawOp = await tongoAccount.withdraw({
+      amount: paymentAmount,
+      to: normalizedRecipient,
+      sender: normalizedSender,
+    });
+
+    const proofInputs = {
+      y: withdrawOp.from,
+      nonce: preState.nonce,
+      to: withdrawOp.to,
+      amount: withdrawOp.amount,
+      currentBalance: preState.balance,
+      auxiliarCipher: withdrawOp.auxiliarCipher,
+      bit_size: bitSize,
+      prefix_data: {
+        chain_id: chainId,
+        tongo_address: BigInt(tongoAccount.Tongo.address),
+        sender_address: BigInt(normalizedSender),
+      },
+    };
+
+    const txNonce = await freshNonce();
+    const tx = await starkAccount.execute([withdrawOp.toCalldata()], { nonce: txNonce });
+    return {
+      txHash: tx.transaction_hash,
+      tongoProof: {
+        operation: "withdraw",
+        inputs: serializeTongoValue(proofInputs),
+        proof: serializeTongoValue(withdrawOp.proof),
+      },
+    };
   },
 
   // Rollover (claim pending)

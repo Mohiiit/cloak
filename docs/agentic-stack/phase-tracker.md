@@ -86,3 +86,10 @@ Legend:
 | 74 | demo launch assets and runbook | done | docs/agentic-stack/client-rollout-demo-runbook.md |
 | 75 | staged rollout and feature flag playbook | done | docs/agentic-stack/rollout-playbook.md |
 | 76 | post-phase-50 release gate signoff | done | docs/agentic-stack/post-phase-50-release-gate.md |
+| 77 | x402<>8004 on-chain phase plan | done | docs/agentic-stack/x402-erc8004-onchain-phases.md |
+| 78 | sdk erc8004 write lifecycle + live smoke | done | packages/sdk/src/erc8004.ts |
+| 79 | backend on-chain identity enforcement gates | done | packages/nextjs/lib/marketplace/onchain-identity.ts |
+| 80 | x402 identity snapshot binding enforcement | done | packages/nextjs/app/api/v1/marketplace/runs/route.ts |
+| 81 | chain-first agent registration writes | done | packages/nextjs/lib/marketplace/onchain-registration.ts |
+| 82 | live sepolia e2e matrix (x402 + 8004) | done | packages/nextjs/app/api/v1/__tests__/marketplace.x402-erc8004.live.sepolia.test.ts |
+| 83 | combined gate signoff (x402<>8004) | done | docs/agentic-stack/x402-erc8004-gate-signoff.md |

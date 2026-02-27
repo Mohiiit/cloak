@@ -7,21 +7,28 @@ env:
     file: ../shared/launch-app.yaml
     env:
       CLEAR_STATE: ${CLEAR_STATE}
-- runFlow:
-    file: ../shared/open-tab.yaml
-    env:
-      TAB_ID: nav.tab.home.press
-      ASSERT_TEXT: Cloak
-- runFlow:
-    file: ../shared/open-tab.yaml
-    env:
-      TAB_ID: nav.tab.send.press
-      ASSERT_TEXT: Send Payment
-- runFlow:
-    file: ../shared/open-tab.yaml
-    env:
-      TAB_ID: nav.tab.settings.press
-      ASSERT_TEXT: Settings
+- extendedWaitUntil:
+    visible:
+      id: nav.tab.home.press
+    timeout: 180000
+- tapOn:
+    id: nav.tab.home.press
+- waitForAnimationToEnd
+- assertVisible:
+    id: home.quick.send.press
+- tapOn:
+    id: nav.tab.agent.press
+- waitForAnimationToEnd
+- tapOn:
+    id: nav.tab.activity.press
+- waitForAnimationToEnd
+- assertVisible:
+    id: activity.row.item.filter.all
+- tapOn:
+    id: nav.tab.settings.press
+- waitForAnimationToEnd
+- assertVisible:
+    id: settings.ward.create.press
 - runFlow:
     file: ../shared/screenshot-checkpoint.yaml
     env:

@@ -11,7 +11,6 @@ import {
 import {
   ArrowDownLeft,
   ArrowUpFromLine,
-  Bot,
   Key,
   Plus,
   RefreshCw,
@@ -19,6 +18,7 @@ import {
   Shield,
   ShieldOff,
   ShieldPlus,
+  Store,
 } from 'lucide-react-native';
 import { convertAmount, type AmountUnit } from '@cloak-wallet/sdk';
 import { useWallet } from '../lib/WalletContext';
@@ -46,8 +46,8 @@ import {
 } from '../lib/activity/amounts';
 import { TOKENS, type TokenKey } from '../lib/tokens';
 
-type FilterKey = 'all' | 'shielded' | 'public' | 'swap' | 'approvals';
-type TxCategory = 'shielded' | 'public' | 'swap' | 'approvals';
+type FilterKey = 'all' | 'shielded' | 'public' | 'swap' | 'approvals' | 'marketplace';
+type TxCategory = 'shielded' | 'public' | 'swap' | 'approvals' | 'marketplace';
 const ACTIVITY_CACHE_REFRESH_INTERVAL_MS = 60_000;
 
 interface TxMetadataExtended extends Omit<ActivityFeedItem, 'type'> {
@@ -179,7 +179,12 @@ function normalizedActivityType(tx: TxMetadataExtended): string {
   }
 }
 
+function isMarketplaceTx(tx: TxMetadataExtended): boolean {
+  return tx.source === 'agent_run' || (typeof tx.type === 'string' && tx.type.startsWith('agent_'));
+}
+
 function categoryForTx(tx: TxMetadataExtended): TxCategory {
+  if (isMarketplaceTx(tx)) return 'marketplace';
   if (tx.type === 'swap' || !!tx.swap) return 'swap';
   if (isApprovalTx(tx)) return 'approvals';
   if (tx.type === 'erc20_transfer' || tx.type === 'withdraw') return 'public';
@@ -255,8 +260,12 @@ function getTxTitle(
   myAddress?: string,
 ): string {
   const type = normalizedActivityType(tx);
+  if (tx.type === 'agent_hire') return tx.note || 'Agent Hired';
+  if (tx.type === 'agent_delegation') return tx.note || 'Delegation Created';
+  if (tx.type === 'agent_delegation_revoked') return tx.note || 'Delegation Revoked';
+  if (tx.type === 'agent_payment') return tx.note || 'Agent Payment';
   if (tx.source === 'agent_run') {
-    return tx.note || `Agent ${tx.agentRun?.agent_id || 'run'}`;
+    return tx.note || `Agent ${tx.agentRun?.action || tx.agentRun?.agent_id || 'run'}`;
   }
   if (tx.type === 'swap' || tx.swap) return getSwapTitle(tx);
   if (type === 'approval') return tx.note || 'Approval';
@@ -311,10 +320,29 @@ function getTxIconMeta(tx: TxMetadataExtended): IconMeta {
   const type = normalizedActivityType(tx);
   const category = categoryForTx(tx);
 
-  if (tx.source === 'agent_run') {
+  if (isMarketplaceTx(tx)) {
+    if (tx.type === 'agent_delegation_revoked') {
+      return {
+        icon: <ShieldOff size={18} color={colors.error} />,
+        background: 'rgba(239, 68, 68, 0.14)',
+      };
+    }
+    if (tx.type === 'agent_delegation') {
+      return {
+        icon: <Shield size={18} color={colors.success} />,
+        background: 'rgba(16, 185, 129, 0.14)',
+      };
+    }
+    if (tx.type === 'agent_hire') {
+      return {
+        icon: <Plus size={18} color={colors.primary} />,
+        background: 'rgba(59, 130, 246, 0.14)',
+      };
+    }
+    // Agent runs (stake, swap, etc.) — use Store icon
     return {
-      icon: <Bot size={18} color={colors.primaryLight} />,
-      background: 'rgba(96, 165, 250, 0.14)',
+      icon: <Store size={18} color={colors.primary} />,
+      background: 'rgba(59, 130, 246, 0.14)',
     };
   }
 
@@ -381,8 +409,8 @@ function getTxIconMeta(tx: TxMetadataExtended): IconMeta {
 function getTxLeftSubtitle(tx: TxMetadataExtended): string {
   const type = normalizedActivityType(tx);
   const category = categoryForTx(tx);
-  if (tx.source === 'agent_run') {
-    return `${formatRelativeTime(tx.timestamp)} · Agents`;
+  if (isMarketplaceTx(tx)) {
+    return `${formatRelativeTime(tx.timestamp)} · Marketplace`;
   }
   if (category === 'swap') {
     const progress = getSwapProgressLabel(tx);
@@ -490,6 +518,28 @@ function getTxAmountMeta(tx: TxMetadataExtended): AmountMeta {
     const primary = hasAmount ? `Limit ${displayAmount} ${token}` : 'Approval';
     const secondary = tx.statusDetail || `Status: ${statusLabel(tx.status)}`;
     return { primary, secondary, color: colors.success };
+  }
+
+  if (isMarketplaceTx(tx)) {
+    const agentStatus = tx.agentRun?.status || tx.status;
+    const statusColor =
+      agentStatus === 'completed' || tx.status === 'confirmed'
+        ? colors.success
+        : agentStatus === 'failed'
+          ? colors.error
+          : colors.warning;
+    if (hasAmount) {
+      return {
+        primary: `${displayAmount} ${token}`,
+        secondary: tx.statusDetail || `Status: ${statusLabel(tx.status)}`,
+        color: statusColor,
+      };
+    }
+    return {
+      primary: statusLabel(tx.status),
+      secondary: tx.statusDetail || undefined,
+      color: statusColor,
+    };
   }
 
   if (!hasAmount) {
@@ -637,6 +687,7 @@ export default function ActivityScreen({ navigation }: any) {
     { key: 'public', label: 'Public' },
     { key: 'swap', label: 'Swap' },
     { key: 'approvals', label: 'Approvals' },
+    { key: 'marketplace', label: 'Marketplace' },
   ];
 
   return (
@@ -718,6 +769,13 @@ export default function ActivityScreen({ navigation }: any) {
                       ]}
                       onPress={() => {
                         if (!tx.txHash) return;
+                        if (tx._fullRun && isMarketplaceTx(tx)) {
+                          navigation.getParent()?.navigate('MarketplaceRunDetail', {
+                            run: tx._fullRun,
+                            agentName: title,
+                          });
+                          return;
+                        }
                         if (tx.type === 'swap' || tx.swap) {
                           const sellToken = normalizeToken(
                             tx.swap?.sell_token || tx.token,

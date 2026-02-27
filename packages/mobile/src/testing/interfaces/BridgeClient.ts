@@ -1,3 +1,5 @@
+import type { X402TongoProofBundle } from "@cloak-wallet/sdk";
+
 export type BridgeInitParams = {
   tongoPrivateKey: string;
   token?: string;
@@ -17,6 +19,11 @@ export type BridgeTxResult = {
 
 export type BridgePrepareResult = {
   calls: any[];
+};
+
+export type BridgeX402PaymentResult = {
+  txHash: string;
+  tongoProof: X402TongoProofBundle;
 };
 
 export type BridgeKeypair = {
@@ -58,6 +65,14 @@ export interface BridgeClient {
     sender: string,
   ): Promise<BridgePrepareResult>;
   prepareRollover(sender: string): Promise<BridgePrepareResult>;
+
+  x402Pay(
+    amount: string,
+    recipient: string,
+    sender: string,
+    /** Base58 Tongo address for shielded transfer mode. */
+    recipientBase58?: string,
+  ): Promise<BridgeX402PaymentResult>;
 
   switchToken(tongoPrivateKey: string, token: string): Promise<any>;
   generateKeypair(): Promise<BridgeKeypair>;

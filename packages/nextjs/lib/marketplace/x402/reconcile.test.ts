@@ -1,8 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { X402ReplayStore } from "./replay-store";
 import { X402ReconciliationWorker } from "./reconcile";
-import { createRunRecord, listRunRecords } from "~~/lib/marketplace/runs-repo";
+import {
+  createRunRecord,
+  listRunRecords,
+  updateRunRecord,
+} from "~~/lib/marketplace/runs-repo";
 import { clearRunsStore } from "~~/lib/marketplace/runs-store";
+import {
+  clearAgentProfiles,
+  upsertAgentProfile,
+} from "~~/lib/marketplace/agents-store";
+
+vi.mock("~~/lib/marketplace/agents/runtime", () => ({
+  executeAgentRuntime: vi.fn().mockResolvedValue({
+    status: "completed",
+    executionTxHashes: ["0xexec"],
+    result: {
+      provider: "basic-protocol",
+      protocol: "basic-staking",
+    },
+  }),
+  inferAgentType: vi.fn().mockImplementation((agentId: string) => {
+    if (agentId.includes("swap")) return "swap_runner";
+    if (agentId.includes("treasury")) return "treasury_dispatcher";
+    return "staking_steward";
+  }),
+}));
 
 describe("x402 reconciliation worker", () => {
   const replayStore = new X402ReplayStore();
@@ -10,6 +34,7 @@ describe("x402 reconciliation worker", () => {
   beforeEach(() => {
     replayStore.clearInMemory();
     clearRunsStore();
+    clearAgentProfiles();
   });
 
   it("settles pending payments and executes pending runs", async () => {
@@ -101,5 +126,96 @@ describe("x402 reconciliation worker", () => {
       offset: 0,
     });
     expect(runs[0]?.status).toBe("pending_payment");
+  });
+
+  it("fails pending runs when stored identity context drifts before execution", async () => {
+    upsertAgentProfile({
+      agent_id: "staking_steward",
+      name: "Staking Steward",
+      description: "staking",
+      agent_type: "staking_steward",
+      capabilities: ["stake"],
+      endpoints: ["https://agents.example/staking"],
+      endpoint_proofs: [
+        {
+          endpoint: "https://agents.example/staking",
+          nonce: "nonce_reconcile_context",
+          digest: "d".repeat(64),
+        },
+      ],
+      pricing: {
+        mode: "per_run",
+        amount: "1",
+        token: "STRK",
+      },
+      operator_wallet: "0xagent",
+      service_wallet: "0xface",
+      status: "active",
+    });
+
+    await replayStore.registerPending("rk_reconcile_3", "pay_rk_reconcile_3");
+    await replayStore.markPending(
+      "rk_reconcile_3",
+      "pay_rk_reconcile_3",
+      "0x9999",
+    );
+
+    const run = await createRunRecord({
+      hireId: "hire_reconcile_3",
+      agentId: "staking_steward",
+      hireOperatorWallet: "0xoperator",
+      action: "stake",
+      params: { amount: "25", pool: "0xpool" },
+      billable: true,
+      initialStatus: "pending_payment",
+      paymentRef: "pay_rk_reconcile_3",
+      settlementTxHash: "0x9999",
+    });
+
+    await updateRunRecord(run.id, {
+      payment_evidence: {
+        ...(run.payment_evidence || {
+          scheme: "cloak-shielded-x402",
+          payment_ref: run.payment_ref,
+          settlement_tx_hash: run.settlement_tx_hash,
+        }),
+        identity_context: {
+          hire_id: "hire_reconcile_3",
+          agent_id: "staking_steward",
+          action: "stake",
+          operator_wallet: "0xagent",
+          service_wallet: "0xbeef",
+          onchain_enforced: false,
+          onchain_status: "skipped",
+          onchain_owner: null,
+          onchain_reason: null,
+          onchain_checked_at: null,
+        },
+      } as any,
+    });
+
+    const settlementExecutor = {
+      verifySettlementTxHash: vi.fn().mockResolvedValue({
+        status: "settled",
+        txHash: "0x9999",
+      }),
+    };
+
+    const worker = new X402ReconciliationWorker(
+      replayStore,
+      settlementExecutor as any,
+    );
+    const summary = await worker.run(20);
+    expect(summary.runsFailed).toBeGreaterThanOrEqual(1);
+
+    const runs = await listRunRecords({
+      paymentRef: "pay_rk_reconcile_3",
+      limit: 5,
+      offset: 0,
+    });
+    expect(runs[0]?.status).toBe("failed");
+    expect(runs[0]?.result?.reason_code).toBe(
+      "ONCHAIN_IDENTITY_CONTEXT_MISMATCH",
+    );
   });
 });

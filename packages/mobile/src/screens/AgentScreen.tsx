@@ -599,14 +599,8 @@ export default function AgentScreen() {
   }
 
   function openMarketplace() {
-    const root = navigation.getParent?.("root");
-    const state = root?.getState?.();
-    const routeNames = Array.isArray(state?.routeNames) ? state.routeNames : [];
-    if (routeNames.includes("Marketplace")) {
-      root.navigate("Marketplace");
-      return;
-    }
-    showToast("Marketplace entry is initializing", "info");
+    // Navigate to the Marketplace tab instead of the old stack route
+    navigation.navigate("Marketplace");
   }
 
   if (isLoading) {

@@ -44,7 +44,6 @@ liveDescribe("x402 on-chain settlement smoke (Sepolia)", () => {
     const executor = new X402SettlementExecutor(env({
       CLOAK_SEPOLIA_RPC_URL: liveRpcUrl!,
       X402_VERIFY_ONCHAIN_SETTLEMENT: "true",
-      X402_LEGACY_SETTLEMENT_COMPAT: "false",
     }));
 
     const decision = await executor.settle({

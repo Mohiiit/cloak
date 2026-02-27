@@ -1,6 +1,17 @@
 import type { AgentRunResponse } from "@cloak-wallet/sdk";
 
-const inMemoryRuns = new Map<string, AgentRunResponse>();
+// Use globalThis to survive Next.js dev-mode lazy recompilation.
+const GLOBAL_KEY = "__cloak_runs_store__" as const;
+
+function getStore(): Map<string, AgentRunResponse> {
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (!g[GLOBAL_KEY]) {
+    g[GLOBAL_KEY] = new Map<string, AgentRunResponse>();
+  }
+  return g[GLOBAL_KEY] as Map<string, AgentRunResponse>;
+}
+
+const inMemoryRuns = getStore();
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -67,6 +78,10 @@ export function updateRun(
   };
   inMemoryRuns.set(id, updated);
   return updated;
+}
+
+export function setRun(run: AgentRunResponse): void {
+  inMemoryRuns.set(run.id, run);
 }
 
 export function getRun(id: string): AgentRunResponse | null {

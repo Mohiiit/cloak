@@ -46,5 +46,26 @@ describe("POST /api/v1/marketplace/payments/x402/challenge", () => {
     expect(json.challenge.signature).toBeTruthy();
     expect(json.challenge.recipient).toBe("0xabc123");
   });
-});
 
+  it("normalizes token and minAmount whitespace", async () => {
+    const req = new NextRequest(
+      "http://localhost/api/v1/marketplace/payments/x402/challenge",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          recipient: "0xabc123",
+          token: "  strk  ",
+          minAmount: " 20\n",
+          context: { route: "/api/v1/marketplace/runs" },
+        }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.challenge.token).toBe("STRK");
+    expect(json.challenge.minAmount).toBe("20");
+  });
+});

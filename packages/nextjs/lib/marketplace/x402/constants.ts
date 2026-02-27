@@ -3,7 +3,7 @@ export const X402_DEFAULTS = {
   scheme: "cloak-shielded-x402" as const,
   network: process.env.AGENTIC_MARKETPLACE_NETWORK || "sepolia",
   token: process.env.X402_DEFAULT_TOKEN || "STRK",
-  minAmount: process.env.X402_DEFAULT_MIN_AMOUNT || "100000000000000000",
+  minAmount: process.env.X402_DEFAULT_MIN_AMOUNT || "1",
   paymentExpirySeconds: Number(process.env.X402_PAYMENT_EXPIRY_SECONDS || 300),
   facilitatorPath: "/api/v1/marketplace/payments/x402",
 };

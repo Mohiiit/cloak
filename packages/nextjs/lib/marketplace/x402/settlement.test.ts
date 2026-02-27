@@ -37,22 +37,13 @@ function makeInput() {
 }
 
 describe("x402 settlement executor", () => {
-  it("fails when settlement tx hash is missing and legacy mode is disabled", async () => {
+  it("fails when settlement tx hash is missing", async () => {
     const executor = new X402SettlementExecutor(env({
-      X402_LEGACY_SETTLEMENT_COMPAT: "false",
+      X402_VERIFY_ONCHAIN_SETTLEMENT: "false",
     }));
     const decision = await executor.settle(makeInput());
     expect(decision.status).toBe("failed");
     expect(decision.reasonCode).toBe("SETTLEMENT_FAILED");
-  });
-
-  it("supports legacy compatibility fallback hash", async () => {
-    const executor = new X402SettlementExecutor(env({
-      X402_LEGACY_SETTLEMENT_COMPAT: "true",
-    }));
-    const decision = await executor.settle(makeInput());
-    expect(decision.status).toBe("settled");
-    expect(decision.txHash).toMatch(/^0x/);
   });
 
   it("returns pending when on-chain verification cannot find tx yet", async () => {
@@ -63,7 +54,6 @@ describe("x402 settlement executor", () => {
     };
     const executor = new X402SettlementExecutor(
       env({
-        X402_LEGACY_SETTLEMENT_COMPAT: "false",
         X402_VERIFY_ONCHAIN_SETTLEMENT: "true",
       }),
       provider,
@@ -86,7 +76,6 @@ describe("x402 settlement executor", () => {
     };
     const executor = new X402SettlementExecutor(
       env({
-        X402_LEGACY_SETTLEMENT_COMPAT: "false",
         X402_VERIFY_ONCHAIN_SETTLEMENT: "true",
       }),
       provider,

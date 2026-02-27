@@ -67,6 +67,11 @@ describe("x402 helpers", () => {
       nonce: "nonce1",
       settlementTxHash: "0x1234",
       attestor: "sdk-test",
+      tongoProof: {
+        operation: "fund",
+        inputs: { nonce: "1" },
+        proof: { sx: "2" },
+      },
     });
     const encoded = encodeX402TongoProofEnvelope(envelope);
     const decoded = decodeX402TongoProofEnvelope(encoded);
@@ -83,6 +88,7 @@ describe("x402 helpers", () => {
     });
     expect(decoded.intentHash).toBe(expectedIntentHash);
     expect(decoded.settlementTxHash).toBe("0x1234");
+    expect(decoded.tongoProof?.operation).toBe("fund");
   });
 
   it("extracts payment payload from request headers", () => {

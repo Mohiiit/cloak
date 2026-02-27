@@ -15,6 +15,7 @@ import {
 import {
   getAgentProfileRecord,
   listAgentProfileRecords,
+  updateAgentProfileRecord,
   upsertAgentProfileRecord,
 } from "~~/lib/marketplace/agents-repo";
 import { verifyEndpointProofSet } from "~~/lib/marketplace/endpoint-proof";
@@ -26,8 +27,41 @@ import {
 import {
   incrementRegistryMetric,
 } from "~~/lib/marketplace/registry-metrics";
+import { checkAgentOnchainIdentity } from "~~/lib/marketplace/onchain-identity";
+import {
+  reconcilePendingAgentRegistrationWrite,
+  submitAgentRegistrationOnchain,
+} from "~~/lib/marketplace/onchain-registration";
 
 export const runtime = "nodejs";
+
+async function reconcilePendingWriteIfNeeded<
+  T extends {
+    agent_id: string;
+    onchain_write_status?: string;
+    onchain_write_tx_hash?: string | null;
+  },
+>(agent: T): Promise<T> {
+  const writeOutcome = await reconcilePendingAgentRegistrationWrite({
+    status: agent.onchain_write_status,
+    txHash: agent.onchain_write_tx_hash,
+  });
+  if (!writeOutcome) return agent;
+  if (
+    writeOutcome.status === agent.onchain_write_status &&
+    (writeOutcome.txHash || null) === (agent.onchain_write_tx_hash || null)
+  ) {
+    return agent;
+  }
+
+  const updated = await updateAgentProfileRecord(agent.agent_id, {
+    onchain_write_status: writeOutcome.status,
+    onchain_write_tx_hash: writeOutcome.txHash,
+    onchain_write_reason: writeOutcome.reason,
+    onchain_write_checked_at: writeOutcome.checkedAt,
+  });
+  return (updated as T | null) ?? agent;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -76,10 +110,11 @@ export async function GET(req: NextRequest) {
       incrementRegistryMetric("onchain_refreshes");
       agents = await Promise.all(
         agents.map(async (agent) => {
+          const reconciled = await reconcilePendingWriteIfNeeded(agent);
           try {
-            return await adaptAgentProfileWithRegistry(agent);
+            return await adaptAgentProfileWithRegistry(reconciled);
           } catch {
-            return agent;
+            return reconciled;
           }
         }),
       );
@@ -141,9 +176,44 @@ export async function POST(req: NextRequest) {
       return badRequest(proofCheck.reason || "Invalid endpoint proofs");
     }
 
-    const profile = await upsertAgentProfileRecord(data);
+    const onchainIdentity = await checkAgentOnchainIdentity({
+      agentId: data.agent_id,
+      operatorWallet: data.operator_wallet,
+    });
+    if (onchainIdentity.enforced && onchainIdentity.status === "mismatch") {
+      return NextResponse.json(
+        {
+          error: "On-chain identity mismatch",
+          code: "ONCHAIN_IDENTITY_MISMATCH",
+          details: onchainIdentity.reason,
+        },
+        { status: 409 },
+      );
+    }
+
+    const writeOutcome = await submitAgentRegistrationOnchain({
+      agentId: data.agent_id,
+      operatorWallet: data.operator_wallet,
+      serviceWallet: data.service_wallet,
+      onchainWrite: data.onchain_write,
+    });
+    const profile = await upsertAgentProfileRecord(data, {
+      onchainWrite: writeOutcome,
+    });
     incrementRegistryMetric(existing ? "profiles_updated" : "profiles_registered");
-    return NextResponse.json(profile, { status: 201 });
+    if (!onchainIdentity.enforced) {
+      return NextResponse.json(profile, { status: 201 });
+    }
+    return NextResponse.json(
+      {
+        ...profile,
+        onchain_status: onchainIdentity.status,
+        onchain_owner: onchainIdentity.owner,
+        onchain_reason: onchainIdentity.reason,
+        onchain_checked_at: onchainIdentity.checkedAt,
+      },
+      { status: 201 },
+    );
   } catch (err) {
     if (err instanceof AuthError) return unauthorized(err.message);
     if (err instanceof ValidationError) return err.response;

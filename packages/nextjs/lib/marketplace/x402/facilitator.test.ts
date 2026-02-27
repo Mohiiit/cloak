@@ -3,6 +3,7 @@ import { buildChallenge } from "./challenge";
 import { X402Facilitator } from "./facilitator";
 import { X402ReplayStore } from "./replay-store";
 import type { X402ProofVerifier } from "./proof-adapter";
+import { createStrictX402Payment, ensureX402FacilitatorSecretForTests } from "./test-helpers";
 
 describe("X402Facilitator", () => {
   const replayStore = new X402ReplayStore();
@@ -13,27 +14,24 @@ describe("X402Facilitator", () => {
   });
 
   function makeEnvelope(overrides?: Partial<{ amount: string; contextHash: string; replayKey: string }>) {
+    ensureX402FacilitatorSecretForTests();
     const challenge = buildChallenge({
       recipient: "0xabc123",
       token: "STRK",
       minAmount: "100",
       context: { run: "test" },
     });
+    const payment = createStrictX402Payment(challenge, {
+      amount: overrides?.amount,
+      replayKey: overrides?.replayKey,
+      nonce: "nonce",
+      tongoAddress: "tongo1",
+    });
     return {
       challenge,
       payment: {
-        version: "1" as const,
-        scheme: "cloak-shielded-x402" as const,
-        challengeId: challenge.challengeId,
-        tongoAddress: "tongo1",
-        token: "STRK",
-        amount: overrides?.amount ?? "100",
-        proof: "proof-blob",
-        replayKey: overrides?.replayKey ?? "rk_unit",
-        contextHash: overrides?.contextHash ?? challenge.contextHash,
-        expiresAt: challenge.expiresAt,
-        nonce: "nonce",
-        createdAt: new Date().toISOString(),
+        ...payment,
+        contextHash: overrides?.contextHash ?? payment.contextHash,
       },
     };
   }

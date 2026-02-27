@@ -48,15 +48,24 @@ Operational guide for Cloak x402 payment rails in marketplace execution flows.
 5. If `pending_payment` runs accumulate:
 - reconcile x402 pending rows first,
 - ensure `payment_ref` joins between `x402_payments` and `agent_runs`,
-- verify `MARKETPLACE_STRICT_ONCHAIN_EXECUTION` / `STARKZAP_EXECUTOR_URL` config.
+- verify basic runtime signer config (`MARKETPLACE_RUNTIME_PROTOCOL=basic` + `BASIC_PROTOCOL_SIGNER_*`, include secondary key if 2FA-enabled signer),
+- if running optional StarkZap mode, verify `STARKZAP_EXECUTOR_URL` and layer target wiring (`STARKZAP_LAYER_MODE`, `STARKZAP_LAYER_TARGET_URL`).
 
 ## Immediate Mitigations
 1. Rotate `X402_FACILITATOR_SECRET` if signature mismatch is suspected.
 2. Temporarily increase `X402_PAYMENT_EXPIRY_SECONDS` during high latency events.
 3. Enable fallback RPC for settlement recovery.
-4. Toggle compatibility flags during controlled rollback:
-- `X402_LEGACY_PROOF_COMPAT`
-- `X402_LEGACY_SETTLEMENT_COMPAT`
-5. For emergency execution rollback:
-- set `STARKZAP_ALLOW_SIMULATED_EXECUTION=true`,
-- disable strict execution gate (`MARKETPLACE_STRICT_ONCHAIN_EXECUTION=false`).
+4. Keep strict verifier controls enabled (`X402_TONGO_CRYPTO_VERIFY=true`, `X402_REQUIRE_TONGO_PROOF_BUNDLE=true`).
+5. If runtime execution fails, fix basic signer/RPC config first; do not enable simulated execution.
+
+## Basic On-Chain Smoke
+Run this before release when validating non-mocked execution:
+
+`BASIC_PROTOCOL_LIVE=1 yarn workspace @ss-2/nextjs test lib/marketplace/basic-protocol-adapter.live.sepolia.test.ts`
+
+Required env:
+- `CLOAK_SEPOLIA_RPC_URL` (or `NEXT_PUBLIC_SEPOLIA_PROVIDER_URL`)
+- `BASIC_PROTOCOL_SIGNER_ADDRESS`
+- `BASIC_PROTOCOL_SIGNER_PRIVATE_KEY`
+- `BASIC_PROTOCOL_LIVE_CALLS_JSON` (non-empty JSON call array)
+- `BASIC_PROTOCOL_SIGNER_SECONDARY_PRIVATE_KEY` when signer account has 2FA enabled

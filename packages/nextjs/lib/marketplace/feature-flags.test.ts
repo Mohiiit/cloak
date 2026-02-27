@@ -11,6 +11,9 @@ describe("marketplace feature flags", () => {
       extensionEnabled: true,
       operatorScopedRuns: true,
       requireBillableRuns: true,
+      delegationEnabled: false,
+      spendAuthRequired: false,
+      leaderboardEnabled: false,
     });
   });
 
@@ -30,6 +33,9 @@ describe("marketplace feature flags", () => {
       extensionEnabled: false,
       operatorScopedRuns: false,
       requireBillableRuns: false,
+      delegationEnabled: false,
+      spendAuthRequired: false,
+      leaderboardEnabled: false,
     });
   });
 
@@ -49,6 +55,9 @@ describe("marketplace feature flags", () => {
       extensionEnabled: false,
       operatorScopedRuns: true,
       requireBillableRuns: false,
+      delegationEnabled: false,
+      spendAuthRequired: false,
+      leaderboardEnabled: false,
     });
   });
 });

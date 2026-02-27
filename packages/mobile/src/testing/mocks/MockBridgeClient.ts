@@ -4,6 +4,7 @@ import type {
   BridgeKeypair,
   BridgePrepareResult,
   BridgePublicKey,
+  BridgeX402PaymentResult,
   BridgeTxResult,
   TongoState,
 } from "../interfaces/BridgeClient";
@@ -166,6 +167,56 @@ export class MockBridgeClient implements BridgeClient {
           calldata: [sender],
         },
       ],
+    };
+  }
+
+  async x402Pay(
+    amount: string,
+    recipient: string,
+    sender: string,
+    recipientBase58?: string,
+  ): Promise<BridgeX402PaymentResult> {
+    this.ensureInitialized();
+    const txHash = this.pushTx("x402_pay", amount, {
+      sender,
+      recipient: recipientBase58 || recipient,
+    });
+
+    return {
+      txHash,
+      tongoProof: {
+        operation: recipientBase58 ? "transfer" : "withdraw",
+        inputs: {
+          y: { x: "1", y: "2" },
+          nonce: "1",
+          to: recipient,
+          amount,
+          currentBalance: {
+            L: { x: "3", y: "4" },
+            R: { x: "5", y: "6" },
+          },
+          auxiliarCipher: {
+            L: { x: "7", y: "8" },
+            R: { x: "9", y: "10" },
+          },
+          bit_size: 32,
+          prefix_data: {
+            chain_id: "1",
+            tongo_address: "1",
+            sender_address: sender,
+          },
+        },
+        proof: {
+          A_x: { x: "11", y: "12" },
+          A_r: { x: "13", y: "14" },
+          A: { x: "15", y: "16" },
+          A_v: { x: "17", y: "18" },
+          sx: "19",
+          sb: "20",
+          sr: "21",
+          range: { commitments: [], proofs: [] },
+        },
+      },
     };
   }
 

@@ -6,8 +6,9 @@ import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
 import { createBottomTabNavigator, type BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Clock, Shield, ScanLine, Bot, Settings as SettingsIcon } from "lucide-react-native";
+import { Home, Clock, Shield, ScanLine, Bot, Store, Settings as SettingsIcon } from "lucide-react-native";
 import HomeScreen from "../screens/HomeScreen";
+import MarketplaceTabScreen from "../screens/MarketplaceTabScreen";
 import AgentScreen from "../screens/AgentScreen";
 import ActivityScreen from "../screens/ActivityScreen";
 import SettingsScreen from "../screens/SettingsScreen";
@@ -26,6 +27,7 @@ const AGENT_HOLD_TO_RECORD_MS = 250;
 
 const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
   Home: ({ size, color }) => <Home size={size} color={color} />,
+  Marketplace: ({ size, color }) => <Store size={size} color={color} />,
   Agent: ({ size, color }) => <Bot size={size} color={color} />,
   Activity: ({ size, color }) => <Clock size={size} color={color} />,
   Settings: ({ size, color }) => <SettingsIcon size={size} color={color} />,
@@ -33,6 +35,7 @@ const TAB_ICONS: Record<string, React.FC<{ size: number; color: string }>> = {
 
 const TAB_TEST_IDS: Record<string, string> = {
   Home: testIDs.navigation.tabHome,
+  Marketplace: testIDs.navigation.tabMarketplace,
   Agent: testIDs.navigation.tabAgent,
   Activity: testIDs.navigation.tabActivity,
   Settings: testIDs.navigation.tabSettings,
@@ -215,6 +218,11 @@ export default function AppNavigator() {
           } : {
             headerTitle: "",
           }}
+        />
+        <Tab.Screen
+          name="Marketplace"
+          component={MarketplaceTabScreen}
+          options={{ headerTitle: "" }}
         />
         <Tab.Screen
           name="Agent"

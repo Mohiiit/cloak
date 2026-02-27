@@ -16,7 +16,14 @@ export interface X402RouteGuardResult {
 
 function parseBool(raw: string | undefined, fallback: boolean): boolean {
   if (!raw) return fallback;
-  const normalized = raw.trim().toLowerCase();
+  const normalized = raw
+    .replace(/\\r/gi, "")
+    .replace(/\\n/gi, "")
+    .replace(/\r/g, "")
+    .replace(/\n/g, "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return fallback;
   if (normalized === "true" || normalized === "1" || normalized === "yes") {
     return true;
   }

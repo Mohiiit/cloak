@@ -9,6 +9,7 @@ import { WalletKeys, loadWalletKeys, saveWalletKeys, hasWallet, clearWallet } fr
 import { TokenKey } from "./tokens";
 import { useToast } from "../components/Toast";
 import { DEFAULT_RPC, CLOAK_ACCOUNT_CLASS_HASH } from "@cloak-wallet/sdk";
+import type { X402TongoProofBundle } from "@cloak-wallet/sdk";
 import { isMockMode } from "../testing/runtimeConfig";
 
 const ALL_TOKENS: TokenKey[] = ["STRK", "ETH", "USDC"];
@@ -64,6 +65,15 @@ type WalletState = {
   prepareTransfer: (amount: string, recipientBase58: string) => Promise<{ calls: any[] }>;
   prepareWithdraw: (amount: string) => Promise<{ calls: any[] }>;
   prepareRollover: () => Promise<{ calls: any[] }>;
+  x402Pay: (
+    amount: string,
+    recipient: string,
+    token?: TokenKey,
+  ) => Promise<{
+    txHash: string;
+    tongoProof: X402TongoProofBundle;
+    payerTongoAddress: string;
+  }>;
   validateAddress: (base58: string) => Promise<boolean>;
 };
 
@@ -526,6 +536,34 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return bridge.prepareRollover(keys.starkAddress);
   }, [bridge, keys]);
 
+  const x402Pay = useCallback(
+    async (amount: string, recipient: string, token?: TokenKey, recipientBase58?: string) => {
+      if (!keys) throw new Error("No wallet");
+      if (!keys.tongoAddress) throw new Error("Missing Tongo address");
+      const paymentToken = token || selectedToken;
+      const restoreToken = selectedToken;
+      const switched = paymentToken !== restoreToken;
+
+      if (switched) {
+        await bridge.switchToken(keys.tongoPrivateKey, paymentToken);
+      }
+
+      try {
+        console.warn(`[WalletContext] x402Pay — amount="${amount}", mode=${recipientBase58 ? "transfer" : "withdraw"}`);
+        const payment = await bridge.x402Pay(amount, recipient, keys.starkAddress, recipientBase58);
+        return {
+          ...payment,
+          payerTongoAddress: keys.tongoAddress,
+        };
+      } finally {
+        if (switched) {
+          await bridge.switchToken(keys.tongoPrivateKey, restoreToken);
+        }
+      }
+    },
+    [bridge, keys, selectedToken],
+  );
+
   const resetWallet = useCallback(async () => {
     await clearWallet();
     await AsyncStorage.removeItem(DEPLOY_STATUS_KEY);
@@ -579,6 +617,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         prepareTransfer,
         prepareWithdraw,
         prepareRollover,
+        x402Pay,
         validateAddress,
       }}
     >

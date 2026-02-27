@@ -61,6 +61,11 @@ export async function adaptAgentProfileWithRegistry(
     !!owner &&
     owner.toLowerCase().replace(/^0x0+/, "0x") ===
       profile.operator_wallet.toLowerCase().replace(/^0x0+/, "0x");
+  const onchainStatus: "verified" | "mismatch" | "unknown" = !owner
+    ? "unknown"
+    : ownerMatch
+      ? "verified"
+      : "mismatch";
   const reputationScore = parseScore(reputationSummary);
   const validationScore = parseScore(validationSummary);
   const freshness = Math.max(
@@ -82,5 +87,9 @@ export async function adaptAgentProfileWithRegistry(
     trust_summary: composed.trustSummary,
     trust_score: composed.trustScore,
     registry_version: profile.registry_version || "erc8004-v1",
-  };
+    onchain_status: onchainStatus,
+    onchain_owner: owner,
+    onchain_reason: owner ? (ownerMatch ? null : "operator_owner_mismatch") : "owner_unavailable",
+    onchain_checked_at: new Date().toISOString(),
+  } as AgentProfileResponse;
 }

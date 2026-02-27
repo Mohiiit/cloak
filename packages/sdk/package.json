@@ -4,12 +4,12 @@
   "description": "Cloak SDK — privacy-preserving wallet operations on Starknet via Tongo",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
-  "react-native": "./src/index.ts",
+  "react-native": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "react-native": "./src/index.ts",
+      "react-native": "./dist/index.mjs",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     }

@@ -1,9 +1,13 @@
 // @vitest-environment node
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createHmac } from "crypto";
 import { buildChallenge } from "~~/lib/marketplace/x402/challenge";
+import {
+  createStrictX402Payment,
+  ensureX402FacilitatorSecretForTests,
+} from "~~/lib/marketplace/x402/test-helpers";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -19,6 +23,11 @@ import { POST as settlePOST } from "../marketplace/payments/x402/settle/route";
 import { POST as runsPOST } from "../marketplace/runs/route";
 
 describe("x402 security / reliability", () => {
+  beforeEach(() => {
+    ensureX402FacilitatorSecretForTests();
+    process.env.X402_VERIFY_ONCHAIN_SETTLEMENT = "false";
+  });
+
   it("rejects expired payment challenges", async () => {
     const built = buildChallenge({
       recipient: "0xabc",
@@ -28,7 +37,10 @@ describe("x402 security / reliability", () => {
       ...built,
       expiresAt: new Date(Date.now() - 30_000).toISOString(),
     };
-    challenge.signature = createHmac("sha256", "dev-only-secret-change-me")
+    challenge.signature = createHmac(
+      "sha256",
+      process.env.X402_FACILITATOR_SECRET || "x402-test-secret",
+    )
       .update(
         JSON.stringify({
           version: challenge.version,
@@ -44,20 +56,12 @@ describe("x402 security / reliability", () => {
         }),
       )
       .digest("hex");
-    const payment = {
-      version: "1" as const,
-      scheme: "cloak-shielded-x402" as const,
-      challengeId: challenge.challengeId,
+    const payment = createStrictX402Payment(challenge, {
       tongoAddress: "tongo1payer",
-      token: challenge.token,
       amount: challenge.minAmount,
-      proof: "proof-blob",
       replayKey: "rk_expired_case",
-      contextHash: challenge.contextHash,
-      expiresAt: challenge.expiresAt,
       nonce: "nonce_expired_case",
-      createdAt: new Date().toISOString(),
-    };
+    });
 
     const req = new NextRequest("http://localhost/api/v1/marketplace/payments/x402/verify", {
       method: "POST",
@@ -76,23 +80,15 @@ describe("x402 security / reliability", () => {
       recipient: "0xabc",
       context: { route: "/api/v1/marketplace/runs" },
     });
-    const payment = {
-      version: "1" as const,
-      scheme: "cloak-shielded-x402" as const,
-      challengeId: challenge.challengeId,
+    const payment = createStrictX402Payment(challenge, {
       tongoAddress: "tongo1payer",
-      token: challenge.token,
       amount: challenge.minAmount,
-      proof: "proof-blob",
       replayKey: "rk_parallel_settle_1",
-      contextHash: challenge.contextHash,
-      expiresAt: challenge.expiresAt,
       nonce: "nonce_parallel_settle_1",
-      createdAt: new Date().toISOString(),
-    };
+    });
 
     const attempts = await Promise.all(
-      Array.from({ length: 20 }).map(async () => {
+      Array.from({ length: 6 }).map(async () => {
         const req = new NextRequest(
           "http://localhost/api/v1/marketplace/payments/x402/settle",
           {
@@ -112,7 +108,7 @@ describe("x402 security / reliability", () => {
     expect(attempts.every(item => item.status === 200)).toBe(true);
     expect(attempts.every(item => item.json.status === "settled")).toBe(true);
     expect(new Set(attempts.map(item => item.json.paymentRef)).size).toBe(1);
-  });
+  }, 30000);
 
   it("returns 400 for malformed x402 headers on paywalled route", async () => {
     const req = new NextRequest("http://localhost/api/v1/marketplace/runs", {

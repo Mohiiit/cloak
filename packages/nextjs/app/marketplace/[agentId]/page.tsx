@@ -4,9 +4,17 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
+  createX402TongoProofEnvelope,
+  encodeX402TongoProofEnvelope,
+} from "@cloak-wallet/sdk";
+import {
   x402FetchWithProofProvider,
 } from "~~/lib/marketplace/x402/client";
 import { getApiConfig } from "~~/lib/api-client";
+import { useTongo } from "~~/components/providers/TongoProvider";
+import { useAccount } from "~~/hooks/useAccount";
+import { useTransactionRouter } from "~~/hooks/useTransactionRouter";
+import { padAddress } from "~~/lib/address";
 
 type AgentProfileResponse = {
   agent_id: string;
@@ -35,28 +43,57 @@ type RunResponse = {
   execution_tx_hashes: string[] | null;
 };
 
-function hashHex(input: string): string {
-  let h1 = 0x811c9dc5;
-  let h2 = 0x811c9dc5;
-  for (let i = 0; i < input.length; i += 1) {
-    const c = input.charCodeAt(i);
-    h1 ^= c;
-    h1 = Math.imul(h1, 0x01000193);
-    h2 ^= c;
-    h2 = Math.imul(h2, 0x27d4eb2d);
-  }
-  const part1 = (h1 >>> 0).toString(16).padStart(8, "0");
-  const part2 = (h2 >>> 0).toString(16).padStart(8, "0");
-  return `${part1}${part2}${part1}${part2}${part1}${part2}${part1}${part2}`;
+type LeaderboardEntry = {
+  agent_id: string;
+  agent_name: string;
+  work_score: number;
+  runs: number;
+  success_rate: number;
+  trust_score: number;
+};
+
+function durationToMs(d: "1h" | "24h" | "7d" | "30d"): number {
+  return { "1h": 3_600_000, "24h": 86_400_000, "7d": 604_800_000, "30d": 2_592_000_000 }[d];
 }
 
-function fallbackSettlementTxHash(seed: string): string {
-  return `0x${hashHex(seed).slice(0, 62)}`;
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function serializeTongoValue(value: unknown): unknown {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map(item => serializeTongoValue(item));
+  if (isPlainObject(value)) {
+    if (typeof (value as { toAffine?: unknown }).toAffine === "function") {
+      const affine = (value as { toAffine: () => { x: bigint; y: bigint } }).toAffine();
+      return {
+        x: affine.x.toString(),
+        y: affine.y.toString(),
+      };
+    }
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [
+        key,
+        serializeTongoValue(nested),
+      ]),
+    );
+  }
+  return value;
+}
+
+function toBigIntChainId(value: unknown): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") return BigInt(value);
+  if (typeof value === "string") return BigInt(value);
+  throw new Error("Unable to resolve Starknet chainId for x402 proof.");
 }
 
 export default function AgentProfilePage() {
   const params = useParams<{ agentId: string }>();
   const agentId = params?.agentId || "";
+  const { tongoAccount, tongoAddress, isInitialized } = useTongo();
+  const { address, chainId } = useAccount();
+  const { executeOrRoute } = useTransactionRouter();
 
   const [profile, setProfile] = useState<AgentProfileResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,17 +118,34 @@ export default function AgentProfilePage() {
   const [runParamsDraft, setRunParamsDraft] = useState(
     JSON.stringify(
       {
-        pool: "0xpool",
-        amount: "100",
+        calls: [
+          {
+            contractAddress: "0x1",
+            entrypoint: "stake",
+            calldata: ["0x64"],
+          },
+        ],
       },
       null,
       2,
     ),
   );
-  const [runPayerAddress, setRunPayerAddress] = useState("tongo-web-operator");
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunResponse | null>(null);
+
+  // --- Delegation for this agent ---
+  const [dlgToken, setDlgToken] = useState("STRK");
+  const [dlgMaxPerRun, setDlgMaxPerRun] = useState("");
+  const [dlgTotalAllowance, setDlgTotalAllowance] = useState("");
+  const [dlgDuration, setDlgDuration] = useState<"1h" | "24h" | "7d" | "30d">("24h");
+  const [creatingDlg, setCreatingDlg] = useState(false);
+  const [dlgError, setDlgError] = useState<string | null>(null);
+  const [dlgSuccess, setDlgSuccess] = useState<string | null>(null);
+
+  // --- Leaderboard metrics for this agent ---
+  const [agentMetrics, setAgentMetrics] = useState<LeaderboardEntry | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true);
@@ -128,10 +182,64 @@ export default function AgentProfilePage() {
     }
   }, [agentId]);
 
+  const loadAgentMetrics = useCallback(async () => {
+    setMetricsLoading(true);
+    try {
+      const { key } = getApiConfig();
+      if (!key) return;
+      const res = await fetch(`/api/v1/marketplace/leaderboard?period=7d`, {
+        headers: { "X-API-Key": key },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const entries = (body.entries || []) as LeaderboardEntry[];
+      const match = entries.find(e => e.agent_id === agentId);
+      setAgentMetrics(match || null);
+    } catch {
+      // Non-critical — silently skip
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, [agentId]);
+
+  const handleCreateDelegation = useCallback(async () => {
+    setCreatingDlg(true);
+    setDlgError(null);
+    setDlgSuccess(null);
+    try {
+      const { key } = getApiConfig();
+      if (!key) throw new Error("Missing API key");
+      if (!dlgMaxPerRun.trim()) throw new Error("Max per run is required");
+      if (!dlgTotalAllowance.trim()) throw new Error("Total allowance is required");
+
+      const res = await fetch("/api/v1/marketplace/delegations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": key },
+        body: JSON.stringify({
+          agent_id: agentId,
+          token: dlgToken,
+          max_per_run: dlgMaxPerRun.trim(),
+          total_allowance: dlgTotalAllowance.trim(),
+          duration_ms: durationToMs(dlgDuration),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Delegation creation failed (${res.status})`);
+      setDlgSuccess(`Delegation created: ${body.id || "OK"}`);
+      setDlgMaxPerRun("");
+      setDlgTotalAllowance("");
+    } catch (err) {
+      setDlgError(err instanceof Error ? err.message : "Failed to create delegation");
+    } finally {
+      setCreatingDlg(false);
+    }
+  }, [agentId, dlgToken, dlgMaxPerRun, dlgTotalAllowance, dlgDuration]);
+
   useEffect(() => {
     if (!agentId) return;
     void loadProfile();
-  }, [agentId, loadProfile]);
+    void loadAgentMetrics();
+  }, [agentId, loadProfile, loadAgentMetrics]);
 
   const hireAgent = useCallback(async () => {
     if (!profile) return;
@@ -193,6 +301,10 @@ export default function AgentProfilePage() {
       const { key } = getApiConfig();
       if (!key) throw new Error("Missing API key");
       if (!hireIdInput.trim()) throw new Error("Hire ID is required");
+      if (!address) throw new Error("Connect wallet to run paid actions.");
+      if (!isInitialized || !tongoAccount || !tongoAddress) {
+        throw new Error("Tongo account not initialized. Connect wallet first.");
+      }
 
       let params: Record<string, unknown> = {};
       try {
@@ -219,35 +331,92 @@ export default function AgentProfilePage() {
           }),
         },
         {
-          tongoAddress: runPayerAddress,
+          tongoAddress,
           proofProvider: {
-            createProof(input) {
-              const intentHash =
-                input.intentHash ||
-                hashHex(
-                  JSON.stringify({
-                    amount: input.amount,
-                    challengeId: input.challenge.challengeId,
-                    contextHash: input.challenge.contextHash,
-                    expiresAt: input.challenge.expiresAt,
-                    nonce: input.nonce || "nonce",
-                    recipient: input.challenge.recipient.toLowerCase(),
-                    replayKey: input.replayKey || "rk",
-                    tongoAddress: input.tongoAddress,
-                    token: input.challenge.token,
-                  }),
-                );
+            async createProof(input) {
+              if (!input.replayKey || !input.nonce) {
+                throw new Error("x402 replay metadata missing from challenge flow.");
+              }
+
+              const normalizedSender = padAddress(address);
+              const normalizedRecipient = padAddress(input.challenge.recipient);
+              let withdrawAmount: bigint;
+              try {
+                withdrawAmount = BigInt(input.amount);
+              } catch {
+                throw new Error(`x402 amount is not an integer: ${input.amount}`);
+              }
+
+              const bitSizeFn = (tongoAccount as any).bit_size;
+              const rawStateFn = (tongoAccount as any).rawState;
+              if (
+                typeof bitSizeFn !== "function" ||
+                typeof rawStateFn !== "function"
+              ) {
+                throw new Error("Tongo account does not expose proof primitives.");
+              }
+
+              const bitSize = await bitSizeFn.call(tongoAccount);
+              const preState = await rawStateFn.call(tongoAccount);
+
+              const withdrawOp = await tongoAccount.withdraw({
+                amount: withdrawAmount,
+                to: normalizedRecipient,
+                sender: normalizedSender,
+              });
+              if (!withdrawOp?.toCalldata) {
+                throw new Error("Tongo withdraw returned no calldata.");
+              }
+
+              const settlementTxHash = await executeOrRoute(
+                [withdrawOp.toCalldata()],
+                {
+                  action: "withdraw",
+                  token: input.challenge.token,
+                  amount: input.amount,
+                  recipient: normalizedRecipient,
+                },
+              );
+
+              const tongoContractAddress = (tongoAccount as any)?.Tongo?.address;
+              if (!tongoContractAddress) {
+                throw new Error("Missing Tongo contract address for proof bundle.");
+              }
+
+              const proofInputs = {
+                y: withdrawOp.from,
+                nonce: preState.nonce,
+                to: withdrawOp.to,
+                amount: withdrawOp.amount,
+                currentBalance: preState.balance,
+                auxiliarCipher: withdrawOp.auxiliarCipher,
+                bit_size: bitSize,
+                prefix_data: {
+                  chain_id: toBigIntChainId(chainId),
+                  tongo_address: BigInt(tongoContractAddress),
+                  sender_address: BigInt(normalizedSender),
+                },
+              };
+
+              const envelope = createX402TongoProofEnvelope({
+                challenge: input.challenge,
+                tongoAddress: input.tongoAddress,
+                amount: input.amount,
+                replayKey: input.replayKey,
+                nonce: input.nonce,
+                settlementTxHash,
+                attestor: "cloak-web-marketplace",
+                tongoProof: {
+                  operation: "withdraw",
+                  inputs: serializeTongoValue(proofInputs),
+                  proof: serializeTongoValue(withdrawOp.proof),
+                },
+              });
+
               return {
-                proof: JSON.stringify({
-                  envelopeVersion: "1",
-                  proofType: "tongo_attestation_v1",
-                  intentHash,
-                  settlementTxHash: fallbackSettlementTxHash(
-                    `${intentHash}:${input.replayKey || "rk"}`,
-                  ),
-                  attestor: "cloak-web",
-                  issuedAt: new Date().toISOString(),
-                }),
+                proof: encodeX402TongoProofEnvelope(envelope),
+                replayKey: input.replayKey,
+                nonce: input.nonce,
               };
             },
           },
@@ -264,7 +433,18 @@ export default function AgentProfilePage() {
     } finally {
       setIsRunning(false);
     }
-  }, [hireIdInput, profile, runAction, runParamsDraft, runPayerAddress]);
+  }, [
+    address,
+    chainId,
+    executeOrRoute,
+    hireIdInput,
+    isInitialized,
+    profile,
+    runAction,
+    runParamsDraft,
+    tongoAccount,
+    tongoAddress,
+  ]);
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -411,14 +591,12 @@ export default function AgentProfilePage() {
               />
             </label>
 
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-400">Payer Tongo address</span>
-              <input
-                value={runPayerAddress}
-                onChange={e => setRunPayerAddress(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 font-mono"
-              />
-            </label>
+            <div className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2">
+              <p className="text-[11px] text-slate-400">Connected payer (Tongo)</p>
+              <code className="text-xs text-slate-200 break-all">
+                {tongoAddress || "Connect wallet to resolve payer address"}
+              </code>
+            </div>
 
             <button
               type="button"
@@ -442,6 +620,118 @@ export default function AgentProfilePage() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* ── Leaderboard Metrics ── */}
+          <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-2">
+            <h3 className="text-sm font-medium text-slate-200">Leaderboard metrics (7d)</h3>
+            {metricsLoading && <p className="text-xs text-slate-400">Loading...</p>}
+            {!metricsLoading && !agentMetrics && (
+              <p className="text-xs text-slate-400">No leaderboard data available for this agent.</p>
+            )}
+            {!metricsLoading && agentMetrics && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+                  <p className="text-[10px] text-slate-400">Work Score</p>
+                  <p className="text-lg font-semibold text-slate-100">{agentMetrics.work_score}</p>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+                  <p className="text-[10px] text-slate-400">Runs</p>
+                  <p className="text-lg font-semibold text-slate-100">{agentMetrics.runs}</p>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+                  <p className="text-[10px] text-slate-400">Success Rate</p>
+                  <p className="text-lg font-semibold text-slate-100">
+                    {(agentMetrics.success_rate * 100).toFixed(1)}%
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+                  <p className="text-[10px] text-slate-400">Trust Score</p>
+                  <p className="text-lg font-semibold text-slate-100">{agentMetrics.trust_score}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Create Delegation ── */}
+          <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+            <h3 className="text-sm font-medium text-slate-200">Create delegation</h3>
+            <p className="text-xs text-slate-400">
+              Grant this agent a spending allowance scoped by token, amount, and duration.
+            </p>
+
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400">Token</span>
+              <div className="flex gap-2">
+                {(["STRK", "ETH", "USDC"] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setDlgToken(t)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border ${
+                      dlgToken === t
+                        ? "border-blue-500 bg-blue-500/20 text-blue-200"
+                        : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-400">Max per run</span>
+                <input
+                  value={dlgMaxPerRun}
+                  onChange={e => setDlgMaxPerRun(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                  placeholder="10"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-400">Total allowance</span>
+                <input
+                  value={dlgTotalAllowance}
+                  onChange={e => setDlgTotalAllowance(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                  placeholder="100"
+                />
+              </label>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400">Duration</span>
+              <div className="flex gap-2">
+                {(["1h", "24h", "7d", "30d"] as const).map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDlgDuration(d)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border ${
+                      dlgDuration === d
+                        ? "border-blue-500 bg-blue-500/20 text-blue-200"
+                        : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500"
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleCreateDelegation()}
+              disabled={creatingDlg}
+              className="text-sm px-3 py-2 rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 disabled:opacity-50"
+            >
+              {creatingDlg ? "Creating..." : "Create delegation"}
+            </button>
+
+            {dlgError && <p className="text-xs text-red-300">{dlgError}</p>}
+            {dlgSuccess && <p className="text-xs text-emerald-300">{dlgSuccess}</p>}
           </div>
         </section>
       )}

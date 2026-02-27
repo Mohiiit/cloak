@@ -21,6 +21,8 @@ export interface X402Challenge {
   token: string;
   minAmount: string;
   recipient: string;
+  /** Base58 Tongo address for shielded transfer payments (if available). */
+  tongoRecipient?: string;
   contextHash: string;
   expiresAt: string;
   facilitator: string;
@@ -42,6 +44,19 @@ export interface X402PaymentPayload {
 }
 
 export type X402TongoProofType = "tongo_attestation_v1";
+export type X402TongoProofOperation =
+  | "fund"
+  | "transfer"
+  | "withdraw"
+  | "ragequit"
+  | "rollover"
+  | "audit";
+
+export interface X402TongoProofBundle {
+  operation: X402TongoProofOperation;
+  inputs: unknown;
+  proof: unknown;
+}
 
 export interface X402TongoProofEnvelope {
   envelopeVersion: "1";
@@ -51,6 +66,7 @@ export interface X402TongoProofEnvelope {
   attestor?: string;
   issuedAt?: string;
   signature?: string;
+  tongoProof?: X402TongoProofBundle;
   metadata?: Record<string, unknown>;
 }
 
@@ -76,6 +92,7 @@ export interface CreateX402TongoProofEnvelopeInput {
   attestor?: string;
   issuedAt?: string;
   signature?: string;
+  tongoProof?: X402TongoProofBundle;
   metadata?: Record<string, unknown>;
 }
 
@@ -271,6 +288,7 @@ export function createX402TongoProofEnvelope(
     attestor: input.attestor,
     issuedAt: input.issuedAt || new Date().toISOString(),
     signature: input.signature,
+    tongoProof: input.tongoProof,
     metadata: input.metadata,
   };
   assertValidTongoProofEnvelope(envelope);
@@ -507,13 +525,34 @@ export async function x402Fetch(
   const payload = await options.createPayload(challenge);
   assertValidPaymentPayload(payload);
 
+  // Merge x402 challenge + payment into the request body instead of headers.
+  // ZK proofs inside the payment envelope can easily exceed Vercel's 16KB
+  // per-header limit, causing a 494 (Request Header Too Large) at the edge.
   const retryHeaders = new Headers(init.headers ?? {});
-  retryHeaders.set(challengeHeader, JSON.stringify(challenge));
-  retryHeaders.set(paymentHeader, encodeX402PaymentHeader(payload));
+  retryHeaders.set("x-x402-body", "1"); // Signal that x402 data is in body
+
+  let retryBody: string;
+  try {
+    const originalBody =
+      typeof init.body === "string" ? JSON.parse(init.body) : {};
+    retryBody = JSON.stringify({
+      ...originalBody,
+      _x402: {
+        challenge,
+        payment: JSON.parse(encodeX402PaymentHeader(payload)),
+      },
+    });
+  } catch {
+    // Fallback: put in headers if body merge fails
+    retryHeaders.set(challengeHeader, JSON.stringify(challenge));
+    retryHeaders.set(paymentHeader, encodeX402PaymentHeader(payload));
+    retryBody = init.body as string;
+  }
 
   return fetchImpl(input, {
     ...init,
     headers: retryHeaders,
+    body: retryBody,
   });
 }
 
@@ -751,5 +790,27 @@ export function assertValidTongoProofEnvelope(
       !/^0x[0-9a-fA-F]+$/.test(envelope.settlementTxHash))
   ) {
     throw new Error("Invalid tongo settlement tx hash");
+  }
+  if (envelope.tongoProof !== undefined) {
+    const operations: ReadonlySet<string> = new Set([
+      "fund",
+      "transfer",
+      "withdraw",
+      "ragequit",
+      "rollover",
+      "audit",
+    ]);
+    if (!isObject(envelope.tongoProof)) {
+      throw new Error("Invalid tongo proof bundle");
+    }
+    if (
+      typeof envelope.tongoProof.operation !== "string" ||
+      !operations.has(envelope.tongoProof.operation)
+    ) {
+      throw new Error("Invalid tongo proof operation");
+    }
+    if (!("inputs" in envelope.tongoProof) || !("proof" in envelope.tongoProof)) {
+      throw new Error("Invalid tongo proof bundle payload");
+    }
   }
 }

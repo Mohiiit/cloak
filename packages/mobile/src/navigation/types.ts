@@ -3,6 +3,7 @@ import type { AgentRunResponse } from "@cloak-wallet/sdk";
 
 export type AppTabParamList = {
   Home: undefined;
+  Marketplace: undefined;
   Agent: undefined;
   Activity: undefined;
   Settings: undefined;

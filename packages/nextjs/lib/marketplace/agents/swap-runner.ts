@@ -1,5 +1,5 @@
 import type { AgentRuntimeHandler, AgentRuntimeInput } from "./types";
-import { executeWithStarkZap } from "../starkzap-adapter";
+import { executeMarketplaceRuntimeAction } from "../execution-adapter";
 
 const SWAP_ACTIONS = new Set(["swap", "dca_tick"]);
 
@@ -10,6 +10,10 @@ function ensureValidAction(action: string): void {
 }
 
 function ensureParams(input: AgentRuntimeInput): void {
+  if (Array.isArray(input.params.calls) && input.params.calls.length > 0) {
+    return;
+  }
+
   if (input.action === "swap") {
     if (
       typeof input.params.from_token !== "string" ||
@@ -33,22 +37,28 @@ export const swapRunnerRuntime: AgentRuntimeHandler = {
       ensureValidAction(input.action);
       ensureParams(input);
 
-      const execution = await executeWithStarkZap({
+      const execution = await executeMarketplaceRuntimeAction({
         agentType: input.agentType,
         action: input.action,
         params: input.params,
         operatorWallet: input.operatorWallet,
         serviceWallet: input.serviceWallet,
-        protocol: "starkzap-swap",
+        protocol: "swap",
       });
+
+      const protocolPrefix =
+        execution.provider === "starkzap" ? "starkzap" : "basic";
 
       return {
         status: "completed",
         executionTxHashes: execution.txHashes,
         result: {
           provider: execution.provider,
-          protocol: "starkzap-swap",
+          protocol: `${protocolPrefix}-swap`,
           receipt: execution.receipt,
+          ...(input.delegationContext
+            ? { delegation_evidence: input.delegationContext.evidence }
+            : {}),
         },
       };
     } catch (error) {
@@ -62,4 +72,3 @@ export const swapRunnerRuntime: AgentRuntimeHandler = {
     }
   },
 };
-

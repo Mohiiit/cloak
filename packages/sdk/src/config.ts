@@ -23,3 +23,13 @@ export const CLOAK_WARD_CLASS_HASH =
 
 export const STRK_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+
+// ─── Delegation Class Hash ──────────────────────────────────────────────────
+
+export const CLOAK_DELEGATION_CLASS_HASH =
+  "0x6ffc7f7ef8b644f82fbcd0ffca170c84412034bd096a26f8b598007e886f81b";
+
+// ─── Delegation Contract Address ────────────────────────────────────────────
+
+export const CLOAK_DELEGATION_ADDRESS =
+  "0x5af3396fc01b99562ce0559f8af973bf4ab0ee1ae6040ef773f96294e59da10";

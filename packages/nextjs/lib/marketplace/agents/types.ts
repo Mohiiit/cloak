@@ -1,4 +1,9 @@
-import type { AgentType } from "@cloak-wallet/sdk";
+import type { AgentType, SpendAuthorization, SpendAuthorizationEvidence } from "@cloak-wallet/sdk";
+
+export interface DelegationContext {
+  spendAuthorization: SpendAuthorization;
+  evidence: SpendAuthorizationEvidence;
+}
 
 export interface AgentRuntimeInput {
   agentType: AgentType;
@@ -6,6 +11,7 @@ export interface AgentRuntimeInput {
   params: Record<string, unknown>;
   operatorWallet: string;
   serviceWallet: string;
+  delegationContext?: DelegationContext;
 }
 
 export interface AgentRuntimeOutput {

@@ -49,5 +49,11 @@ describe("profile adapter", () => {
     expect(adapted.trust_summary?.validation_score).toBe(60);
     expect(adapted.trust_summary?.freshness_seconds).toBe(30);
     expect(adapted.trust_score).toBe(76);
+    const enriched = adapted as AgentProfileResponse & {
+      onchain_status?: string;
+      onchain_owner?: string | null;
+    };
+    expect(enriched.onchain_status).toBe("verified");
+    expect(enriched.onchain_owner).toBe("0xabc");
   });
 });

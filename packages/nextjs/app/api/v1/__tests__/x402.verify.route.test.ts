@@ -1,12 +1,21 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "../marketplace/payments/x402/verify/route";
 import { POST as settlePOST } from "../marketplace/payments/x402/settle/route";
 import { buildChallenge } from "~~/lib/marketplace/x402/challenge";
+import {
+  createStrictX402Payment,
+  ensureX402FacilitatorSecretForTests,
+} from "~~/lib/marketplace/x402/test-helpers";
 
 describe("POST /api/v1/marketplace/payments/x402/verify", () => {
+  beforeEach(() => {
+    ensureX402FacilitatorSecretForTests();
+    process.env.X402_VERIFY_ONCHAIN_SETTLEMENT = "false";
+  });
+
   it("accepts a valid payment envelope", async () => {
     const challenge = buildChallenge({
       recipient: "0xabc123",
@@ -14,21 +23,12 @@ describe("POST /api/v1/marketplace/payments/x402/verify", () => {
       minAmount: "100",
       context: { runId: "1" },
     });
-
-    const payment = {
-      version: "1" as const,
-      scheme: "cloak-shielded-x402" as const,
-      challengeId: challenge.challengeId,
-      tongoAddress: "tongo1test",
-      token: "STRK",
-      amount: "100",
-      proof: "proof-blob",
+    const payment = createStrictX402Payment(challenge, {
       replayKey: "rk_1",
-      contextHash: challenge.contextHash,
-      expiresAt: challenge.expiresAt,
       nonce: "nonce_1",
-      createdAt: new Date().toISOString(),
-    };
+      tongoAddress: "tongo1test",
+      amount: "100",
+    });
 
     const req = new NextRequest(
       "http://localhost/api/v1/marketplace/payments/x402/verify",
@@ -54,18 +54,13 @@ describe("POST /api/v1/marketplace/payments/x402/verify", () => {
       context: { runId: "1" },
     });
     const payment = {
-      version: "1" as const,
-      scheme: "cloak-shielded-x402" as const,
-      challengeId: challenge.challengeId,
-      tongoAddress: "tongo1test",
-      token: "STRK",
-      amount: "100",
-      proof: "proof-blob",
-      replayKey: "rk_2",
+      ...createStrictX402Payment(challenge, {
+        replayKey: "rk_2",
+        nonce: "nonce_2",
+        tongoAddress: "tongo1test",
+        amount: "100",
+      }),
       contextHash: "bad-context-hash",
-      expiresAt: challenge.expiresAt,
-      nonce: "nonce_2",
-      createdAt: new Date().toISOString(),
     };
     const req = new NextRequest(
       "http://localhost/api/v1/marketplace/payments/x402/verify",
@@ -88,20 +83,12 @@ describe("POST /api/v1/marketplace/payments/x402/verify", () => {
       minAmount: "100",
       context: { runId: "3" },
     });
-    const payment = {
-      version: "1" as const,
-      scheme: "cloak-shielded-x402" as const,
-      challengeId: challenge.challengeId,
-      tongoAddress: "tongo1test",
-      token: "STRK",
-      amount: "100",
-      proof: "proof-blob",
+    const payment = createStrictX402Payment(challenge, {
       replayKey: "rk_3",
-      contextHash: challenge.contextHash,
-      expiresAt: challenge.expiresAt,
       nonce: "nonce_3",
-      createdAt: new Date().toISOString(),
-    };
+      tongoAddress: "tongo1test",
+      amount: "100",
+    });
 
     const settleReq = new NextRequest(
       "http://localhost/api/v1/marketplace/payments/x402/settle",

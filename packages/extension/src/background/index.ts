@@ -287,6 +287,11 @@ async function handleMessage(
     case "ROLLOVER":
       return routeTransaction(c, "rollover", request.token);
 
+    case "EXECUTE_DELEGATION_CALLS": {
+      const result = await routeRawCalls(c, request.calls, { action: request.action });
+      return { txHash: result.transaction_hash };
+    }
+
     case "ERC20_TRANSFER": {
       const { token, to, amount } = request;
       const tokenCfg = TOKENS[token];

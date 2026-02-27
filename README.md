@@ -16,7 +16,19 @@ Cloak is a privacy wallet that works like Venmo: send payments to friends with n
 
 Available as a web app, Chrome extension, and mobile app (Android + iOS), with one shared SDK.
 
-**Quick links:** [How It Works](#how-it-works) • [Platforms](#platforms) • [Getting Started](#getting-started) • [License](#license)
+**Quick links:** [Important Links](#important-links) • [How It Works](#how-it-works) • [Agentic Marketplace Flow](#agentic-marketplace-flow) • [Platforms](#platforms) • [Getting Started](#getting-started) • [License](#license)
+
+---
+
+## Important Links
+
+- Hosted backend (Vercel): https://cloak-backend-vert.vercel.app
+- Hosted marketplace UI: https://cloak-backend-vert.vercel.app/marketplace
+- SDK package (npm): https://www.npmjs.com/package/@cloak-wallet/sdk
+- SDK docs in this repo: [packages/sdk/README.md](packages/sdk/README.md)
+- Marketplace web app source: [packages/nextjs/app/marketplace](packages/nextjs/app/marketplace)
+- Marketplace API routes: [packages/nextjs/app/api/v1/marketplace](packages/nextjs/app/api/v1/marketplace)
+- x402 proof + settlement logic: [packages/nextjs/lib/marketplace/x402](packages/nextjs/lib/marketplace/x402)
 
 ---
 
@@ -37,6 +49,40 @@ Public Wallet (STRK)
 2. **Send** — Transfer any amount to another Cloak address; only sender and receiver can see the amount
 3. **Claim** — Roll incoming pending transfers into your spendable balance
 4. **Unshield** — Withdraw back to your public wallet with a ZK proof
+
+---
+
+## Agentic Marketplace Flow
+
+Cloak now has an agentic backend with ERC-8004 style agent profiles and x402 shielded per-run payments.
+
+### End-to-end execution model
+
+1. Operator registers an agent profile (`agent_id`, `agent_type`, capabilities, endpoints, pricing, wallets).
+2. User creates a hire policy (`hire`) that defines allowed actions and spend constraints.
+3. User requests a run (`run`) for one concrete action.
+4. If billable, backend returns `402 Payment Required` with x402 challenge headers.
+5. Client pays from shielded balance (Tongo withdraw), then retries with x402 payment envelope.
+6. Backend verifies challenge + proof binding, settles payment, records payment evidence, then executes agent.
+7. Activity surfaces run status, payment evidence, and execution tx hashes.
+
+### What is on-chain vs off-chain
+
+- On-chain: shield/fund, transfer, withdraw, rollover.
+- On-chain: payment settlement tx hash for billable agent runs.
+- On-chain: agent action tx hashes when handlers execute real Starknet calls.
+- Off-chain: agent profile registry cache and discovery ranking.
+- Off-chain: hire policies, run queue/state machine, and payment evidence indexing.
+- Off-chain: notifications and activity aggregation API.
+
+### Core API surfaces
+
+- Agent registry: `GET/POST /api/v1/marketplace/agents`
+- Discovery: `GET /api/v1/marketplace/discover`
+- Hires: `GET/POST /api/v1/marketplace/hires`
+- Runs: `POST /api/v1/marketplace/runs`
+- x402: `/api/v1/marketplace/payments/x402/{challenge|verify|settle|reconcile}`
+- Agent type catalog for UI: `GET /api/v1/marketplace/agent-types`
 
 ---
 
@@ -84,7 +130,7 @@ await client.account("STRK").transfer("tongoAddress", 1n);      // Send
 await client.account("STRK").withdraw(1n);                       // Unshield
 ```
 
-Latest npm release: `@cloak-wallet/sdk@0.2.1` (with `0.2.0` deprecated).
+Latest npm release: `@cloak-wallet/sdk@0.2.2` (with `0.2.0` deprecated).
 
 ---
 

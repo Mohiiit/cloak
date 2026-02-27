@@ -1,7 +1,11 @@
 // @vitest-environment node
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import {
+  createStrictX402Payment,
+  ensureX402FacilitatorSecretForTests,
+} from "~~/lib/marketplace/x402/test-helpers";
 
 vi.mock("../_lib/auth", () => ({
   authenticate: vi.fn().mockResolvedValue({
@@ -15,6 +19,11 @@ import { POST as runsPOST } from "../marketplace/runs/route";
 import { POST as settlePOST } from "../marketplace/payments/x402/settle/route";
 
 describe("x402 integration", () => {
+  beforeEach(() => {
+    ensureX402FacilitatorSecretForTests();
+    process.env.X402_VERIFY_ONCHAIN_SETTLEMENT = "false";
+  });
+
   it("completes a challenge -> paid run -> idempotent settle flow", async () => {
     const runBody = {
       hire_id: "hire_int_1",
@@ -37,20 +46,12 @@ describe("x402 integration", () => {
     const firstJson = await firstRes.json();
     const challenge = firstJson.challenge;
 
-    const payment = {
-      version: "1",
-      scheme: "cloak-shielded-x402",
-      challengeId: challenge.challengeId,
+    const payment = createStrictX402Payment(challenge, {
       tongoAddress: "tongo1payer",
-      token: challenge.token,
       amount: challenge.minAmount,
-      proof: "proof-blob",
       replayKey: "rk_integration_1",
-      contextHash: challenge.contextHash,
-      expiresAt: challenge.expiresAt,
       nonce: "nonce_integration_1",
-      createdAt: new Date().toISOString(),
-    };
+    });
 
     const paidReq = new NextRequest("http://localhost/api/v1/marketplace/runs", {
       method: "POST",
@@ -84,4 +85,3 @@ describe("x402 integration", () => {
     expect(settleJson.paymentRef).toBe("pay_rk_integration_1");
   });
 });
-

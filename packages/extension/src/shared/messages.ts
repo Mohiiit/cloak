@@ -23,6 +23,11 @@ export type MessageRequest =
   | { type: "BUILD_CALLS"; token: TokenKey; action: string; amount?: string; recipient?: string }
   | { type: "GET_TX_HISTORY"; fromNonce: number }
   | { type: "WALLET_RPC"; method: string; params?: any }
+  | {
+      type: "EXECUTE_DELEGATION_CALLS";
+      calls: Array<{ contractAddress: string; entrypoint: string; calldata: string[] }>;
+      action: string;
+    }
   // ─── Approval popup messages ────────────────────────────────────
   | { type: "GET_PENDING_APPROVAL" }
   | { type: "RESOLVE_APPROVAL"; id: string; approved: boolean };

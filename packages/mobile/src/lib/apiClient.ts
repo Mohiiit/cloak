@@ -12,7 +12,9 @@ const STORAGE_KEY_KEY = "cloak_api_key";
 const STORAGE_KEY_STARK_ADDRESS = "cloak_stark_address";
 const STORAGE_KEY_STARK_PUBLIC_KEY = "cloak_stark_pubkey";
 
-const DEFAULT_API_URL = "https://cloak-backend-vert.vercel.app";
+const DEFAULT_API_URL = __DEV__
+  ? "http://localhost:3000"
+  : "https://cloak-backend-vert.vercel.app";
 
 type ApiConfig = {
   url: string;
@@ -114,7 +116,9 @@ export async function getApiConfig(): Promise<{ url: string; key: string }> {
     AsyncStorage.getItem(STORAGE_KEY_KEY),
   ]);
   return {
-    url: url || DEFAULT_API_URL,
+    // In dev mode, always use localhost so we hit the local Next.js server
+    // (which has delegation feature flags enabled).
+    url: __DEV__ ? DEFAULT_API_URL : (url || DEFAULT_API_URL),
     key: key || "",
   };
 }
