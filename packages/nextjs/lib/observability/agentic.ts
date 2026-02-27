@@ -15,6 +15,7 @@ export type MarketplaceFunnelStage =
   | "discover_loaded"
   | "hire_created"
   | "run_requested"
+  | "run_executing"
   | "run_completed"
   | "run_failed";
 
