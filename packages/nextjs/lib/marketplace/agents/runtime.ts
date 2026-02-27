@@ -15,7 +15,7 @@ const handlers: Partial<Record<AgentType, AgentRuntimeHandler>> = {
 };
 
 const supportedActionsByAgentType: Record<AgentType, ReadonlySet<string>> = {
-  staking_steward: new Set(["stake", "unstake", "rebalance"]),
+  staking_steward: new Set(["stake", "unstake", "rebalance", "compound"]),
   treasury_dispatcher: new Set(["dispatch_batch", "sweep_idle"]),
   swap_runner: new Set(["swap", "dca_tick"]),
 };

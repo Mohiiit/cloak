@@ -1,7 +1,7 @@
 import type { AgentRuntimeHandler, AgentRuntimeInput } from "./types";
-import { executeWithStarkZap } from "../starkzap-adapter";
+import { executeMarketplaceRuntimeAction } from "../execution-adapter";
 
-const STAKING_ACTIONS = new Set(["stake", "unstake", "rebalance"]);
+const STAKING_ACTIONS = new Set(["stake", "unstake", "rebalance", "compound"]);
 
 function ensureValidStakingAction(action: string): void {
   if (!STAKING_ACTIONS.has(action)) {
@@ -10,6 +10,10 @@ function ensureValidStakingAction(action: string): void {
 }
 
 function ensureRequiredParams(input: AgentRuntimeInput): void {
+  if (Array.isArray(input.params.calls) && input.params.calls.length > 0) {
+    return;
+  }
+
   if (input.action === "stake" || input.action === "unstake") {
     if (typeof input.params.amount !== "string") {
       throw new Error("staking amount is required");
@@ -30,35 +34,63 @@ export const stakingStewardRuntime: AgentRuntimeHandler = {
   async execute(input) {
     try {
       ensureValidStakingAction(input.action);
-      ensureRequiredParams(input);
 
-      const execution = await executeWithStarkZap({
+      // Compound has no user-provided required params — reads from chain
+      if (input.action !== "compound") {
+        ensureRequiredParams(input);
+      }
+
+      // Delegation was already validated and consumed at the route level
+      // (consumeSpendAuthorization). Skip preflight to avoid double-consume.
+
+      const execution = await executeMarketplaceRuntimeAction({
         agentType: input.agentType,
         action: input.action,
-        params: input.params,
+        params: {
+          ...input.params,
+          // For compound, pass operator wallet so the adapter can read staker_info
+          ...(input.action === "compound"
+            ? { token: input.params.token || "STRK" }
+            : {}),
+        },
         operatorWallet: input.operatorWallet,
         serviceWallet: input.serviceWallet,
-        protocol: "starkzap-staking",
+        protocol: "staking",
       });
+
+      const protocolPrefix =
+        execution.provider === "starkzap" ? "starkzap" : "basic";
 
       return {
         status: "completed",
         executionTxHashes: execution.txHashes,
         result: {
           provider: execution.provider,
-          protocol: "starkzap-staking",
+          protocol: `${protocolPrefix}-staking`,
           receipt: execution.receipt,
+          ...(input.action === "compound" && execution.receipt
+            ? {
+                summary: `Compounded ${execution.receipt.compounded_display || "rewards"} STRK`,
+                unclaimed_rewards_wei: execution.receipt.unclaimed_rewards_wei,
+                compounded_amount_wei: execution.receipt.compounded_amount_wei,
+                total_staked_after_wei: execution.receipt.total_staked_after_wei,
+              }
+            : {}),
+          ...(input.delegationContext
+            ? { delegation_evidence: input.delegationContext.evidence }
+            : {}),
         },
       };
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "staking runtime failed";
+      console.error("[staking-steward] execution failed:", errorMsg);
       return {
         status: "failed",
         executionTxHashes: null,
         result: {
-          error: error instanceof Error ? error.message : "staking runtime failed",
+          error: errorMsg,
         },
       };
     }
   },
 };
-
