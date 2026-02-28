@@ -597,11 +597,12 @@ export async function executeWithBasicProtocols(
 
   // For compound, read staker info before and after to build rich metadata
   let compoundMeta: Record<string, unknown> | undefined;
+  const compoundStaker =
+    sanitizeEnvCredential(env.BASIC_PROTOCOL_SIGNER_ADDRESS) ||
+    sanitizeEnvCredential(env.ERC8004_SIGNER_ADDRESS) ||
+    input.operatorWallet;
   if (input.action === "compound" && provider) {
     const stakingContract = resolveStakingContractAddress(input, env);
-    const compoundStaker = sanitizeEnvCredential(env.BASIC_PROTOCOL_SIGNER_ADDRESS) ||
-      sanitizeEnvCredential(env.ERC8004_SIGNER_ADDRESS) ||
-      input.operatorWallet;
     try {
       const pre = await readStakerInfo(provider, stakingContract, compoundStaker);
       compoundMeta = {
