@@ -296,8 +296,15 @@ async function resolveCompoundCalls(
     throw new Error("compound requires an RPC provider to read staker_info");
   }
   const stakingContract = resolveStakingContractAddress(input, env);
-  const operatorWallet = requireHexAddress(input.operatorWallet, "operatorWallet");
-  const stakerInfo = await readStakerInfo(provider, stakingContract, operatorWallet);
+  // The staker on-chain is the signer account (msg.sender), not the operator
+  // wallet that hired the agent.
+  const signerAddress = requireHexAddress(
+    sanitizeEnvCredential(env.BASIC_PROTOCOL_SIGNER_ADDRESS) ||
+      sanitizeEnvCredential(env.ERC8004_SIGNER_ADDRESS) ||
+      input.operatorWallet,
+    "signerAddress",
+  );
+  const stakerInfo = await readStakerInfo(provider, stakingContract, signerAddress);
 
   if (stakerInfo.staked === 0n) {
     throw new Error("No existing staking position found");
@@ -314,7 +321,7 @@ async function resolveCompoundCalls(
     {
       contractAddress: stakingContract,
       entrypoint: "claim_rewards",
-      calldata: [operatorWallet],
+      calldata: [signerAddress],
     },
     {
       contractAddress: STRK_TOKEN_ADDRESS,
@@ -324,7 +331,7 @@ async function resolveCompoundCalls(
     {
       contractAddress: stakingContract,
       entrypoint: "increase_stake",
-      calldata: [operatorWallet, num.toHex(rewardAmount)],
+      calldata: [signerAddress, num.toHex(rewardAmount)],
     },
   ];
 }
@@ -350,10 +357,18 @@ async function resolveStakingCalls(
       "params.operational_address",
     );
     const [low, high] = toUint256Calldata(amountWei);
+    // The staking contract identifies the staker by msg.sender (the signer
+    // account), NOT by the operator wallet that hired the agent. We must check
+    // the signer address for an existing position to decide stake vs
+    // increase_stake.
+    const signerAddress =
+      sanitizeEnvCredential(env.BASIC_PROTOCOL_SIGNER_ADDRESS) ||
+      sanitizeEnvCredential(env.ERC8004_SIGNER_ADDRESS) ||
+      input.operatorWallet;
     const existingStaker = await hasExistingStakerPosition(
       provider,
       stakingContract,
-      input.operatorWallet,
+      signerAddress,
     );
     const stakingEntrypoint = existingStaker ? "increase_stake" : "stake";
 
@@ -369,7 +384,7 @@ async function resolveStakingCalls(
         calldata:
           stakingEntrypoint === "stake"
             ? [rewardAddress, operationalAddress, num.toHex(amountWei)]
-            : [requireHexAddress(input.operatorWallet, "operatorWallet"), num.toHex(amountWei)],
+            : [requireHexAddress(signerAddress, "signerAddress"), num.toHex(amountWei)],
       },
     ];
   }
@@ -584,8 +599,11 @@ export async function executeWithBasicProtocols(
   let compoundMeta: Record<string, unknown> | undefined;
   if (input.action === "compound" && provider) {
     const stakingContract = resolveStakingContractAddress(input, env);
+    const compoundStaker = sanitizeEnvCredential(env.BASIC_PROTOCOL_SIGNER_ADDRESS) ||
+      sanitizeEnvCredential(env.ERC8004_SIGNER_ADDRESS) ||
+      input.operatorWallet;
     try {
-      const pre = await readStakerInfo(provider, stakingContract, input.operatorWallet);
+      const pre = await readStakerInfo(provider, stakingContract, compoundStaker);
       compoundMeta = {
         unclaimed_rewards_wei: pre.unclaimed.toString(),
         compounded_amount_wei: pre.unclaimed.toString(),
@@ -604,7 +622,7 @@ export async function executeWithBasicProtocols(
   if (compoundMeta && provider) {
     const stakingContract = resolveStakingContractAddress(input, env);
     try {
-      const post = await readStakerInfo(provider, stakingContract, input.operatorWallet);
+      const post = await readStakerInfo(provider, stakingContract, compoundStaker);
       compoundMeta.total_staked_after_wei = post.staked.toString();
       const rewardWei = BigInt(compoundMeta.compounded_amount_wei as string);
       const divisor = WEI_PER_STRK;
