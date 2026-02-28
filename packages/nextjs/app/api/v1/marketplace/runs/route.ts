@@ -385,8 +385,8 @@ export async function POST(req: NextRequest) {
       // on-chain operation), NOT the service wallet. The x402 fee is the agent's
       // payment; the delegation provides operational capital.
       const delegationRecipient =
-        process.env.BASIC_PROTOCOL_SIGNER_ADDRESS ||
-        process.env.ERC8004_SIGNER_ADDRESS ||
+        process.env.BASIC_PROTOCOL_SIGNER_ADDRESS?.trim() ||
+        process.env.ERC8004_SIGNER_ADDRESS?.trim() ||
         serviceWallet;
       try {
         delegationEvidence = await consumeSpendAuthorization(spendAuth, delegationRecipient);

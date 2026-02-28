@@ -137,9 +137,13 @@ async function consumeOnChain(
 
   consumedNonces.add(nonceKey(auth));
 
-  // Build the consume_and_transfer call — all 3 args are felt252
+  // Build the consume_and_transfer call — all 3 args are felt252.
+  // Every value MUST be hex-normalized to avoid starknet.js calldata
+  // serialization mismatches ("Input too long for arguments").
   const amountBig = BigInt(auth.amount);
-  const onchainDelegationId = auth.onchain_delegation_id ?? auth.delegation_id;
+  const rawDelegationId = auth.onchain_delegation_id ?? auth.delegation_id;
+  const delegationIdHex = num.toHex(BigInt(rawDelegationId));
+  const recipientHex = num.toHex(BigInt(recipient));
 
   const { account, provider } = await buildSignerAccount();
 
@@ -151,9 +155,9 @@ async function consumeOnChain(
         contractAddress: delegationManagerAddr,
         entrypoint: "consume_and_transfer",
         calldata: [
-          onchainDelegationId,
+          delegationIdHex,
           num.toHex(amountBig),
-          recipient,
+          recipientHex,
         ],
       },
     ],
