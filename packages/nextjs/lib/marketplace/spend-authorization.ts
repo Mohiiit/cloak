@@ -7,7 +7,8 @@
  *
  * When ERC8004_DELEGATION_MANAGER_ADDRESS is configured and non-zero,
  * consume calls CloakDelegation.consume_and_transfer on-chain to move
- * real tokens from the user's wallet to the service wallet.
+ * real tokens from the user's wallet to the recipient (typically the
+ * agent signer that executes the on-chain operation).
  * Otherwise, falls back to the off-chain accounting-only path.
  */
 
@@ -87,7 +88,7 @@ export async function validateSpendAuthorization(
 
 export async function consumeSpendAuthorization(
   auth: SpendAuthorization,
-  serviceWallet?: string,
+  recipient?: string,
 ): Promise<SpendAuthorizationEvidence> {
   const validation = await validateSpendAuthorization(auth);
   if (!validation.valid) {
@@ -98,9 +99,9 @@ export async function consumeSpendAuthorization(
 
   const delegationManagerAddr = getDelegationManagerAddress();
 
-  // On-chain path: call consume_and_transfer to move real tokens
-  if (delegationManagerAddr && serviceWallet) {
-    return consumeOnChain(auth, delegationManagerAddr, serviceWallet);
+  // On-chain path: call consume_and_transfer to move real tokens to recipient
+  if (delegationManagerAddr && recipient) {
+    return consumeOnChain(auth, delegationManagerAddr, recipient);
   }
 
   // Off-chain path: accounting-only consume
@@ -124,7 +125,7 @@ export async function consumeSpendAuthorization(
 async function consumeOnChain(
   auth: SpendAuthorization,
   delegationManagerAddr: string,
-  serviceWallet: string,
+  recipient: string,
 ): Promise<SpendAuthorizationEvidence> {
   // Also update off-chain ledger for consistency
   const consumeResult = await consumeDelegationRecord(auth.delegation_id, auth.amount);
@@ -152,7 +153,7 @@ async function consumeOnChain(
         calldata: [
           onchainDelegationId,
           num.toHex(amountBig),
-          serviceWallet,
+          recipient,
         ],
       },
     ],

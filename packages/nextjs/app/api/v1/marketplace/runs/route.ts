@@ -381,8 +381,15 @@ export async function POST(req: NextRequest) {
           "SPEND_AUTH_REJECTED",
         );
       }
+      // Delegated funds go to the agent signer (the account that executes the
+      // on-chain operation), NOT the service wallet. The x402 fee is the agent's
+      // payment; the delegation provides operational capital.
+      const delegationRecipient =
+        process.env.BASIC_PROTOCOL_SIGNER_ADDRESS ||
+        process.env.ERC8004_SIGNER_ADDRESS ||
+        serviceWallet;
       try {
-        delegationEvidence = await consumeSpendAuthorization(spendAuth, serviceWallet);
+        delegationEvidence = await consumeSpendAuthorization(spendAuth, delegationRecipient);
       } catch (err) {
         return badRequest(
           err instanceof Error ? err.message : "Spend authorization consume failed",

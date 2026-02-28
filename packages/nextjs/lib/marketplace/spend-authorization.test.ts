@@ -136,13 +136,13 @@ describe("spend-authorization", () => {
       process.env.ERC8004_DELEGATION_MANAGER_ADDRESS = "0x0";
       const d = setup();
       const auth = baseAuth(d.id);
-      const evidence = await consumeSpendAuthorization(auth, "0xServiceWallet");
+      const evidence = await consumeSpendAuthorization(auth, "0xSignerAddress");
       expect(evidence.delegation_consume_tx_hash).toBeNull();
       expect(evidence.escrow_transfer_tx_hash).toBeNull();
       delete process.env.ERC8004_DELEGATION_MANAGER_ADDRESS;
     });
 
-    it("falls back to off-chain when no service wallet provided", async () => {
+    it("falls back to off-chain when no recipient provided", async () => {
       process.env.ERC8004_DELEGATION_MANAGER_ADDRESS = "0x123abc";
       const d = setup();
       const auth = baseAuth(d.id);
