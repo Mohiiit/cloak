@@ -31,7 +31,6 @@ import {
   Settings,
   Shield,
   ShieldAlert,
-  Store,
   Sparkles,
   X,
 } from "lucide-react-native";
@@ -598,11 +597,6 @@ export default function AgentScreen() {
     }
   }
 
-  function openMarketplace() {
-    // Navigate to the Marketplace tab instead of the old stack route
-    navigation.navigate("Marketplace");
-  }
-
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -736,12 +730,6 @@ export default function AgentScreen() {
           <Settings size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
-      <TouchableOpacity style={styles.marketplaceEntry} onPress={openMarketplace}>
-        <Store size={14} color={colors.primaryLight} />
-        <Text style={styles.marketplaceEntryTitle}>Open Agent Marketplace</Text>
-        <ChevronRight size={14} color={colors.textMuted} />
-      </TouchableOpacity>
-
       {/* ─── Chat Area ─── */}
       <ScrollView
         ref={scrollRef}
@@ -1012,27 +1000,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontFamily: typography.primarySemibold,
   },
-  marketplaceEntry: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  marketplaceEntryTitle: {
-    flex: 1,
-    color: colors.primaryLight,
-    fontFamily: typography.secondarySemibold,
-    fontSize: fontSize.sm,
-  },
-
   // ─── Chat Area ───
   chatArea: {
     flex: 1,

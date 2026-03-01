@@ -1,5 +1,6 @@
 /**
- * Full-screen modal showing agent details with hire/run actions.
+ * Full-screen modal showing agent details with a single "Run Action" button.
+ * RunActionModal handles auto-hiring if the agent hasn't been hired yet.
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
@@ -22,7 +23,6 @@ import {
 import type { AgentProfileResponse, DelegationResponse } from "@cloak-wallet/sdk";
 import { listMarketplaceDelegations } from "../../lib/marketplaceApi";
 import { colors, spacing, fontSize, borderRadius, typography } from "../../lib/theme";
-import HireModal from "./HireModal";
 import RunActionModal from "./RunActionModal";
 
 interface AgentDetailSheetProps {
@@ -86,7 +86,6 @@ export default function AgentDetailSheet({
 }: AgentDetailSheetProps) {
   const [delegations, setDelegations] = useState<DelegationResponse[]>([]);
   const [delegationLoading, setDelegationLoading] = useState(false);
-  const [showHireModal, setShowHireModal] = useState(false);
   const [showRunModal, setShowRunModal] = useState(false);
 
   const typeColor = AGENT_TYPE_COLORS[agent.agent_type] || colors.textMuted;
@@ -181,7 +180,7 @@ export default function AgentDetailSheet({
             ) : (
               <View style={styles.statusRow}>
                 <AlertCircle size={14} color={colors.textMuted} />
-                <Text style={styles.statusInactive}>Not hired — hire to run actions</Text>
+                <Text style={styles.statusInactive}>Not hired — will be auto-hired on run</Text>
               </View>
             )}
           </View>
@@ -209,49 +208,29 @@ export default function AgentDetailSheet({
           )}
         </ScrollView>
 
-        {/* Actions */}
+        {/* Single primary action */}
         <View style={styles.actionBar}>
-          {!isHired ? (
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => setShowHireModal(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.primaryButtonText}>Hire Agent</Text>
-              <ChevronRight size={18} color={colors.text} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => setShowRunModal(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.primaryButtonText}>Run Action</Text>
-              <ChevronRight size={18} color={colors.text} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => setShowRunModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.primaryButtonText}>Run Action</Text>
+            <ChevronRight size={18} color={colors.text} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Sub-modals */}
-      <HireModal
-        visible={showHireModal}
-        agent={agent}
-        walletAddress={walletAddress}
-        publicKey={publicKey}
-        onClose={() => setShowHireModal(false)}
-        onHired={(hId) => {
-          setShowHireModal(false);
-          onHired(agent.agent_id, hId);
-        }}
-      />
-
-      {showRunModal && hireId && (
+      {/* Unified run modal (handles auto-hire internally) */}
+      {showRunModal && (
         <RunActionModal
           visible={showRunModal}
           agent={agent}
           hireId={hireId}
+          walletAddress={walletAddress}
+          publicKey={publicKey}
           onClose={() => setShowRunModal(false)}
+          onHired={onHired}
         />
       )}
     </Modal>
