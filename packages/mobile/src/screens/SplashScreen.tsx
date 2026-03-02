@@ -378,12 +378,12 @@ export default function SplashScreen({ readyToExit, onFinished }: Props) {
   useEffect(() => {
     if (!readyToExit) return;
 
-    // Schedule "Ready" text near the end of the animation.
+    // Schedule final status text near the end of the animation.
     const elapsed = Date.now() - startAtMs.current;
     const readyTextDelay = Math.max(0, TIMING.exitStartMs - 400 - elapsed);
 
     const readyTimer = setTimeout(() => {
-      setStatusText("Ready");
+      setStatusText("Let's go");
       if (statusTimer.current) {
         clearTimeout(statusTimer.current);
         statusTimer.current = null;
