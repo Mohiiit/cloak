@@ -1,5 +1,8 @@
 /**
- * TwoFactorContext — React context for 2FA state, polling, and actions.
+ * TwoFactorContext — React context for 2FA state and actions.
+ *
+ * Pending approval requests are pushed via Supabase Realtime
+ * (see RealtimeContext). No polling needed.
  */
 import React, {
   createContext,
@@ -7,9 +10,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
-  useRef,
 } from "react";
-import { AppState, AppStateStatus } from "react-native";
 import { Account, RpcProvider } from "starknet";
 import {
   DEFAULT_RPC,
@@ -18,6 +19,7 @@ import {
   buildResourceBoundsFromEstimate,
 } from "@cloak-wallet/sdk";
 import { useWallet } from "./WalletContext";
+import { useRealtime } from "./RealtimeContext";
 import { useToast } from "../components/Toast";
 import { isMockMode } from "../testing/runtimeConfig";
 import {
@@ -29,7 +31,6 @@ import {
   clearSecondaryKey,
   isBiometricsAvailable,
   promptBiometric,
-  fetchPendingRequests,
   enableTwoFactorConfig,
   disableTwoFactorConfig,
   isTwoFactorConfigured,
@@ -70,8 +71,6 @@ export function useTwoFactor() {
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 3000;
-
 export function TwoFactorProvider({
   children,
 }: {
@@ -91,8 +90,7 @@ export function TwoFactorProvider({
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const { pendingTwoFactor } = useRealtime();
 
   // ── Initialize ──────────────────────────────────────────────────────────
 
@@ -128,64 +126,15 @@ export function TwoFactorProvider({
     })();
   }, [wallet.keys?.starkAddress]);
 
-  // ── Poll pending requests ──────────────────────────────────────────────
+  // ── Sync pending requests from Realtime push ─────────────────────────
 
-  const fetchPending = useCallback(async () => {
-    if (!wallet.keys?.starkAddress || !isEnabled) return;
-    try {
-      const { data, error } = await fetchPendingRequests(
-        normalizeAddress(wallet.keys.starkAddress),
-      );
-      if (!error && data) {
-        setPendingRequests(data);
-      }
-    } catch (e) {
-      // Silent — polling should not interrupt UX
-      console.warn("[TwoFactorContext] Poll error:", e);
-    }
-  }, [wallet.keys?.starkAddress, isEnabled]);
-
-  // Start/stop polling
   useEffect(() => {
     if (!isEnabled || !wallet.keys?.starkAddress) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
       setPendingRequests([]);
       return;
     }
-
-    // Initial fetch
-    fetchPending();
-
-    // Set up interval
-    pollRef.current = setInterval(fetchPending, POLL_INTERVAL_MS);
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [isEnabled, wallet.keys?.starkAddress, fetchPending]);
-
-  // Refresh on AppState focus
-  useEffect(() => {
-    const subscription = AppState.addEventListener(
-      "change",
-      (nextState: AppStateStatus) => {
-        if (
-          appStateRef.current.match(/inactive|background/) &&
-          nextState === "active"
-        ) {
-          fetchPending();
-        }
-        appStateRef.current = nextState;
-      },
-    );
-    return () => subscription.remove();
-  }, [fetchPending]);
+    setPendingRequests(pendingTwoFactor);
+  }, [isEnabled, wallet.keys?.starkAddress, pendingTwoFactor]);
 
   // ── Actions ────────────────────────────────────────────────────────────
 
@@ -403,8 +352,10 @@ export function TwoFactorProvider({
     }
   }, [wallet.keys?.starkAddress, showToast]);
 
+  const { refresh: realtimeRefresh } = useRealtime();
+
   const refresh = useCallback(async () => {
-    await fetchPending();
+    await realtimeRefresh();
     if (wallet.keys?.starkAddress) {
       const { configured } = await isTwoFactorConfigured(
         normalizeAddress(wallet.keys.starkAddress),
@@ -414,7 +365,7 @@ export function TwoFactorProvider({
       setSecondaryPublicKey(pubKey);
       setIsEnabled(configured && !!pubKey);
     }
-  }, [wallet.keys?.starkAddress, fetchPending]);
+  }, [wallet.keys?.starkAddress, realtimeRefresh]);
 
   const saveConfig = useCallback(
     async (url: string, key: string) => {

@@ -16,6 +16,7 @@ LogBox.ignoreLogs([
   "[WardContext]",
   "[WardApprovalModal]",
   "[GuardianApprovalModal]",
+  "[RealtimeContext]",
   "Attempting to change the refresh control while it is not idle",
 ]);
 
@@ -27,6 +28,7 @@ import { WalletProvider } from "./src/lib/WalletContext";
 import { TwoFactorProvider } from "./src/lib/TwoFactorContext";
 import { ToastProvider } from "./src/components/Toast";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
+import { RealtimeProvider } from "./src/lib/RealtimeContext";
 import { WardProvider } from "./src/lib/wardContext";
 import ApprovalModal from "./src/components/ApprovalModal";
 import WardApprovalModal from "./src/components/WardApprovalModal";
@@ -47,18 +49,20 @@ function App() {
       <ToastProvider>
         <TongoBridgeProvider>
           <WalletProvider>
-            <TwoFactorProvider>
-              <WardProvider>
-                <ErrorBoundary>
-                  <RootNavigator />
-                </ErrorBoundary>
-                {isE2E() && <TestStateMarkers />}
-                <ApprovalModal />
-                <WardApprovalModal />
-                <WardWaitingGuardianModal />
-                <GuardianApprovalModal />
-              </WardProvider>
-            </TwoFactorProvider>
+            <RealtimeProvider>
+              <TwoFactorProvider>
+                <WardProvider>
+                  <ErrorBoundary>
+                    <RootNavigator />
+                  </ErrorBoundary>
+                  {isE2E() && <TestStateMarkers />}
+                  <ApprovalModal />
+                  <WardApprovalModal />
+                  <WardWaitingGuardianModal />
+                  <GuardianApprovalModal />
+                </WardProvider>
+              </TwoFactorProvider>
+            </RealtimeProvider>
           </WalletProvider>
         </TongoBridgeProvider>
       </ToastProvider>

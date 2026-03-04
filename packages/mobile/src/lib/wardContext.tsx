@@ -16,7 +16,7 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import { AppState, AppStateStatus } from "react-native";
+import { AppState, type AppStateStatus } from "react-native";
 import { RpcProvider, Account, ec, CallData, hash, num, transaction } from "starknet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -48,6 +48,7 @@ import type {
   WardApprovalRequest as SdkWardApprovalRequest,
 } from "@cloak-wallet/sdk";
 import { useWallet } from "./WalletContext";
+import { useRealtime } from "./RealtimeContext";
 import { useToast } from "../components/Toast";
 import {
   normalizeAddress,
@@ -65,8 +66,6 @@ const STORAGE_KEY_PARTIAL_WARD = "cloak_partial_ward";
 const MAX_GAS_RETRIES = 2;
 const WARD_STRK_DECIMALS = 18n;
 const DEFAULT_WARD_FUNDING_WEI = "0x" + (5n * 10n ** (WARD_STRK_DECIMALS - 1n)).toString(16);
-const WARD_POLL_INTERVAL_IDLE_MS = 60_000;
-const WARD_POLL_INTERVAL_ACTIVE_MS = 10_000;
 const WARD_POLL_FETCH_LIMIT = 25;
 
 const WARD_CREATION_TOTAL_STEPS = 6;
@@ -255,10 +254,11 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
   const wardWaitingAbortRef = useRef<AbortController | null>(null);
   const [partialWard, setPartialWard] = useState<PartialWardState | null>(null);
 
-  const wardPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const guardianPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const suppressWardPromptIdsRef = useRef<Set<string>>(new Set());
+  const {
+    pendingWardSigning: realtimeWardSigning,
+    pendingGuardianSigning: realtimeGuardianSigning,
+  } = useRealtime();
 
   // ── Check if current wallet is a ward (on-chain) ──
 
@@ -993,67 +993,32 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     }
   }, [wallet.keys?.starkAddress, isWard, wards.length]);
 
-  // Ward signing polling — always poll when device is a ward
+  // ── Sync from Realtime push (replaces polling loops) ──
+  // Ward signing requests — pushed via Supabase Realtime
   useEffect(() => {
     if (!isWard || !wallet.keys?.starkAddress) {
-      if (wardPollRef.current) {
-        clearInterval(wardPollRef.current);
-        wardPollRef.current = null;
-      }
       setPendingWard2faRequests([]);
       return;
     }
-    fetchWardSignRequests();
-    const wardPollIntervalMs =
-      pendingWard2faRequests.length > 0
-        ? WARD_POLL_INTERVAL_ACTIVE_MS
-        : WARD_POLL_INTERVAL_IDLE_MS;
-    wardPollRef.current = setInterval(fetchWardSignRequests, wardPollIntervalMs);
-    return () => {
-      if (wardPollRef.current) {
-        clearInterval(wardPollRef.current);
-        wardPollRef.current = null;
-      }
-    };
-  }, [
-    isWard,
-    wallet.keys?.starkAddress,
-    fetchWardSignRequests,
-    pendingWard2faRequests.length,
-  ]);
+    // Filter out suppressed prompt IDs
+    const filtered = realtimeWardSigning.filter(
+      (r) => !suppressWardPromptIdsRef.current.has(r.id),
+    );
+    setPendingWard2faRequests(filtered);
+  }, [isWard, wallet.keys?.starkAddress, realtimeWardSigning]);
 
-  // Guardian polling
+  // Guardian signing requests — pushed via Supabase Realtime
   useEffect(() => {
     if (isWard || wards.length === 0 || !wallet.keys?.starkAddress) {
-      if (guardianPollRef.current) {
-        clearInterval(guardianPollRef.current);
-        guardianPollRef.current = null;
-      }
       setPendingGuardianRequests([]);
       return;
     }
-    fetchGuardianRequests();
-    const guardianPollIntervalMs =
-      pendingGuardianRequests.length > 0
-        ? WARD_POLL_INTERVAL_ACTIVE_MS
-        : WARD_POLL_INTERVAL_IDLE_MS;
-    guardianPollRef.current = setInterval(fetchGuardianRequests, guardianPollIntervalMs);
-    return () => {
-      if (guardianPollRef.current) {
-        clearInterval(guardianPollRef.current);
-        guardianPollRef.current = null;
-      }
-    };
-  }, [
-    isWard,
-    wards.length,
-    wallet.keys?.starkAddress,
-    fetchGuardianRequests,
-    pendingGuardianRequests.length,
-  ]);
+    setPendingGuardianRequests(realtimeGuardianSigning);
+  }, [isWard, wards.length, wallet.keys?.starkAddress, realtimeGuardianSigning]);
 
-  // Refresh on AppState focus
+  // Refresh ward on-chain info on AppState foreground
   useEffect(() => {
+    const appStateRef = { current: AppState.currentState };
     const subscription = AppState.addEventListener(
       "change",
       (nextState: AppStateStatus) => {
@@ -1061,10 +1026,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           appStateRef.current.match(/inactive|background/) &&
           nextState === "active"
         ) {
-          fetchWardSignRequests();
-          fetchGuardianRequests();
           // Ward on-chain config can change while the app is backgrounded (freeze/2FA/etc).
-          // Refresh so Home banner reflects current status without requiring manual pull-to-refresh.
           if (isWard) {
             refreshWardInfo();
           }
@@ -1073,7 +1035,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       },
     );
     return () => subscription.remove();
-  }, [fetchWardSignRequests, fetchGuardianRequests, isWard, refreshWardInfo]);
+  }, [isWard, refreshWardInfo]);
 
   // ── Ward Approval Actions ──
 

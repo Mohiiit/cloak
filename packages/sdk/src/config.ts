@@ -33,3 +33,12 @@ export const CLOAK_DELEGATION_CLASS_HASH =
 
 export const CLOAK_DELEGATION_ADDRESS =
   "0x5af3396fc01b99562ce0559f8af973bf4ab0ee1ae6040ef773f96294e59da10";
+
+// ─── Supabase (Realtime) ────────────────────────────────────────────────────
+
+export const DEFAULT_SUPABASE_URL = "https://inrrwwpzglyywrrumxfr.supabase.co";
+
+// Anon (public/publishable) key — safe for client-side use.
+// Get from: Supabase Dashboard > Settings > API > anon key
+export const DEFAULT_SUPABASE_ANON_KEY =
+  "REPLACE_WITH_ANON_KEY";
