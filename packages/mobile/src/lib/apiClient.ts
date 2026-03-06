@@ -12,9 +12,7 @@ const STORAGE_KEY_KEY = "cloak_api_key";
 const STORAGE_KEY_STARK_ADDRESS = "cloak_stark_address";
 const STORAGE_KEY_STARK_PUBLIC_KEY = "cloak_stark_pubkey";
 
-const DEFAULT_API_URL = __DEV__
-  ? "http://localhost:3000"
-  : "https://cloak-backend-vert.vercel.app";
+const DEFAULT_API_URL = "https://cloak-backend-vert.vercel.app";
 
 type ApiConfig = {
   url: string;
