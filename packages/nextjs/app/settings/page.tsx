@@ -15,7 +15,6 @@ import {
   Users,
   Lock,
   Smartphone,
-  Save,
   ShieldAlert,
   Snowflake,
 } from "lucide-react";
@@ -23,7 +22,6 @@ import { useAccount } from "@starknet-react/core";
 import { useTongo } from "~~/components/providers/TongoProvider";
 import { getSettings, saveSettings, clearAllData } from "~~/lib/storage";
 import { check2FAEnabled } from "~~/lib/two-factor";
-import { getApiConfig, saveApiConfig } from "~~/lib/api-client";
 import { useWard, type WardEntry } from "~~/hooks/useWard";
 import toast from "react-hot-toast";
 
@@ -35,9 +33,6 @@ export default function SettingsPage() {
   const settings = getSettings();
 
   // 2FA state
-  const apiConfig = typeof window !== "undefined" ? getApiConfig() : { url: "", key: "" };
-  const [apiUrl, setApiUrl] = useState(apiConfig.url);
-  const [apiKey, setApiKey] = useState(apiConfig.key);
   const [twoFAEnabled, setTwoFAEnabled] = useState<boolean | null>(null);
   const [checking2FA, setChecking2FA] = useState(false);
   const ward = useWard();
@@ -282,51 +277,6 @@ export default function SettingsPage() {
             Enable or disable 2FA from the Cloak mobile app. Transactions will require mobile approval when enabled.
           </p>
 
-          {/* API config */}
-          <div className="space-y-2">
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">
-                API URL
-              </label>
-              <input
-                type="text"
-                value={apiUrl}
-                onChange={(e) => setApiUrl(e.target.value)}
-                placeholder="https://your-server.com/api/v1"
-                className="w-full bg-slate-900 rounded-lg border border-slate-700/50 px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-cyan-500/50 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">
-                API Key
-              </label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="your-api-key"
-                className="w-full bg-slate-900 rounded-lg border border-slate-700/50 px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-cyan-500/50 transition-colors"
-              />
-            </div>
-            <button
-              onClick={() => {
-                saveApiConfig(apiUrl, apiKey);
-                toast.success("API config saved");
-                // Re-check 2FA status with new config
-                if (starkAddress) {
-                  setChecking2FA(true);
-                  check2FAEnabled(starkAddress)
-                    .then(setTwoFAEnabled)
-                    .catch(() => setTwoFAEnabled(null))
-                    .finally(() => setChecking2FA(false));
-                }
-              }}
-              className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600/30 transition-colors"
-            >
-              <Save className="w-3.5 h-3.5" />
-              Save Config
-            </button>
-          </div>
         </div>
       </div>
 
