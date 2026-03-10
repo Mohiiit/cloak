@@ -11,9 +11,11 @@ type DiscoveredAgent = AgentProfileResponse & { discovery_score: number };
 
 type LeaderboardEntry = {
   agent_id: string;
-  agent_name: string;
+  name?: string;           // what the API actually returns
+  agent_name?: string;     // SDK alias fallback
   work_score: number;
-  runs: number;
+  runs?: number;
+  successful_runs?: number;
   success_rate: number;
   trust_score: number;
 };
@@ -436,13 +438,13 @@ export default function MarketplacePage() {
                           href={`/marketplace/${encodeURIComponent(entry.agent_id)}`}
                           className="text-blue-300 hover:text-blue-200 hover:underline font-medium transition-colors"
                         >
-                          {entry.agent_name || entry.agent_id}
+                          {entry.name || entry.agent_name || entry.agent_id}
                         </Link>
                       </td>
                       <td className="py-3 pr-4 text-white font-mono text-right tabular-nums font-medium">
                         {entry.work_score}
                       </td>
-                      <td className="py-3 pr-4 text-slate-400 text-right tabular-nums">{entry.runs}</td>
+                      <td className="py-3 pr-4 text-slate-400 text-right tabular-nums">{entry.successful_runs ?? entry.runs ?? 0}</td>
                       <td className="py-3 pr-4 text-right tabular-nums">
                         <span className={
                           entry.success_rate >= 0.9 ? "text-emerald-400" :

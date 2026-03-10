@@ -20,7 +20,7 @@ export const Header = () => {
 
   return (
     <header className="sticky top-0 z-30 w-full backdrop-blur-xl bg-slate-900/80 border-b border-slate-700/50">
-      <div className="max-w-lg mx-auto flex items-center justify-between px-4 h-14">
+      <div className={`${pathname.startsWith("/marketplace") ? "max-w-5xl" : "max-w-lg"} mx-auto flex items-center justify-between px-4 h-14`}>
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <CloakIcon size={24} />
