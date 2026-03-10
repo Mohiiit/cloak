@@ -2,22 +2,22 @@
 
 ## Network
 
-All contracts are deployed on **Starknet Sepolia testnet**.
+All Cloak contracts are deployed on **Starknet Sepolia testnet**.
 No mainnet deployment yet.
 
 ---
 
-## Smart Contracts (Deployed by Cloak)
+## Cloak Smart Contracts
 
 ### CloakAccount
 
-Account abstraction contract with optional dual-key 2FA.
+Account abstraction contract with optional dual-key two-factor authentication.
 
 | Field | Value |
 |-------|-------|
 | **Network** | Starknet Sepolia |
 | **Sierra class hash** | `0x034549a00718c3158349268f26047a311019e8fd328e9819e31187467de71f00` |
-| **Type** | SRC-6 account with optional secondary key |
+| **Voyager** | https://sepolia.voyager.online/class/0x034549a00718c3158349268f26047a311019e8fd328e9819e31187467de71f00 |
 
 ---
 
@@ -30,13 +30,13 @@ Guardian-controlled sub-account contract.
 | **Network** | Starknet Sepolia |
 | **Sierra class hash** | `0x3baf915f503ee7ce22d06d78c407dc2f26ee18d8fa8cf165886e682da5a1132` |
 | **CASM class hash** | `0x657bb2d68a7126505cb6ff37bd8ff4622949becdf1b83d41a66c6e445f2c858` |
-| **Type** | Guardian-linked account (get_account_type() → "WARD") |
+| **Voyager** | https://sepolia.voyager.online/class/0x3baf915f503ee7ce22d06d78c407dc2f26ee18d8fa8cf165886e682da5a1132 |
 
 ---
 
 ### CloakDelegation
 
-On-chain spending cap enforcement for agent runs.
+On-chain spending cap enforcement for agent runs. This is the deployed singleton instance used by the marketplace.
 
 | Field | Value |
 |-------|-------|
@@ -48,93 +48,105 @@ On-chain spending cap enforcement for agent runs.
 
 ---
 
-## ERC-8004 Registries (Third-Party, Starknet Protocol)
-
-### Sepolia
-
-| Registry | Address |
-|----------|---------|
-| **Identity** (agent NFT registry) | `0x72eb37b0389e570bf8b158ce7f0e1e3489de85ba43ab3876a0594df7231631` |
-| **Reputation** | `0x5a68b5e121a014b9fc39455d4d3e0eb79fe2327329eb734ab637cee4c55c78e` |
-| **Validation** | `0x7c8ac08e98d8259e1507a2b4b719f7071104001ed7152d4e9532a6850a62a4f` |
-
-### Mainnet
-
-| Registry | Address |
-|----------|---------|
-| **Identity** | `0x33653298d42aca87f9c004c834c6830a08e8f1c0bd694faaa1412ec8fe77595` |
-| **Reputation** | `0x698849defe3997eccd3dc5e096c01ae8f4fbc2e49e8d67efcb0b0642447944` |
-| **Validation** | `0x3c2aae404b64ddf09f7ef07dfb4f723c9053443d35038263acf7d5d77efcd83` |
-
----
-
-## Tongo Protocol Contracts (Third-Party, Sepolia)
-
-Shielded pool contracts — one per token.
-
-| Token | ERC-20 Address | Tongo Contract |
-|-------|---------------|----------------|
-| **STRK** | `0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d` | `0x0408163bfcfc2d76f34b444cb55e09dace5905cf84c0884e4637c2c0f06ab6ed` |
-| **ETH** | `0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7` | `0x02cf0dc1d9e8c7731353dd15e6f2f22140120ef2d27116b982fa4fed87f6fef5` |
-| **USDC** | `0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080` | `0x02caae365e67921979a4e5c16dd70eaa5776cfc6a9592bcb903d91933aaf2552` |
-
----
-
 ## Cloak Service Accounts (Sepolia)
 
 | Account | Address | Purpose |
 |---------|---------|---------|
 | **ERC-8004 Signer** | `0x7f7d57934a34ee9357857488cc69a08af7976533874c4fea5a6dd433647d7b6` | Signs on-chain agent registrations on behalf of operators |
-| **Account 1 (Operator)** | `0x3e83695578ca8a473f387f9b338e4e22f7cae02ddb8817a8951abcbf3e38248` | Test operator / funder wallet |
-| **Account 2 (Guardian)** | `0x22837eb3ba3a474005ec995d5f548f76a6ad673a4eafe32a3b9172d54ce2a0f` | Test guardian wallet (for ward approval flows) |
+| **Operator / Funder** | `0x3e83695578ca8a473f387f9b338e4e22f7cae02ddb8817a8951abcbf3e38248` | Test operator wallet used in demo flows |
+| **Guardian** | `0x22837eb3ba3a474005ec995d5f548f76a6ad673a4eafe32a3b9172d54ce2a0f` | Test guardian wallet for ward approval flows |
 
 ---
 
-## Demo v4 — Transaction Hashes
+## Demo Registrations — All Confirmed On-Chain
 
-All transactions below are on **Starknet Sepolia**.
+All agents below were registered through the Cloak Operator Dashboard. Each registration called `register()` on the ERC-8004 identity registry and minted a unique on-chain token.
 
-### Agent Registration — `testing002`
-
-The on-chain registration of the `testing002` demo agent via the ERC-8004 identity registry. This minted **token ID 179** on the registry, owned by the Cloak ERC-8004 signer.
+### final demo v4 ← Primary Demo Agent
 
 | Field | Value |
 |-------|-------|
+| **Agent ID** | `finalDemov4` |
+| **Name** | final demo v4 |
+| **Status** | confirmed |
+| **Tx hash** | `0x2fdc7d0850e1980d64d0c0bb5b4248e5a0fd588be1c5ea93fc22fef8bf43dc1` |
+| **Voyager** | https://sepolia.voyager.online/tx/0x2fdc7d0850e1980d64d0c0bb5b4248e5a0fd588be1c5ea93fc22fef8bf43dc1 |
+| **Registered** | 2026-03-10 |
+
+### final demo v3
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `finalDemoV3` |
+| **Name** | final demo v3 |
+| **Status** | confirmed |
+| **Tx hash** | `0x19e2a79821806e3de6232908375809d49df6701545ae45a0cee3088d4999e32` |
+| **Voyager** | https://sepolia.voyager.online/tx/0x19e2a79821806e3de6232908375809d49df6701545ae45a0cee3088d4999e32 |
+| **Registered** | 2026-03-10 |
+
+### final demo v2
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `finalDemov2` |
+| **Name** | final final v2 |
+| **Status** | confirmed |
+| **Tx hash** | `0x5d3eda08a4af0cfd06578c2a21e0057b67e97b6905e63f0ebb01edd67d7ee15` |
+| **Voyager** | https://sepolia.voyager.online/tx/0x5d3eda08a4af0cfd06578c2a21e0057b67e97b6905e63f0ebb01edd67d7ee15 |
+| **Registered** | 2026-03-10 |
+
+### final demo v1
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `finalDemov1` |
+| **Name** | demo final final |
+| **Status** | confirmed |
+| **Tx hash** | `0x10f7691b6b28b00d9f37b8dd3f186851a03adac2eef53662dac605b655dc691` |
+| **Voyager** | https://sepolia.voyager.online/tx/0x10f7691b6b28b00d9f37b8dd3f186851a03adac2eef53662dac605b655dc691 |
+| **Registered** | 2026-03-10 |
+
+### final demo (initial)
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `finalDemo` |
+| **Name** | final demo staking steward |
+| **Status** | confirmed |
+| **Tx hash** | `0x63ec5822222f28cef186d336fadd32d195d6a420b3af486e7316de47743bcc7` |
+| **Voyager** | https://sepolia.voyager.online/tx/0x63ec5822222f28cef186d336fadd32d195d6a420b3af486e7316de47743bcc7 |
+| **Registered** | 2026-03-10 |
+
+### testing002 (dev verification run)
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `testing002` |
+| **Name** | testing 002 |
+| **Status** | confirmed |
 | **Tx hash** | `0x38ed95d74c84b1ce57f156cdfa5dbb4f7943c782a639fceabb7697a1f3d94db` |
-| **Action** | `register()` on ERC-8004 Identity Registry |
-| **Token ID minted** | 179 |
-| **Registry** | `0x72eb37b0389e570bf8b158ce7f0e1e3489de85ba43ab3876a0594df7231631` |
 | **Voyager** | https://sepolia.voyager.online/tx/0x38ed95d74c84b1ce57f156cdfa5dbb4f7943c782a639fceabb7697a1f3d94db |
+| **Registered** | 2026-03-10 |
 
 ---
 
-### Ward Approval Pipeline
+## Third-Party Protocols Used
 
-End-to-end ward multi-sig verified on Sepolia: ward signed → guardian signed + submitted → confirmed on-chain.
+Cloak is built on top of these protocols. We do not own or operate them.
 
-| Field | Value |
-|-------|-------|
-| **Tx hash** | `0x4d770e...` *(confirm full hash from Voyager history of guardian wallet)* |
-| **Action** | Ward transaction with full `[ward_sig, guardian_sig]` chain |
-| **Ward address** | `0x049f329063e74482166e081f3994946ec71f138f17aeb4c193ef50c0065b7e46` |
-| **Guardian** | Account 1: `0x3e83695578ca8a473f387f9b338e4e22f7cae02ddb8817a8951abcbf3e38248` |
-
----
-
-## Test Wallet Addresses (Sepolia)
-
-| Wallet | Stark Address | Used For |
-|--------|--------------|----------|
-| Test wallet 1 | `0x0588e2c3de574d3d9273b65b36007355479fba64e8ecad147764ac48cdea2872` | Primary test user |
-| Test wallet 2 | `0x22837eb3ba3a474005ec995d5f548f76a6ad673a4eafe32a3b9172d54ce2a0f` | Cross-account transfers, guardian |
+| Protocol | Purpose | Notes |
+|----------|---------|-------|
+| **Tongo** | ZK-proof shielded payment pool | ElGamal encryption on StarkCurve. Cloak integrates via `@fatsolutions/tongo-sdk`. Contracts deployed and operated by the Tongo team. |
+| **ERC-8004** | On-chain agent identity registry | NFT-based agent registry standard on Starknet. Cloak uses the Sepolia identity registry to mint permanent on-chain identities for registered agents. Registry deployed and operated by the ERC-8004 team. |
+| **x402** | HTTP-native payment protocol | `402 Payment Required` based payment handshake. Cloak implements the x402 challenge/verify/settle flow on top of Tongo shielded payments. |
 
 ---
 
-## Quick Reference — Voyager Links
+## Live Links
 
-| Resource | Voyager Link |
-|----------|-------------|
-| CloakDelegation contract | https://sepolia.voyager.online/contract/0x5af3396fc01b99562ce0559f8af973bf4ab0ee1ae6040ef773f96294e59da10 |
-| ERC-8004 Identity Registry | https://sepolia.voyager.online/contract/0x72eb37b0389e570bf8b158ce7f0e1e3489de85ba43ab3876a0594df7231631 |
-| ERC-8004 Signer account | https://sepolia.voyager.online/contract/0x7f7d57934a34ee9357857488cc69a08af7976533874c4fea5a6dd433647d7b6 |
-| Agent registration tx (testing002) | https://sepolia.voyager.online/tx/0x38ed95d74c84b1ce57f156cdfa5dbb4f7943c782a639fceabb7697a1f3d94db |
+| Resource | URL |
+|----------|-----|
+| Web app + API | https://cloak-backend-vert.vercel.app |
+| Marketplace | https://cloak-backend-vert.vercel.app/marketplace |
+| Operator dashboard | https://cloak-backend-vert.vercel.app/marketplace/dashboard |
+| SDK on npm | https://www.npmjs.com/package/@cloak-wallet/sdk |
