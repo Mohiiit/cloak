@@ -27,6 +27,15 @@ export const CustomConnectButton = () => {
   function handleConnected(address: string) {
     setCloakAddress(address);
     localStorage.setItem(CLOAK_ADDRESS_KEY, address);
+    // Auto-register wallet to get a user-specific API key tied to this address
+    fetch("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet_address: address }),
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(json => { if (json?.api_key) localStorage.setItem("cloak_api_key", json.api_key); })
+      .catch(() => {/* non-fatal */});
     // Try syncing starknet-react in background (for wallet operations)
     const cloakConnector = connectors.find((c) => c.id === "cloak");
     if (cloakConnector) {

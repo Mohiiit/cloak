@@ -89,7 +89,7 @@ const AgentHireStatusEnum = z.enum(["active", "paused", "revoked"]);
 
 export const AuthRegisterSchema = z.object({
   wallet_address: hexString,
-  public_key: hexString,
+  public_key: hexString.optional(),
 });
 
 // ─── Two-Factor ─────────────────────────────────────────────────────────────
