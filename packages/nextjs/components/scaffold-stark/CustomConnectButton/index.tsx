@@ -10,7 +10,6 @@ import { useAutoConnect } from "~~/hooks/scaffold-stark";
 import { useTargetNetwork } from "~~/hooks/scaffold-stark/useTargetNetwork";
 import { useAccount } from "~~/hooks/useAccount";
 import { getBlockExplorerAddressLink } from "~~/utils/scaffold-stark";
-import { useReadLocalStorage } from "usehooks-ts";
 
 export const CustomConnectButton = () => {
   useAutoConnect();
@@ -18,9 +17,6 @@ export const CustomConnectButton = () => {
   const { targetNetwork } = useTargetNetwork();
   const { chain } = useNetwork();
   const { account, status, address: accountAddress } = useAccount();
-  const wasDisconnectedManually = useReadLocalStorage<boolean>(
-    "wasDisconnectedManually",
-  );
   const [accountChainId, setAccountChainId] = useState<bigint>(0n);
 
   const blockExplorerAddressLink = useMemo(() => {
@@ -59,7 +55,7 @@ export const CustomConnectButton = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connector]);
 
-  if (status === "disconnected" || wasDisconnectedManually) {
+  if (status === "disconnected" || status === "connecting") {
     return <ConnectModal />;
   }
 

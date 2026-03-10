@@ -1,23 +1,9 @@
 import { useConnect } from "@starknet-react/core";
 import { useState } from "react";
-import { useLocalStorage } from "usehooks-ts";
-import { LAST_CONNECTED_TIME_LOCALSTORAGE_KEY } from "~~/utils/Constants";
 
 const ConnectModal = () => {
   const { connectors, connect } = useConnect();
   const [isConnecting, setIsConnecting] = useState(false);
-  const [, setLastConnector] = useLocalStorage<{ id: string; ix?: number }>(
-    "lastUsedConnector",
-    { id: "" },
-  );
-  const [, setLastConnectionTime] = useLocalStorage<number>(
-    LAST_CONNECTED_TIME_LOCALSTORAGE_KEY,
-    0,
-  );
-  const [, setWasDisconnectedManually] = useLocalStorage<boolean>(
-    "wasDisconnectedManually",
-    false,
-  );
 
   const isCloakInstalled =
     typeof window !== "undefined" && !!(window as any).starknet_cloak;
@@ -30,17 +16,11 @@ const ConnectModal = () => {
     }
     setIsConnecting(true);
     try {
-      // Trigger extension approval popup directly (same as coffee app)
+      // Open extension approval popup (same as coffee app)
       await provider.enable();
-
-      // Sync the now-authorized session with starknet-react
+      // Sync with starknet-react (extension is now authorized)
       const cloakConnector = connectors.find((c) => c.id === "cloak");
-      if (cloakConnector) {
-        setWasDisconnectedManually(false);
-        connect({ connector: cloakConnector });
-        setLastConnector({ id: cloakConnector.id });
-        setLastConnectionTime(Date.now());
-      }
+      if (cloakConnector) connect({ connector: cloakConnector });
     } catch (err) {
       console.warn("Cloak connect failed:", err);
     } finally {
