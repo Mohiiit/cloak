@@ -69,9 +69,33 @@ All agents below were registered through the Cloak Operator Dashboard. Each regi
 | **Agent ID** | `finalDemov4` |
 | **Name** | final demo v4 |
 | **Status** | confirmed |
-| **Tx hash** | `0x2fdc7d0850e1980d64d0c0bb5b4248e5a0fd588be1c5ea93fc22fef8bf43dc1` |
-| **Voyager** | https://sepolia.voyager.online/tx/0x2fdc7d0850e1980d64d0c0bb5b4248e5a0fd588be1c5ea93fc22fef8bf43dc1 |
+| **Registration tx** | `0x2fdc7d0850e1980d64d0c0bb5b4248e5a0fd588be1c5ea93fc22fef8bf43dc1` |
+| **Voyager (registration)** | https://sepolia.voyager.online/tx/0x2fdc7d0850e1980d64d0c0bb5b4248e5a0fd588be1c5ea93fc22fef8bf43dc1 |
 | **Registered** | 2026-03-10 |
+
+#### Hire
+
+A hire policy was created after registration, establishing the billing agreement.
+
+| Field | Value |
+|-------|-------|
+| **Hire ID** | `hire_1af31b413fd068` |
+| **Billing mode** | per_run |
+| **Status** | active |
+
+#### Run (Billable — x402 Payment + On-Chain Execution)
+
+A full end-to-end run was completed: x402 payment challenge → shielded Tongo payment → settlement on-chain → agent execution on-chain.
+
+| Field | Value |
+|-------|-------|
+| **Run ID** | `run_26bda3fe1db0a` |
+| **Status** | completed |
+| **Payment ref** | `pay_1773173499230-07dcb362c9453d4` |
+| **Settlement tx** | `0x11f458c0cbafb5c439189f74b2deff7976f0f4f5bf9a03f85900f97c7490d00` |
+| **Voyager (settlement)** | https://sepolia.voyager.online/tx/0x11f458c0cbafb5c439189f74b2deff7976f0f4f5bf9a03f85900f97c7490d00 |
+| **Execution tx** | `0x56bdca4942564def05da97e40ea63c16c18f49dc46b55547e4259a4ec0f564c` |
+| **Voyager (execution)** | https://sepolia.voyager.online/tx/0x56bdca4942564def05da97e40ea63c16c18f49dc46b55547e4259a4ec0f564c |
 
 ### final demo v3
 
