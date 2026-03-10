@@ -23,17 +23,26 @@ const ConnectModal = () => {
     typeof window !== "undefined" && !!(window as any).starknet_cloak;
 
   async function handleConnect() {
-    const cloakConnector = connectors.find((c) => c.id === "cloak");
-    if (!cloakConnector) {
+    const provider = (window as any).starknet_cloak;
+    if (!provider) {
       window.open("https://github.com/mohiiit/cloak", "_blank");
       return;
     }
     setIsConnecting(true);
     try {
-      setWasDisconnectedManually(false);
-      connect({ connector: cloakConnector });
-      setLastConnector({ id: cloakConnector.id });
-      setLastConnectionTime(Date.now());
+      // Trigger extension approval popup directly (same as coffee app)
+      await provider.enable();
+
+      // Sync the now-authorized session with starknet-react
+      const cloakConnector = connectors.find((c) => c.id === "cloak");
+      if (cloakConnector) {
+        setWasDisconnectedManually(false);
+        connect({ connector: cloakConnector });
+        setLastConnector({ id: cloakConnector.id });
+        setLastConnectionTime(Date.now());
+      }
+    } catch (err) {
+      console.warn("Cloak connect failed:", err);
     } finally {
       setIsConnecting(false);
     }
