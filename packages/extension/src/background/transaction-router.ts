@@ -72,11 +72,21 @@ function notifyComplete(approved: boolean, txHash?: string) {
     .catch(() => {});
 }
 
-async function prepareLocalWardEnvelope(
+interface WardTxEnvelope {
+  nonce: string;
+  resourceBoundsJson: string;
+  txHash: string;
+}
+
+/**
+ * Compute nonce, resource bounds, and tx hash for a ward transaction.
+ * This is needed even when the ward has 2FA (mobile signs later) because
+ * the backend requires these fields on creation.
+ */
+async function computeWardTxEnvelope(
   wardAddress: string,
-  wardPrivateKey: string,
   calls: any[],
-): Promise<LocalWardEnvelope> {
+): Promise<WardTxEnvelope> {
   const provider = getProvider();
   const [chainId, nonce, estimate] = await Promise.all([
     provider.getChainId(),
@@ -98,12 +108,23 @@ async function prepareLocalWardEnvelope(
     tip: 0,
     paymasterData: [],
   }));
-  const wardSig = signHash(txHash, wardPrivateKey);
   return {
-    wardSigJson: JSON.stringify(wardSig),
     nonce: nonce.toString(),
     resourceBoundsJson: serializeResourceBounds(resourceBounds),
     txHash,
+  };
+}
+
+async function prepareLocalWardEnvelope(
+  wardAddress: string,
+  wardPrivateKey: string,
+  calls: any[],
+): Promise<LocalWardEnvelope> {
+  const envelope = await computeWardTxEnvelope(wardAddress, calls);
+  const wardSig = signHash(envelope.txHash, wardPrivateKey);
+  return {
+    wardSigJson: JSON.stringify(wardSig),
+    ...envelope,
   };
 }
 
@@ -156,6 +177,7 @@ export async function routeTransaction(
   const isWard = await runtime.ward.checkIfWardAccount(wallet.starkAddress);
   if (isWard) {
     let localWardEnvelope: LocalWardEnvelope | null | undefined = undefined;
+    let txEnvelope: WardTxEnvelope | undefined = undefined;
     const routed = await runtime.router.execute({
       walletAddress: wallet.starkAddress,
       wardAddress: wallet.starkAddress,
@@ -174,10 +196,21 @@ export async function routeTransaction(
         decision: WardExecutionDecision,
         snapshot: WardPolicySnapshot,
       ) => {
+        // Always compute tx envelope (nonce, resourceBounds, txHash)
+        if (!txEnvelope) {
+          txEnvelope = await computeWardTxEnvelope(wallet.starkAddress, calls);
+        }
+        // Only sign locally if ward doesn't have 2FA
         if (localWardEnvelope === undefined) {
-          localWardEnvelope = snapshot.wardHas2fa
-            ? null
-            : await prepareLocalWardEnvelope(wallet.starkAddress, wallet.privateKey, calls);
+          if (snapshot.wardHas2fa) {
+            localWardEnvelope = null;
+          } else {
+            const wardSig = signHash(txEnvelope.txHash, wallet.privateKey);
+            localWardEnvelope = {
+              wardSigJson: JSON.stringify(wardSig),
+              ...txEnvelope,
+            };
+          }
         }
         const requestAmount = rawAmount
           ? formatWardAmount(rawAmount, token, action)
@@ -193,9 +226,9 @@ export async function routeTransaction(
             recipient: opts?.recipient || null,
             callsJson,
             wardSigJson: localWardEnvelope?.wardSigJson || "[]",
-            nonce: localWardEnvelope?.nonce || "",
-            resourceBoundsJson: localWardEnvelope?.resourceBoundsJson || "{}",
-            txHash: localWardEnvelope?.txHash || "",
+            nonce: txEnvelope.nonce,
+            resourceBoundsJson: txEnvelope.resourceBoundsJson,
+            txHash: txEnvelope.txHash,
             needsWard2fa: decision.needsWard2fa,
             needsGuardian: decision.needsGuardian,
             needsGuardian2fa: decision.needsGuardian2fa,
@@ -286,6 +319,7 @@ export async function routeRawCalls(
   const isWard = await runtime.ward.checkIfWardAccount(wallet.starkAddress);
   if (isWard) {
     let localWardEnvelope: LocalWardEnvelope | null | undefined = undefined;
+    let txEnvelope: WardTxEnvelope | undefined = undefined;
     const routed = await runtime.router.execute({
       walletAddress: wallet.starkAddress,
       wardAddress: wallet.starkAddress,
@@ -304,10 +338,21 @@ export async function routeRawCalls(
         decision: WardExecutionDecision,
         snapshot: WardPolicySnapshot,
       ) => {
+        // Always compute tx envelope (nonce, resourceBounds, txHash)
+        if (!txEnvelope) {
+          txEnvelope = await computeWardTxEnvelope(wallet.starkAddress, calls);
+        }
+        // Only sign locally if ward doesn't have 2FA
         if (localWardEnvelope === undefined) {
-          localWardEnvelope = snapshot.wardHas2fa
-            ? null
-            : await prepareLocalWardEnvelope(wallet.starkAddress, wallet.privateKey, calls);
+          if (snapshot.wardHas2fa) {
+            localWardEnvelope = null;
+          } else {
+            const wardSig = signHash(txEnvelope.txHash, wallet.privateKey);
+            localWardEnvelope = {
+              wardSigJson: JSON.stringify(wardSig),
+              ...txEnvelope,
+            };
+          }
         }
 
         const formattedAmount = wardAmount
@@ -325,9 +370,9 @@ export async function routeRawCalls(
             recipient: wardRecipient,
             callsJson,
             wardSigJson: localWardEnvelope?.wardSigJson || "[]",
-            nonce: localWardEnvelope?.nonce || "",
-            resourceBoundsJson: localWardEnvelope?.resourceBoundsJson || "{}",
-            txHash: localWardEnvelope?.txHash || "",
+            nonce: txEnvelope.nonce,
+            resourceBoundsJson: txEnvelope.resourceBoundsJson,
+            txHash: txEnvelope.txHash,
             needsWard2fa: decision.needsWard2fa,
             needsGuardian: decision.needsGuardian,
             needsGuardian2fa: decision.needsGuardian2fa,

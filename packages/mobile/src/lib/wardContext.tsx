@@ -56,7 +56,7 @@ import {
   deserializeCalls,
   DualSignSigner,
 } from "./twoFactor";
-import { getApiClient } from "./apiClient";
+import { getApiClient, invalidateApiKey } from "./apiClient";
 import { isMockMode } from "../testing/runtimeConfig";
 
 const STORAGE_KEY_IS_WARD = "cloak_is_ward";
@@ -721,7 +721,9 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         .map((b: number) => b.toString(16).padStart(2, "0"))
         .join("");
     const wardPublicKey = ec.starkCurve.getStarkKey(wardPrivateKey);
-    const guardianPublicKey = wallet.keys.starkPublicKey;
+    // Ensure hex format — imported wallets may have stored decimal public keys
+    const rawPubKey = wallet.keys.starkPublicKey;
+    const guardianPublicKey = rawPubKey.startsWith("0x") ? rawPubKey : "0x" + BigInt(rawPubKey).toString(16);
 
     // Step 2: Deploy CloakWard via UDC
     onProgress?.(2, WARD_CREATION_TOTAL_STEPS, "Deploying ward contract...");
@@ -963,7 +965,10 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         );
         setPendingWard2faRequests(filtered);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.statusCode === 401 || e?.code === "UNAUTHORIZED") {
+        invalidateApiKey();
+      }
       console.warn("[WardContext] Ward sign poll error:", e);
     }
   }, [wallet.keys?.starkAddress, isWard]);
@@ -988,7 +993,10 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
         );
         setPendingGuardianRequests(filtered);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.statusCode === 401 || e?.code === "UNAUTHORIZED") {
+        invalidateApiKey();
+      }
       console.warn("[WardContext] Guardian poll error:", e);
     }
   }, [wallet.keys?.starkAddress, isWard, wards.length]);
@@ -1463,6 +1471,53 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       ? "erc20_display"
       : null;
 
+    // Prepare local ward envelope: estimate gas, compute tx hash, sign.
+    // Mobile is the ward device — when initiating here, we sign locally
+    // and skip the ward signing stage (go straight to pending_guardian).
+    // If ward has 2FA, we still need nonce/txHash for the API but defer signing.
+    let wardSigJson = "[]";
+    let nonce = "";
+    let resourceBoundsJson = "{}";
+    let txHash = "";
+    let initialStatus: "pending_ward_sig" | "pending_guardian" = "pending_ward_sig";
+
+    try {
+      const [chainId, nonceResult, estimate] = await Promise.all([
+        provider.getChainId(),
+        provider.getNonceForAddress(wallet.keys.starkAddress),
+        estimateWardInvokeFee(provider as any, wallet.keys.starkAddress, params.calls),
+      ]);
+      const resourceBounds = buildResourceBoundsFromEstimate(estimate, 1.5);
+      const compiledCalldata = transaction.getExecuteCalldata(params.calls, "1");
+      txHash = num.toHex(hash.calculateInvokeTransactionHash({
+        senderAddress: wallet.keys.starkAddress,
+        version: "0x3",
+        compiledCalldata,
+        chainId,
+        nonce: nonceResult,
+        accountDeploymentData: [],
+        nonceDataAvailabilityMode: 0,
+        feeDataAvailabilityMode: 0,
+        resourceBounds,
+        tip: 0,
+        paymasterData: [],
+      }));
+      nonce = nonceResult.toString();
+      resourceBoundsJson = serializeResourceBounds(resourceBounds);
+
+      if (!needs.wardHas2fa) {
+        // No 2FA — sign locally and skip to guardian approval
+        const sig = signHash(txHash, wallet.keys.starkPrivateKey);
+        wardSigJson = JSON.stringify(sig);
+        initialStatus = "pending_guardian";
+      }
+      // If ward has 2FA, nonce/txHash/resourceBounds are populated
+      // but signing deferred to the ward approval modal
+    } catch (err: any) {
+      console.warn("[WardContext] Failed to prepare local ward envelope:", err);
+      // Fall back to pending_ward_sig — the approval modal will handle signing
+    }
+
     // Set up abort controller for cancel support
     const abortController = new AbortController();
     wardWaitingAbortRef.current = abortController;
@@ -1479,10 +1534,10 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           amountUnit: requestAmountUnit,
           recipient: params.recipient || null,
           callsJson,
-          wardSigJson: "[]",
-          nonce: "",
-          resourceBoundsJson: "{}",
-          txHash: "",
+          wardSigJson,
+          nonce,
+          resourceBoundsJson,
+          txHash,
           needsWard2fa: needs.wardHas2fa,
           needsGuardian: needs.needsGuardian,
           needsGuardian2fa: needs.guardianHas2fa,
@@ -1495,23 +1550,30 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           }
         },
         abortController.signal,
-        {
-          // Ward txs initiated from THIS mobile app should not bounce back into the
-          // ward signing modal when ward 2FA is disabled. We sign immediately and
-          // move the request forward to guardian (or submit directly if guardian not needed).
-          onRequestCreated: async (request) => {
-            // Store the request so the waiting modal can show tx details
-            setWardWaitingRequest(request);
-            if (request.needs_ward_2fa) return;
-            suppressWardPromptIdsRef.current.add(request.id);
-            try {
-              await approveAsWard(request);
-            } finally {
-              suppressWardPromptIdsRef.current.delete(request.id);
-              await fetchWardSignRequests();
+        initialStatus === "pending_guardian"
+          ? {
+              initialStatus: "pending_guardian",
+              onRequestCreated: (request: any) => {
+                setWardWaitingRequest(request);
+              },
             }
-          },
-        },
+          : {
+              // Ward txs initiated from THIS mobile app should not bounce back into the
+              // ward signing modal when ward 2FA is disabled. We sign immediately and
+              // move the request forward to guardian (or submit directly if guardian not needed).
+              onRequestCreated: async (request) => {
+                // Store the request so the waiting modal can show tx details
+                setWardWaitingRequest(request);
+                if (request.needs_ward_2fa) return;
+                suppressWardPromptIdsRef.current.add(request.id);
+                try {
+                  await approveAsWard(request);
+                } finally {
+                  suppressWardPromptIdsRef.current.delete(request.id);
+                  await fetchWardSignRequests();
+                }
+              },
+            },
       );
       return result;
     } finally {
@@ -1596,6 +1658,25 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     }, 30_000);
     return () => clearInterval(interval);
   }, [isWard, wallet.keys?.starkAddress, refreshWardInfo]);
+
+  // Periodic poll for ward signing requests (fallback alongside RealtimeContext).
+  // Ensures the ward mobile picks up pending_ward_sig requests even if the
+  // Realtime WebSocket or RealtimeContext HTTP fetch is failing silently.
+  useEffect(() => {
+    if (!isWard || !wallet.keys?.starkAddress) return;
+    // Initial fetch on mount
+    fetchWardSignRequests();
+    const interval = setInterval(fetchWardSignRequests, 5_000);
+    return () => clearInterval(interval);
+  }, [isWard, wallet.keys?.starkAddress, fetchWardSignRequests]);
+
+  // Periodic poll for guardian signing requests (fallback alongside RealtimeContext).
+  useEffect(() => {
+    if (isWard || wards.length === 0 || !wallet.keys?.starkAddress) return;
+    fetchGuardianRequests();
+    const interval = setInterval(fetchGuardianRequests, 5_000);
+    return () => clearInterval(interval);
+  }, [isWard, wards.length, wallet.keys?.starkAddress, fetchGuardianRequests]);
 
   return (
     <WardContext.Provider

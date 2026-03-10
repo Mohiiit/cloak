@@ -55,6 +55,32 @@ export class CloakClient {
     const info = createWalletInfo(privateKey);
     if (address) {
       info.starkAddress = padAddress(address);
+    } else {
+      // Probe chain: check if CloakAccount or OZ account is deployed
+      const cloakAddr = computeMultiSigAddress(info.publicKey);
+      const ozAddr = computeAddress(info.publicKey, OZ_ACCOUNT_CLASS_HASH);
+
+      let cloakDeployed = false;
+      let ozDeployed = false;
+
+      try {
+        await this.provider.getNonceForAddress(cloakAddr);
+        cloakDeployed = true;
+      } catch { /* not deployed */ }
+
+      if (!cloakDeployed) {
+        try {
+          await this.provider.getNonceForAddress(ozAddr);
+          ozDeployed = true;
+        } catch { /* not deployed */ }
+      }
+
+      if (cloakDeployed) {
+        info.starkAddress = padAddress(cloakAddr);
+      } else if (ozDeployed) {
+        info.starkAddress = padAddress(ozAddr);
+      }
+      // If neither is deployed, keep the CloakAccount address (default for new deployments)
     }
 
     await this.storage.set(STORAGE_KEY_PK, info.privateKey);

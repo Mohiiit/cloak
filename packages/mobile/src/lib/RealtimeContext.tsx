@@ -32,7 +32,7 @@ import type { ApprovalRequest } from "./twoFactor";
 import type { WardApprovalRequest } from "./wardContext";
 import { useWallet } from "./WalletContext";
 import { fetchPendingRequests } from "./twoFactor";
-import { getApiClient } from "./apiClient";
+import { getApiClient, invalidateApiKey } from "./apiClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -209,7 +209,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         );
         setPendingGuardianSigning(filtered);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.statusCode === 401 || e?.code === "UNAUTHORIZED") {
+        invalidateApiKey();
+      }
       console.warn("[RealtimeContext] Ward fetch error:", e);
     }
   }, [wallet.keys?.starkAddress, wallet.keys?.starkPublicKey]);
@@ -316,6 +319,17 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       cleanupChannels();
       walletAddrRef.current = null;
     };
+  }, [wallet.keys?.starkAddress, fetchAll]);
+
+  // ── Periodic polling fallback ─────────────────────────────────────────
+  // Realtime push is preferred but may not connect reliably on React Native.
+  // A lightweight poll every 5s ensures the guardian always picks up new
+  // requests even when the WebSocket is down.
+
+  useEffect(() => {
+    if (!wallet.keys?.starkAddress) return;
+    const id = setInterval(fetchAll, 5_000);
+    return () => clearInterval(id);
   }, [wallet.keys?.starkAddress, fetchAll]);
 
   // ── AppState foreground reconciliation ──────────────────────────────────

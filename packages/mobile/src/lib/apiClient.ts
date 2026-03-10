@@ -25,6 +25,11 @@ type ApiClientOptions = {
 };
 
 let validatedApiKey: string | null = null;
+let validatedAtMs = 0;
+const VALIDATION_TTL_MS = 60_000; // Re-verify after 60s
+
+// Mutex: only one ensureApiKey call runs at a time
+let ensureApiKeyPromise: Promise<ApiConfig> | null = null;
 
 function toHexString(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -63,13 +68,13 @@ async function registerApiKey(
   }
 }
 
-async function ensureApiKey(
+async function ensureApiKeyImpl(
   config: ApiConfig,
   options?: ApiClientOptions,
 ): Promise<ApiConfig> {
   const currentKey = config.key.trim();
   if (currentKey.length > 0) {
-    if (validatedApiKey === currentKey) return config;
+    if (validatedApiKey === currentKey && (Date.now() - validatedAtMs) < VALIDATION_TTL_MS) return config;
     try {
       const verifyRes = await fetch(
         `${config.url.replace(/\/$/, "")}/api/v1/auth/verify`,
@@ -80,8 +85,12 @@ async function ensureApiKey(
       );
       if (verifyRes.ok) {
         validatedApiKey = currentKey;
+        validatedAtMs = Date.now();
         return config;
       }
+      // Key is invalid — clear cache and fall through to re-register
+      validatedApiKey = null;
+      validatedAtMs = 0;
     } catch {
       // If verify fails due transient network, keep using the existing key.
       return config;
@@ -105,7 +114,20 @@ async function ensureApiKey(
 
   await AsyncStorage.setItem(STORAGE_KEY_KEY, apiKey);
   validatedApiKey = apiKey;
+  validatedAtMs = Date.now();
   return { ...config, key: apiKey };
+}
+
+/** Serialized wrapper — prevents concurrent registration races. */
+function ensureApiKey(
+  config: ApiConfig,
+  options?: ApiClientOptions,
+): Promise<ApiConfig> {
+  if (ensureApiKeyPromise) return ensureApiKeyPromise;
+  ensureApiKeyPromise = ensureApiKeyImpl(config, options).finally(() => {
+    ensureApiKeyPromise = null;
+  });
+  return ensureApiKeyPromise;
 }
 
 export async function getApiConfig(): Promise<{ url: string; key: string }> {
@@ -126,6 +148,12 @@ export async function saveApiConfig(url: string, key: string): Promise<void> {
     AsyncStorage.setItem(STORAGE_KEY_URL, url),
     AsyncStorage.setItem(STORAGE_KEY_KEY, key),
   ]);
+}
+
+/** Force re-verification on next getApiClient() call. */
+export function invalidateApiKey(): void {
+  validatedApiKey = null;
+  validatedAtMs = 0;
 }
 
 export async function getApiClient(

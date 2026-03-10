@@ -15,6 +15,22 @@ function feltToBigInt(value: string | undefined): bigint {
   return BigInt(value);
 }
 
+async function safeCall(
+  provider: RpcProvider,
+  wardAddress: string,
+  entrypoint: string,
+): Promise<string[]> {
+  try {
+    return await provider.callContract({
+      contractAddress: wardAddress,
+      entrypoint,
+      calldata: [],
+    });
+  } catch {
+    return ["0x0"];
+  }
+}
+
 export async function fetchWardPolicySnapshot(
   provider: RpcProvider,
   wardAddress: string,
@@ -27,50 +43,40 @@ export async function fetchWardPolicySnapshot(
     });
     if (typeResult[0] !== WARD_ACCOUNT_TYPE) return null;
 
-    const [
-      guardianAddr,
-      ward2fa,
-      guardian2fa,
-      requireAll,
-      perTxnLimit,
-      dailyLimit,
-      spent24h,
-    ] = await Promise.all([
-      provider.callContract({
-        contractAddress: wardAddress,
-        entrypoint: "get_guardian_address",
-        calldata: [],
-      }),
-      provider.callContract({
-        contractAddress: wardAddress,
-        entrypoint: "is_2fa_enabled",
-        calldata: [],
-      }),
-      provider.callContract({
-        contractAddress: wardAddress,
-        entrypoint: "is_guardian_2fa_enabled",
-        calldata: [],
-      }),
-      provider.callContract({
-        contractAddress: wardAddress,
-        entrypoint: "is_require_guardian_for_all",
-        calldata: [],
-      }),
-      provider.callContract({
-        contractAddress: wardAddress,
-        entrypoint: "get_spending_limit_per_tx",
-        calldata: [],
-      }),
-      provider.callContract({
-        contractAddress: wardAddress,
-        entrypoint: "get_spending_limit_24h",
-        calldata: [],
-      }),
-      provider.callContract({
-        contractAddress: wardAddress,
-        entrypoint: "get_spent_24h",
-        calldata: [],
-      }),
+    // Core calls that all ward contracts support
+    const [guardianAddr, ward2fa, guardian2fa, requireAll, perTxnLimit] =
+      await Promise.all([
+        provider.callContract({
+          contractAddress: wardAddress,
+          entrypoint: "get_guardian_address",
+          calldata: [],
+        }),
+        provider.callContract({
+          contractAddress: wardAddress,
+          entrypoint: "is_2fa_enabled",
+          calldata: [],
+        }),
+        provider.callContract({
+          contractAddress: wardAddress,
+          entrypoint: "is_guardian_2fa_enabled",
+          calldata: [],
+        }),
+        provider.callContract({
+          contractAddress: wardAddress,
+          entrypoint: "is_require_guardian_for_all",
+          calldata: [],
+        }),
+        provider.callContract({
+          contractAddress: wardAddress,
+          entrypoint: "get_spending_limit_per_tx",
+          calldata: [],
+        }),
+      ]);
+
+    // Optional 24h-window calls — older ward contracts may not have these
+    const [dailyLimit, spent24h] = await Promise.all([
+      safeCall(provider, wardAddress, "get_spending_limit_24h"),
+      safeCall(provider, wardAddress, "get_spent_24h"),
     ]);
 
     return {

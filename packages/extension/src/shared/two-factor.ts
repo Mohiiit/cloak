@@ -1,6 +1,6 @@
 // ─── 2FA approval system via API client + on-chain ─────────────────────
 
-import { getApiClient } from "./api-config";
+import { getApiClient, resetApiClient } from "./api-config";
 import {
   request2FAApproval as sdkRequest2FAApproval,
   normalizeAddress,
@@ -71,22 +71,48 @@ export interface TwoFAApprovalParams {
 export async function request2FAApproval(
   params: TwoFAApprovalParams,
 ): Promise<TwoFAApprovalResult> {
-  const client = await getApiClient();
-  return sdkRequest2FAApproval(
-    client,
-    {
-      walletAddress: params.walletAddress,
-      action: params.action,
-      token: params.token,
-      amount: params.amount,
-      recipient: params.recipient,
-      callsJson: params.callsJson,
-      sig1Json: params.sig1Json,
-      nonce: params.nonce,
-      resourceBoundsJson: params.resourceBoundsJson,
-      txHash: params.txHash,
-    },
-    params.onStatusChange,
-    params.signal,
-  );
+  try {
+    const client = await getApiClient();
+    return await sdkRequest2FAApproval(
+      client,
+      {
+        walletAddress: params.walletAddress,
+        action: params.action,
+        token: params.token,
+        amount: params.amount,
+        recipient: params.recipient,
+        callsJson: params.callsJson,
+        sig1Json: params.sig1Json,
+        nonce: params.nonce,
+        resourceBoundsJson: params.resourceBoundsJson,
+        txHash: params.txHash,
+      },
+      params.onStatusChange,
+      params.signal,
+    );
+  } catch (e: any) {
+    // On 401, reset and retry once with a fresh API key
+    if (e?.statusCode === 401 || e?.message?.includes("Invalid API key")) {
+      resetApiClient();
+      const client = await getApiClient();
+      return sdkRequest2FAApproval(
+        client,
+        {
+          walletAddress: params.walletAddress,
+          action: params.action,
+          token: params.token,
+          amount: params.amount,
+          recipient: params.recipient,
+          callsJson: params.callsJson,
+          sig1Json: params.sig1Json,
+          nonce: params.nonce,
+          resourceBoundsJson: params.resourceBoundsJson,
+          txHash: params.txHash,
+        },
+        params.onStatusChange,
+        params.signal,
+      );
+    }
+    throw e;
+  }
 }

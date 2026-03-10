@@ -17,7 +17,7 @@ import type {
   WardApprovalRequest,
   WardApprovalResult,
 } from "@cloak-wallet/sdk";
-import { getApiClient } from "./api-config";
+import { getApiClient, resetApiClient } from "./api-config";
 
 export type { WardApprovalNeeds, WardApprovalResult };
 
@@ -49,12 +49,28 @@ export async function requestWardApproval(
   params: ExtensionWardApprovalParams,
   options?: ExtensionWardApprovalOptions,
 ): Promise<WardApprovalResult> {
-  const client = await getApiClient();
-  return sdkRequestWardApproval(
-    client,
-    params,
-    params.onStatusChange,
-    params.signal,
-    options,
-  );
+  try {
+    const client = await getApiClient();
+    return await sdkRequestWardApproval(
+      client,
+      params,
+      params.onStatusChange,
+      params.signal,
+      options,
+    );
+  } catch (e: any) {
+    // On 401, reset and retry once with a fresh API key
+    if (e?.statusCode === 401 || e?.message?.includes("Invalid API key")) {
+      resetApiClient();
+      const client = await getApiClient();
+      return sdkRequestWardApproval(
+        client,
+        params,
+        params.onStatusChange,
+        params.signal,
+        options,
+      );
+    }
+    throw e;
+  }
 }

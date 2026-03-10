@@ -57,11 +57,13 @@ export async function POST(req: NextRequest) {
     const sb = getSupabase();
     const nowIso = new Date().toISOString();
 
+    // Destructure initial_status out — it's not a DB column, just used to set status
+    const { initial_status, ...insertData } = data;
     const rows = await sb.insert<WardApprovalRow>("ward_approval_requests", {
-      ...data,
+      ...insertData,
       ward_address: normalizeAddress(data.ward_address),
       guardian_address: normalizeAddress(data.guardian_address),
-      status: data.initial_status ?? "pending_ward_sig",
+      status: initial_status ?? "pending_ward_sig",
       event_version: 1,
       created_at: nowIso,
       responded_at: null,
@@ -97,7 +99,8 @@ export async function POST(req: NextRequest) {
     if (err instanceof AuthError) return unauthorized(err.message);
     if (err instanceof ValidationError) return err.response;
     console.error("[POST /api/v1/ward-approvals]", err);
-    return serverError("Failed to create ward approval request");
+    const detail = err instanceof Error ? err.message : String(err);
+    return serverError(`Failed to create ward approval request: ${detail}`);
   }
 }
 
