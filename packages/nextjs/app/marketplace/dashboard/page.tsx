@@ -345,6 +345,10 @@ export default function MarketplaceDashboardPage() {
       ]);
       const hiresBody = await hiresRes.json().catch(() => ({}));
       const runsBody = await runsRes.json().catch(() => ({}));
+      // 401 = no valid API key yet; show empty state silently
+      if (hiresRes.status === 401 || runsRes.status === 401) {
+        setHires([]); setRuns([]); return;
+      }
       if (!hiresRes.ok) throw new Error(hiresBody?.error || "Failed to load hires");
       if (!runsRes.ok) throw new Error(runsBody?.error || "Failed to load runs");
       setHires((hiresBody?.hires || []) as HireItem[]);

@@ -12,22 +12,33 @@ export const CustomConnectButton = () => {
   const { connectors, connect } = useConnect();
   const [cloakAddress, setCloakAddress] = useState<string | null>(null);
 
-  // Auto-detect if already connected on mount
+  // Auto-detect if already connected on mount — restore state only, no re-register
   useEffect(() => {
     const provider = (window as any).starknet_cloak;
-    if (provider?.isConnected && provider.selectedAddress) {
-      handleConnected(provider.selectedAddress);
-    } else {
-      const stored = localStorage.getItem(CLOAK_ADDRESS_KEY);
-      if (stored) setCloakAddress(stored);
-    }
+    const address = (provider?.isConnected && provider.selectedAddress)
+      ? provider.selectedAddress
+      : localStorage.getItem(CLOAK_ADDRESS_KEY);
+    if (address) setCloakAddress(address);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleConnected(address: string) {
+  // Called only on active connect (user clicked Connect button)
+  async function handleConnected(address: string) {
     setCloakAddress(address);
     localStorage.setItem(CLOAK_ADDRESS_KEY, address);
-    // Try syncing starknet-react in background (for wallet operations)
+    // Register wallet → get a fresh API key tied to this address
+    try {
+      const res = await fetch("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet_address: address }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.api_key) localStorage.setItem("cloak_api_key", json.api_key);
+      }
+    } catch { /* non-fatal */ }
+    // Sync starknet-react in background
     const cloakConnector = connectors.find((c) => c.id === "cloak");
     if (cloakConnector) {
       connect({ connector: cloakConnector });
