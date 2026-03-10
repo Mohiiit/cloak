@@ -516,25 +516,28 @@ export default function MarketplaceDashboardPage() {
       const isHexAddress = (s: unknown): s is string =>
         typeof s === "string" && /^0x[0-9a-fA-F]+$/.test(s);
 
-      const verifyRes = await fetch("/api/v1/auth/verify", { headers: { "X-API-Key": key } });
-      const verifyJson = await verifyRes.json().catch(() => ({}));
-
-      // Prefer the wallet_address from the API key record; fall back to the
-      // currently connected Cloak wallet (stored in localStorage on connect).
-      let operatorWallet = "";
-      if (verifyRes.ok && isHexAddress(verifyJson.wallet_address)) {
-        operatorWallet = verifyJson.wallet_address;
-      } else {
-        const stored = typeof window !== "undefined"
-          ? localStorage.getItem("cloak_active_address")
-          : null;
-        if (isHexAddress(stored)) operatorWallet = stored;
+      // Get the connected wallet address
+      const connectedWallet = typeof window !== "undefined"
+        ? localStorage.getItem("cloak_active_address")
+        : null;
+      if (!isHexAddress(connectedWallet)) {
+        throw new Error("Connect your Cloak wallet first.");
       }
 
-      if (!operatorWallet) {
-        throw new Error("Unable to resolve operator wallet. Connect your Cloak wallet first.");
+      // Register/rotate an API key tied to the connected wallet, then use it
+      const regRes = await fetch("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet_address: connectedWallet }),
+      });
+      const regJson = await regRes.json().catch(() => ({}));
+      if (!regRes.ok || !regJson.api_key) {
+        throw new Error("Failed to provision API key for your wallet.");
       }
+      const freshKey = String(regJson.api_key);
+      localStorage.setItem("cloak_api_key", freshKey);
 
+      const operatorWallet = connectedWallet;
       const serviceWallet = isHexAddress(newAgentServiceWallet.trim())
         ? newAgentServiceWallet.trim()
         : operatorWallet;
@@ -552,7 +555,7 @@ export default function MarketplaceDashboardPage() {
 
       const res = await fetch("/api/v1/marketplace/agents", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-API-Key": key },
+        headers: { "Content-Type": "application/json", "X-API-Key": freshKey },
         body: JSON.stringify({
           agent_id: newAgentId.trim(),
           name: newAgentName.trim(),
