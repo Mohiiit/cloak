@@ -1,7 +1,7 @@
 /**
  * SettingsScreen — Key backup, wallet info, QR codes, and preferences.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Clipboard from "@react-native-clipboard/clipboard";
 import QRCode from "react-native-qrcode-svg";
+import { useFocusEffect } from "@react-navigation/native";
 import { Plus, Trash2, Users, Shield, Key, Globe, AlertTriangle, Lock, Check, ShieldAlert, ShieldCheck, ShieldOff, RefreshCw, X, Download, Smartphone, LogOut, LockOpen, TriangleAlert, ChevronRight, Mic } from "lucide-react-native";
 import { useWallet } from "../lib/WalletContext";
 import { clearWallet } from "../lib/keys";
@@ -685,8 +686,15 @@ export default function SettingsScreen({ navigation }: any) {
   const { showToast } = useToast();
   const twoFactor = useTwoFactor();
   const ward = useWardContext();
-  const { contacts, removeContact } = useContacts();
+  const { contacts, removeContact, refresh: refreshContacts } = useContacts();
   const [qrModal, setQrModal] = useState<{ label: string; value: string } | null>(null);
+
+  // Re-fetch contacts every time this screen gains focus (e.g. returning from AddContact)
+  useFocusEffect(
+    useCallback(() => {
+      refreshContacts();
+    }, [refreshContacts]),
+  );
 
   // 2FA state
   const [tfaLoading, setTfaLoading] = useState(false);

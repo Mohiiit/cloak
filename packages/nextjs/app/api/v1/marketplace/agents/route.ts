@@ -30,6 +30,7 @@ import {
 } from "~~/lib/marketplace/registry-metrics";
 import { checkAgentOnchainIdentity } from "~~/lib/marketplace/onchain-identity";
 import {
+  isOnchainRegistrationWriteEnabled,
   reconcilePendingAgentRegistrationWrite,
   submitAgentRegistrationOnchain,
 } from "~~/lib/marketplace/onchain-registration";
@@ -198,6 +199,24 @@ export async function POST(req: NextRequest) {
       serviceWallet: data.service_wallet,
       onchainWrite: data.onchain_write,
     });
+
+    // When on-chain writes are enabled, a failed write is a hard error.
+    // Do NOT persist the profile — the caller must fix the issue and retry.
+    if (
+      isOnchainRegistrationWriteEnabled() &&
+      writeOutcome.status === "failed"
+    ) {
+      return NextResponse.json(
+        {
+          error: "On-chain registration failed",
+          code: "ONCHAIN_WRITE_FAILED",
+          reason: writeOutcome.reason,
+          checked_at: writeOutcome.checkedAt,
+        },
+        { status: 502 },
+      );
+    }
+
     const profile = await upsertAgentProfileRecord(data, {
       onchainWrite: writeOutcome,
     });

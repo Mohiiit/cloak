@@ -1,6 +1,8 @@
 import {
   ERC8004Client,
   type ERC8004AccountLike,
+  estimateWardInvokeFee,
+  buildResourceBoundsFromEstimate,
 } from "@cloak-wallet/sdk";
 import type { RegisterAgentRequest } from "@cloak-wallet/sdk";
 import { Account, RpcProvider, Signer, ec, num } from "starknet";
@@ -154,7 +156,7 @@ function resolveWriteEntrypoint(
   env: Partial<NodeJS.ProcessEnv>,
   input: RegisterAgentRequest["onchain_write"] | undefined,
 ): string {
-  return trimToNull(input?.entrypoint) || trimToNull(env.ERC8004_WRITE_ENTRYPOINT) || "register_agent";
+  return trimToNull(input?.entrypoint) || trimToNull(env.ERC8004_WRITE_ENTRYPOINT) || "register";
 }
 
 function resolveWriteWaitForConfirmation(
@@ -177,6 +179,24 @@ function resolveWaitTimeoutMs(
   return parsePositiveInt(env.ERC8004_WRITE_CONFIRM_TIMEOUT_MS, 45_000);
 }
 
+/**
+ * Encode an arbitrary string agent ID as a Cairo felt252 short string.
+ * Starknet felt252 short strings are UTF-8 bytes packed big-endian into a
+ * 31-byte (248-bit) integer. Max 31 ASCII chars.
+ */
+function encodeAgentIdAsFelt(agentId: string): string {
+  if (agentId.length > 31) {
+    throw new Error(
+      `agent_id "${agentId}" exceeds 31 characters and cannot be encoded as a felt252 short string`,
+    );
+  }
+  let hex = "0x";
+  for (let i = 0; i < agentId.length; i++) {
+    hex += agentId.charCodeAt(i).toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
 function resolveCalldata(input: RegistrationWriteInput): string[] | null {
   const provided = input.onchainWrite?.calldata;
   if (Array.isArray(provided) && provided.length > 0) {
@@ -187,11 +207,9 @@ function resolveCalldata(input: RegistrationWriteInput): string[] | null {
     return calldata;
   }
 
-  if (!isHexOrDecimal(input.agentId)) {
-    return null;
-  }
-
-  return [input.agentId, input.operatorWallet, input.serviceWallet];
+  // The ERC-8004 identity registry uses register() with no arguments.
+  // The agent ID, operator wallet, and service wallet are stored off-chain in Supabase.
+  return [];
 }
 
 async function isTwoFactorAccountEnabled(
@@ -213,7 +231,7 @@ async function isTwoFactorAccountEnabled(
 
 async function buildSignerAccount(
   env: Partial<NodeJS.ProcessEnv>,
-): Promise<{ account: ERC8004AccountLike; rpcUrl: string }> {
+): Promise<{ account: ERC8004AccountLike; rpcUrl: string; provider: RpcProvider; signerAddress: string }> {
   const rpcUrl = resolveRpcUrl(env);
   const signerAddress = trimToNull(env.ERC8004_SIGNER_ADDRESS);
   const signerPrivateKey = trimToNull(env.ERC8004_SIGNER_PRIVATE_KEY);
@@ -248,6 +266,8 @@ async function buildSignerAccount(
   return {
     account,
     rpcUrl,
+    provider,
+    signerAddress,
   };
 }
 
@@ -309,12 +329,34 @@ export async function submitAgentRegistrationOnchain(
     const waitForConfirmation = resolveWriteWaitForConfirmation(env, input.onchainWrite);
     const timeoutMs = resolveWaitTimeoutMs(env, input.onchainWrite);
     const entrypoint = resolveWriteEntrypoint(env, input.onchainWrite);
+
+    let invokeDetails: unknown = undefined;
     const clientToUse =
       options.client ||
       (await (async () => {
-        const { account, rpcUrl } = options.account
-          ? { account: options.account, rpcUrl: resolveRpcUrl(env) }
-          : await buildSignerAccount(env);
+        if (options.account) {
+          return new ERC8004Client({
+            network,
+            rpcUrl: resolveRpcUrl(env) || undefined,
+            account: options.account,
+          });
+        }
+        const { account, rpcUrl, provider, signerAddress } = await buildSignerAccount(env);
+        // Pre-estimate fee with SKIP_VALIDATE so balance checks are bypassed,
+        // then build v3 resource bounds for STRK-based fee payment.
+        try {
+          const registryAddress = new ERC8004Client({ network, rpcUrl: rpcUrl || undefined })
+            .getRegistryAddress("identity");
+          const calls = [{ contractAddress: registryAddress, entrypoint, calldata }];
+          const feeEstimate = await estimateWardInvokeFee(provider, signerAddress, calls);
+          invokeDetails = {
+            version: 3,
+            resourceBounds: buildResourceBoundsFromEstimate(feeEstimate, 1.5),
+            tip: 0n,
+          };
+        } catch {
+          // Fall through to auto-estimation if pre-estimate fails
+        }
         return new ERC8004Client({
           network,
           rpcUrl: rpcUrl || undefined,
@@ -322,10 +364,10 @@ export async function submitAgentRegistrationOnchain(
         });
       })());
 
-    const invoke = await clientToUse.registerAgentOnchain({
-      entrypoint,
-      calldata,
-    });
+    const invoke = await clientToUse.registerAgentOnchain(
+      { entrypoint, calldata },
+      invokeDetails,
+    );
 
     if (!waitForConfirmation) {
       return {

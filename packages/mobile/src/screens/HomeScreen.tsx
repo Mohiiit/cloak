@@ -412,10 +412,12 @@ function OnboardingLogoBadge() {
 }
 
 function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
-  const dailyLimit = wardInfo?.dailyLimit ? Number(wardInfo.dailyLimit) : 100;
-  const maxPerTx = wardInfo?.maxPerTx ? Number(wardInfo.maxPerTx) : 25;
-  const dailyUsed = wardInfo?.dailySpent ? Number(wardInfo.dailySpent) : 0;
-  const fillPercent = dailyLimit > 0 ? Math.min((dailyUsed / dailyLimit) * 100, 100) : 0;
+  const limitPerTx = wardInfo?.spendingLimitPerTx && wardInfo.spendingLimitPerTx !== "0"
+    ? Number(wardInfo.spendingLimitPerTx)
+    : 0;
+  const maxPerTx = wardInfo?.maxPerTx && wardInfo.maxPerTx !== "0"
+    ? Number(wardInfo.maxPerTx)
+    : 0;
 
   return (
     <View style={styles.wardLimitsCard}>
@@ -426,13 +428,10 @@ function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
 
       <View style={styles.wardLimitBlock}>
         <View style={styles.wardLimitRow}>
-          <Text style={styles.wardLimitLabel}>Daily Limit</Text>
+          <Text style={styles.wardLimitLabel}>Limit / Txn</Text>
           <Text style={styles.wardLimitValue}>
-            {dailyLimit > 0 ? `${dailyUsed} / ${dailyLimit} STRK` : "-- STRK"}
+            {limitPerTx > 0 ? `${limitPerTx} STRK` : "No limit"}
           </Text>
-        </View>
-        <View style={styles.wardLimitTrack}>
-          <View style={[styles.wardLimitFill, styles.wardLimitFillDaily, { width: `${fillPercent}%` }]} />
         </View>
       </View>
 
@@ -440,7 +439,7 @@ function SpendingLimitsCard({ wardInfo }: { wardInfo: WardInfo | null }) {
         <View style={styles.wardLimitRow}>
           <Text style={styles.wardLimitLabel}>Max / Txn</Text>
           <Text style={styles.wardLimitValue}>
-            {maxPerTx > 0 ? `${maxPerTx} STRK` : "-- STRK"}
+            {maxPerTx > 0 ? `${maxPerTx} STRK` : "No limit"}
           </Text>
         </View>
       </View>
@@ -928,25 +927,6 @@ export default function HomeScreen({ navigation }: any) {
     ? "needs_deploy"
     : "wallet_missing";
   const deployStatusMarker = `deploy.status=${deployStatusValue}`;
-  const wardShieldedUnits = safeBigInt(wallet.balance);
-  const wardRecentRows = [
-    {
-      id: "sent_to_alice",
-      title: "Sent to Alice",
-      subtitle: "2 hours ago",
-      amount: "-10 STRK",
-      amountColor: colors.error,
-      tone: "negative" as const,
-    },
-    {
-      id: "funded_by_guardian",
-      title: "Funded by Guardian",
-      subtitle: "1 day ago",
-      amount: "+50 STRK",
-      amountColor: colors.success,
-      tone: "positive" as const,
-    },
-  ];
 
   const handleClaim = async () => {
     setIsClaiming(true);
@@ -1033,9 +1013,7 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.glowBottomLeft} />
         <View style={styles.balanceContent}>
           <View style={styles.balanceLabelRow}>
-            <Text style={styles.balanceLabel}>
-              {ward.isWard ? "Shielded Balance" : "Total Shielded Units"}
-            </Text>
+            <Text style={styles.balanceLabel}>Total Shielded Units</Text>
             <TouchableOpacity
               {...testProps(testIDs.home.toggleBalanceVisibility)}
               onPress={toggleBalanceVisibility}
@@ -1052,204 +1030,120 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={styles.balanceAmount}>
             {balanceHidden
               ? "**** units"
-              : ward.isWard
-              ? `${formatUnits(wardShieldedUnits)} units`
               : `${formatUnits(totalShieldedUnits)} units`}
           </Text>
-          {ward.isWard ? (
-            <>
-              <Text style={styles.balanceSecondary}>
-                ({balanceHidden ? "****" : `${displayErc20} ${wallet.selectedToken}`})
-              </Text>
-              <View style={styles.balanceSplitWrap}>
-                <Text style={styles.balanceSplitLabel}>Unshielded (on-chain)</Text>
-                <Text style={styles.balanceSplitValue}>
-                  {balanceHidden ? "****" : `${displayErc20} ${wallet.selectedToken}`}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.balanceSecondary}>Across STRK / ETH / USDC pools</Text>
-              <View style={styles.balanceSplitWrap}>
-                <Text style={styles.balanceSplitLabel}>Per-token split</Text>
-                <Text style={styles.balanceSplitValue}>
-                  {balanceHidden
-                    ? "****"
-                    : `STRK ${formatUnits(strkUnits)} · ETH ${formatUnits(ethUnits)} · USDC ${formatUnits(usdcUnits)}`}
-                </Text>
-              </View>
-            </>
-          )}
+          <Text style={styles.balanceSecondary}>Across STRK / ETH / USDC pools</Text>
+          <View style={styles.balanceSplitWrap}>
+            <Text style={styles.balanceSplitLabel}>Per-token split</Text>
+            <Text style={styles.balanceSplitValue}>
+              {balanceHidden
+                ? "****"
+                : `STRK ${formatUnits(strkUnits)} · ETH ${formatUnits(ethUnits)} · USDC ${formatUnits(usdcUnits)}`}
+            </Text>
+          </View>
         </View>
       </View>
 
-      {ward.isWard ? (
-        <>
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              {...testProps(testIDs.home.quickSend)}
-              style={[styles.actionButton, styles.actionSend]}
-              onPress={() => navigation.getParent("root")?.navigate("Send")}
-              disabled={isWardFrozen}
-              activeOpacity={isWardFrozen ? 0.35 : 0.72}
-            >
-              <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
-              <Text style={styles.actionLabel}>Send</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              {...testProps(testIDs.home.quickShield)}
-              style={[styles.actionButton, styles.actionShield]}
-              onPress={() => navigation.getParent("root")?.navigate("Shield")}
-              disabled={isWardFrozen}
-              activeOpacity={isWardFrozen ? 0.35 : 0.72}
-            >
-              <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
-              <Text style={styles.actionLabel}>Shield</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              {...testProps(testIDs.home.quickUnshield)}
-              style={[styles.actionButton, styles.actionUnshield]}
-              onPress={() => navigation.getParent("root")?.navigate("Unshield")}
-              disabled={isWardFrozen}
-              activeOpacity={isWardFrozen ? 0.35 : 0.72}
-            >
-              <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
-              <Text style={styles.actionLabel}>Unshield</Text>
-            </TouchableOpacity>
+      {/* Claim Banner — only when there are pending funds */}
+      {hasPending && !isWardFrozen && (
+        <TouchableOpacity
+          {...testProps(testIDs.home.claimPending)}
+          style={styles.claimBanner}
+          onPress={handleClaim}
+          disabled={isClaiming}
+          activeOpacity={0.72}
+        >
+          <ArrowDownToLine size={20} color={colors.success} />
+          <View style={styles.claimTextWrap}>
+            <Text style={styles.claimBannerTitle}>Pending funds available</Text>
+            <Text style={styles.claimBannerSub}>
+              Tap to claim {formatUnits(pendingUnits)} units to your shielded balance
+            </Text>
           </View>
+          {isClaiming ? <ActivityIndicator size="small" color={colors.success} /> : null}
+        </TouchableOpacity>
+      )}
 
-          <SpendingLimitsCard wardInfo={ward.wardInfo} />
+      {/* Quick Actions */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          {...testProps(testIDs.home.quickSend)}
+          style={[styles.actionButton, styles.actionSend]}
+          onPress={() => navigation.getParent("root")?.navigate("Send")}
+          disabled={isWardFrozen}
+          activeOpacity={isWardFrozen ? 0.35 : 0.72}
+        >
+          <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
+          <Text style={styles.actionLabel}>Send</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          {...testProps(testIDs.home.quickShield)}
+          style={[styles.actionButton, styles.actionShield]}
+          onPress={() => navigation.getParent("root")?.navigate("Shield")}
+          disabled={isWardFrozen}
+          activeOpacity={isWardFrozen ? 0.35 : 0.72}
+        >
+          <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
+          <Text style={styles.actionLabel}>Shield</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          {...testProps(testIDs.home.quickUnshield)}
+          style={[styles.actionButton, styles.actionUnshield]}
+          onPress={() => navigation.getParent("root")?.navigate("Unshield")}
+          disabled={isWardFrozen}
+          activeOpacity={isWardFrozen ? 0.35 : 0.72}
+        >
+          <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
+          <Text style={styles.actionLabel}>Unshield</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          {...testProps(testIDs.home.quickSwap)}
+          style={[styles.actionButton, styles.actionSwap]}
+          onPress={() => navigation.getParent("root")?.navigate("Swap")}
+          disabled={isWardFrozen}
+          activeOpacity={isWardFrozen ? 0.35 : 0.72}
+        >
+          <Repeat size={28} color={colors.warning} style={styles.actionIconSpacing} />
+          <Text style={styles.actionLabel}>Swap</Text>
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.wardRecentSection}>
-            <Text style={styles.wardRecentTitle}>Recent Activity</Text>
-            <View style={styles.wardRecentList}>
-              {wardRecentRows.map((item, index) => (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.wardRecentRow,
-                    index < wardRecentRows.length - 1 && styles.wardRecentDivider,
-                  ]}
-                >
-                  <View style={styles.wardRecentLeft}>
-                    <View
-                      style={[
-                        styles.wardRecentDot,
-                        item.tone === "positive" ? styles.wardRecentDotPositive : styles.wardRecentDotNegative,
-                      ]}
-                    />
-                    <View>
-                      <Text style={styles.wardRecentLabel}>{item.title}</Text>
-                      <Text style={styles.wardRecentSub}>{item.subtitle}</Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.wardRecentAmount, { color: item.amountColor }]}>{item.amount}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </>
-      ) : (
-        <>
-          {/* Claim Banner — only when there are pending funds */}
-          {hasPending && !isWardFrozen && (
-            <TouchableOpacity
-              {...testProps(testIDs.home.claimPending)}
-              style={styles.claimBanner}
-              onPress={handleClaim}
-              disabled={isClaiming}
-              activeOpacity={0.72}
-            >
-              <ArrowDownToLine size={20} color={colors.success} />
-              <View style={styles.claimTextWrap}>
-                <Text style={styles.claimBannerTitle}>Pending funds available</Text>
-                <Text style={styles.claimBannerSub}>
-                  Tap to claim {formatUnits(pendingUnits)} units to your shielded balance
+      {/* Spending Limits — ward only */}
+      {ward.isWard && <SpendingLimitsCard wardInfo={ward.wardInfo} />}
+
+      {/* Portfolio */}
+      <View style={styles.portfolioSection}>
+        <View style={styles.portfolioHeader}>
+          <Text style={styles.portfolioTitle}>Portfolio</Text>
+          <Text style={styles.portfolioCount}>{portfolioRows.length} tokens</Text>
+        </View>
+        <View style={styles.portfolioList}>
+          {portfolioRows.map((row) => (
+            <View key={row.token} style={styles.portfolioRow}>
+              <View style={styles.portfolioTopRow}>
+                <Text style={styles.portfolioToken}>{row.token}</Text>
+                <Text style={styles.portfolioShielded}>
+                  {balanceHidden ? "****" : `${formatUnits(row.shieldedTotal)}u`}
                 </Text>
               </View>
-              {isClaiming ? <ActivityIndicator size="small" color={colors.success} /> : null}
-            </TouchableOpacity>
-          )}
-
-          {/* Quick Actions */}
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              {...testProps(testIDs.home.quickSend)}
-              style={[styles.actionButton, styles.actionSend]}
-              onPress={() => navigation.getParent("root")?.navigate("Send")}
-              disabled={isWardFrozen}
-              activeOpacity={isWardFrozen ? 0.35 : 0.72}
-            >
-              <Send size={28} color={colors.primary} style={styles.actionIconSpacing} />
-              <Text style={styles.actionLabel}>Send</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              {...testProps(testIDs.home.quickShield)}
-              style={[styles.actionButton, styles.actionShield]}
-              onPress={() => navigation.getParent("root")?.navigate("Shield")}
-              disabled={isWardFrozen}
-              activeOpacity={isWardFrozen ? 0.35 : 0.72}
-            >
-              <ShieldPlus size={28} color={colors.success} style={styles.actionIconSpacing} />
-              <Text style={styles.actionLabel}>Shield</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              {...testProps(testIDs.home.quickUnshield)}
-              style={[styles.actionButton, styles.actionUnshield]}
-              onPress={() => navigation.getParent("root")?.navigate("Unshield")}
-              disabled={isWardFrozen}
-              activeOpacity={isWardFrozen ? 0.35 : 0.72}
-            >
-              <ShieldOff size={28} color={colors.secondary} style={styles.actionIconSpacing} />
-              <Text style={styles.actionLabel}>Unshield</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              {...testProps(testIDs.home.quickSwap)}
-              style={[styles.actionButton, styles.actionSwap]}
-              onPress={() => navigation.getParent("root")?.navigate("Swap")}
-              activeOpacity={0.72}
-            >
-              <Repeat size={28} color={colors.warning} style={styles.actionIconSpacing} />
-              <Text style={styles.actionLabel}>Swap</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Portfolio */}
-          <View style={styles.portfolioSection}>
-            <View style={styles.portfolioHeader}>
-              <Text style={styles.portfolioTitle}>Portfolio</Text>
-              <Text style={styles.portfolioCount}>{portfolioRows.length} tokens</Text>
+              <View style={styles.portfolioBottomRow}>
+                <Text style={styles.portfolioPublic}>
+                  Public {balanceHidden ? "****" : displayErc20 && row.token === wallet.selectedToken ? displayErc20 : row.publicDisplay}
+                  {!balanceHidden ? ` ${row.token}` : ""}
+                </Text>
+                <Text style={styles.portfolioMeta}>
+                  {balanceHidden ? "****" : row.tokenToUnits}
+                </Text>
+              </View>
+              {row.pending > 0n ? (
+                <Text style={styles.portfolioPending}>
+                  Pending {balanceHidden ? "****" : `${formatUnits(row.pending)}u`}
+                </Text>
+              ) : null}
             </View>
-            <View style={styles.portfolioList}>
-              {portfolioRows.map((row) => (
-                <View key={row.token} style={styles.portfolioRow}>
-                  <View style={styles.portfolioTopRow}>
-                    <Text style={styles.portfolioToken}>{row.token}</Text>
-                    <Text style={styles.portfolioShielded}>
-                      {balanceHidden ? "****" : `${formatUnits(row.shieldedTotal)}u`}
-                    </Text>
-                  </View>
-                  <View style={styles.portfolioBottomRow}>
-                    <Text style={styles.portfolioPublic}>
-                      Public {balanceHidden ? "****" : displayErc20 && row.token === wallet.selectedToken ? displayErc20 : row.publicDisplay}
-                      {!balanceHidden ? ` ${row.token}` : ""}
-                    </Text>
-                    <Text style={styles.portfolioMeta}>
-                      {balanceHidden ? "****" : row.tokenToUnits}
-                    </Text>
-                  </View>
-                  {row.pending > 0n ? (
-                    <Text style={styles.portfolioPending}>
-                      Pending {balanceHidden ? "****" : `${formatUnits(row.pending)}u`}
-                    </Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          </View>
-        </>
-      )}
+          ))}
+        </View>
+      </View>
 
         </>
       )}
@@ -1944,24 +1838,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.primarySemibold,
     fontWeight: "500",
   },
-  wardLimitTrack: {
-    width: "100%",
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.inputBg,
-    overflow: "hidden",
-  },
-  wardLimitFill: {
-    height: 6,
-    borderRadius: 3,
-  },
-  wardLimitFillDaily: {
-    backgroundColor: colors.primary,
-  },
-  wardLimitFillMonthly: {
-    width: "30%",
-    backgroundColor: colors.secondary,
-  },
   wardAllowedTokenRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1982,68 +1858,6 @@ const styles = StyleSheet.create({
   wardAllowedTokenBadgeText: {
     fontSize: 11,
     color: colors.text,
-    fontFamily: typography.primarySemibold,
-  },
-  wardRecentSection: {
-    marginTop: 2,
-    gap: 8,
-  },
-  wardRecentTitle: {
-    fontSize: 11,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    color: colors.textMuted,
-    fontFamily: typography.primarySemibold,
-  },
-  wardRecentList: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    overflow: "hidden",
-  },
-  wardRecentRow: {
-    height: 54,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  wardRecentDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  wardRecentLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-  wardRecentDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  wardRecentDotPositive: {
-    backgroundColor: colors.success,
-  },
-  wardRecentDotNegative: {
-    backgroundColor: colors.primary,
-  },
-  wardRecentLabel: {
-    fontSize: 13,
-    color: colors.text,
-    fontFamily: typography.primarySemibold,
-  },
-  wardRecentSub: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontFamily: typography.secondary,
-    marginTop: 2,
-  },
-  wardRecentAmount: {
-    fontSize: 13,
     fontFamily: typography.primarySemibold,
   },
 });

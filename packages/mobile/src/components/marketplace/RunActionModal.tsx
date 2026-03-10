@@ -73,8 +73,9 @@ function extractFee(agent: AgentProfileResponse): { display: string; amount: str
   if (!rawAmount || rawAmount === "undefined") return { display: "Free", amount: "0" };
   const num = parseFloat(rawAmount);
   if (isNaN(num) || num === 0) return { display: "Free", amount: "0" };
+  const strk = (num * 0.05).toFixed(2);
   return {
-    display: `${num} unit${num === 1 ? "" : "s"} (${(num * 0.05).toFixed(2)} STRK)`,
+    display: `${strk} STRK`,
     amount: rawAmount,
   };
 }
@@ -399,14 +400,11 @@ export default function RunActionModal({
               {/* Summary card */}
               <View style={styles.summaryCard}>
                 {/* Agent info */}
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Agent</Text>
-                  <View style={styles.summaryAgentInfo}>
-                    <Text style={styles.summaryValue}>{agent.name}</Text>
-                    <View style={[styles.typeBadge, { backgroundColor: typeColor + "22", borderColor: typeColor + "55" }]}>
-                      <Text style={[styles.typeBadgeText, { color: typeColor }]}>{typeLabel}</Text>
-                    </View>
+                <View style={styles.summaryAgentHeader}>
+                  <View style={[styles.typeBadge, { backgroundColor: typeColor + "22", borderColor: typeColor + "55" }]}>
+                    <Text style={[styles.typeBadgeText, { color: typeColor }]}>{typeLabel}</Text>
                   </View>
+                  <Text style={styles.summaryAgentName}>{agent.name}</Text>
                 </View>
 
                 <View style={styles.summaryDivider} />
@@ -420,23 +418,21 @@ export default function RunActionModal({
                 <View style={styles.summaryDivider} />
 
                 {/* Params */}
-                {currentDefinition.fields.length > 0 && (
-                  <>
-                    {currentDefinition.fields.map((field) => (
-                      <View key={field.key} style={styles.summaryRow}>
-                        <Text style={styles.summaryLabel}>{field.label}</Text>
-                        <Text style={styles.summaryValue}>
-                          {values[field.key] || "—"}
-                        </Text>
-                      </View>
-                    ))}
+                {currentDefinition.fields.map((field) => (
+                  <React.Fragment key={field.key}>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>{field.label}</Text>
+                      <Text style={styles.summaryValue} numberOfLines={1} ellipsizeMode="middle">
+                        {values[field.key] || "—"}
+                      </Text>
+                    </View>
                     <View style={styles.summaryDivider} />
-                  </>
-                )}
+                  </React.Fragment>
+                ))}
 
                 {/* Fee */}
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Agent Fee</Text>
+                  <Text style={styles.summaryLabel}>Fee</Text>
                   <View style={styles.summaryFeeRow}>
                     <Zap size={14} color={colors.warning} />
                     <Text style={[styles.summaryValue, { color: colors.warning }]}>
@@ -451,7 +447,7 @@ export default function RunActionModal({
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Auto-hire</Text>
                       <Text style={[styles.summaryValue, { color: colors.primaryLight }]}>
-                        Yes — agent will be hired on submit
+                        Yes
                       </Text>
                     </View>
                   </>
@@ -729,50 +725,57 @@ const styles = StyleSheet.create({
   // Summary card (Step 3)
   summaryCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
     marginBottom: spacing.md,
+  },
+  summaryAgentHeader: {
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  summaryAgentName: {
+    fontSize: fontSize.lg,
+    fontFamily: typography.primarySemibold,
+    color: colors.text,
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
   summaryLabel: {
     fontSize: fontSize.sm,
     fontFamily: typography.secondary,
     color: colors.textMuted,
+    flexShrink: 0,
+    marginRight: spacing.md,
   },
   summaryValue: {
     fontSize: fontSize.sm,
     fontFamily: typography.primarySemibold,
     color: colors.text,
     textAlign: "right",
-    maxWidth: "60%",
-  },
-  summaryAgentInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+    flexShrink: 1,
   },
   summaryFeeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
   },
   summaryDivider: {
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
   },
   typeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     borderRadius: borderRadius.full,
     borderWidth: 1,
   },
   typeBadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: typography.primarySemibold,
     textTransform: "uppercase",
     letterSpacing: 0.5,

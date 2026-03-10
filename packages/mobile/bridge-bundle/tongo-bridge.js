@@ -131,7 +131,7 @@ const handlers = {
   derivePublicKey: async ({ privateKey }) => {
     const pk = typeof privateKey === "string" ? BigInt(privateKey) : privateKey;
     const pubKey = derivePublicKey(pk);
-    return { x: pubKey.x.toString(), y: pubKey.y.toString() };
+    return { x: "0x" + pubKey.x.toString(16), y: "0x" + pubKey.y.toString(16) };
   },
 
   getTongoAddress: async () => {

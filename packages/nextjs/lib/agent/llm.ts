@@ -87,7 +87,8 @@ Default token is STRK if not specified.
 PRIVACY MODES:
 - send_private: Shielded transfer via Tongo (requires recipient Tongo address)
 - send_public: On-chain ERC-20 transfer (requires recipient Starknet 0x address)
-Default is send_private unless the user says "public/onchain/erc20" or the recipient only has a Starknet address.
+Default is send_private unless the user explicitly says "public/onchain/erc20" or the recipient ONLY has a Starknet address (no Tongo address).
+IMPORTANT: If the user says "privately", "private", "shielded", or "cloak", ALWAYS use send_private regardless of anything else. The user's explicit privacy preference takes priority over address availability.
 
 RECIPIENT RESOLUTION (in priority order):
 1. Contacts — match by nickname or starkName (case-insensitive)

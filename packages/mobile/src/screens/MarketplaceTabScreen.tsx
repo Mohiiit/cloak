@@ -94,26 +94,6 @@ function formatFee(rawAmount: string): string {
   return `${num} unit${num === 1 ? "" : "s"} (${(num * 0.05).toFixed(2)} STRK)`;
 }
 
-/** Deduplicate agents — keep one per agent_type, prefer the one with a real description. */
-function deduplicateAgents(agents: AgentCard[]): AgentCard[] {
-  const byType = new Map<string, AgentCard>();
-  for (const agent of agents) {
-    const existing = byType.get(agent.agent_type);
-    if (!existing) {
-      byType.set(agent.agent_type, agent);
-      continue;
-    }
-    // Prefer the one with a description, then the one without "Live" prefix
-    const existingHasDesc = !!existing.description?.trim();
-    const newHasDesc = !!agent.description?.trim();
-    if (newHasDesc && !existingHasDesc) {
-      byType.set(agent.agent_type, agent);
-    } else if (newHasDesc === existingHasDesc && !agent.name.startsWith("Live ")) {
-      byType.set(agent.agent_type, agent);
-    }
-  }
-  return Array.from(byType.values());
-}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -143,7 +123,7 @@ export default function MarketplaceTabScreen() {
         wallet: walletContext,
         limit: 50,
       });
-      setAgents(deduplicateAgents(result));
+      setAgents(result);
     } catch (err) {
       console.warn("[MarketplaceTab] Failed to load agents:", err);
     } finally {

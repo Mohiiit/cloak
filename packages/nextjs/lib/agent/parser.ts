@@ -6,8 +6,8 @@ const AMOUNT_AFTER_VERB_RE = /(?:send|pay|transfer)\s+([0-9]+(?:\.[0-9]+)?)/i;
 const HISTORY_RE = /\b(previous sessions?|history|what did i do|last session|recent transactions?|my activity|show.*history|my transactions?)\b/i;
 const WARD_QUERY_RE = /\b(ward|board)\b/i;
 const WARD_ACTIVITY_RE = /\b(activity|transactions?|history|what.*doing|recent)\b/i;
-const PRIVATE_RE = /\b(private|shielded|cloak)\b/i;
-const PUBLIC_RE = /\b(public|pubic|erc20|onchain)\b/i;
+const PRIVATE_RE = /\b(privat|shielded|cloak)\w*/i;
+const PUBLIC_RE = /\b(public|pubic|erc20|onchain)\w*/i;
 const START_RE = /\b(new session|start session|start over|reset chat)\b/i;
 const SEND_VERB_RE = /\b(send|pay|transfer)\b/i;
 
@@ -17,7 +17,7 @@ const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{50,66}$/;
 const BASE58_ADDRESS_RE = /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{30,}$/;
 
 // Stop words that terminate recipient extraction after "to"
-const STOP_WORDS = /^(private|shielded|cloak|public|pubic|erc20|onchain|strk|stark|eth|usdc|with|using|via)$/i;
+const STOP_WORDS = /^(privat\w*|shielded|cloak|public\w*|pubic|erc20|onchain|strk|stark|eth|usdc|with|using|via)$/i;
 
 function normalizeToken(raw: string | undefined): string | undefined {
   if (!raw) return undefined;

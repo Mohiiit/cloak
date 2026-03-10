@@ -315,7 +315,7 @@ export default function MarketplaceDashboardPage() {
   const [newAgentServiceWallet, setNewAgentServiceWallet] = useState("");
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
-  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
+  const [registerResult, setRegisterResult] = useState<{ agentId: string; txHash: string | null; txStatus: string | null } | null>(null);
 
   // ── Delegation state ──
   const [delegations, setDelegations] = useState<Delegation[]>([]);
@@ -505,7 +505,7 @@ export default function MarketplaceDashboardPage() {
   const registerAgent = useCallback(async () => {
     setRegistering(true);
     setRegisterError(null);
-    setRegisterSuccess(null);
+    setRegisterResult(null);
     try {
       const { key } = getApiConfig();
       if (!key) throw new Error("Missing API key. Configure Settings first.");
@@ -579,7 +579,11 @@ export default function MarketplaceDashboardPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || `Agent registration failed (${res.status})`);
-      setRegisterSuccess(`Agent "${newAgentName.trim()}" registered successfully (ID: ${body.agent_id || newAgentId.trim()})`);
+      setRegisterResult({
+        agentId: body.agent_id || newAgentId.trim(),
+        txHash: body.onchain_write_tx_hash ?? null,
+        txStatus: body.onchain_write_status ?? null,
+      });
       setNewAgentId("");
       setNewAgentName("");
       setNewAgentDescription("");
@@ -902,11 +906,8 @@ export default function MarketplaceDashboardPage() {
                 className="px-5 py-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-sm text-emerald-300 font-medium hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 title={missingApiKey ? "Add API key in Settings first" : agentTypeOptions.length === 0 ? "Agent types not loaded" : undefined}
               >
-                {registering ? "Registering…" : "Register agent"}
+                Register agent
               </button>
-              {registerSuccess && (
-                <p className="text-sm text-emerald-300">{registerSuccess}</p>
-              )}
             </div>
 
             {registerError && (
@@ -1093,6 +1094,84 @@ export default function MarketplaceDashboardPage() {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Registration modal (loading + success) ── */}
+      {(registering || registerResult) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm mx-4 rounded-2xl border border-slate-700/60 bg-slate-900 shadow-2xl p-6">
+            {registering ? (
+              /* Loading state */
+              <div className="flex flex-col items-center gap-4 py-4">
+                <div className="w-10 h-10 rounded-full border-2 border-slate-700 border-t-blue-400 animate-spin" />
+                <p className="text-sm font-medium text-slate-200">Registering agent…</p>
+                <p className="text-xs text-slate-500 text-center">Submitting on-chain registration and saving profile</p>
+              </div>
+            ) : registerResult ? (
+              /* Success state */
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 w-9 h-9 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-100">Agent registered</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Your agent is live on the marketplace</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-slate-700/60 bg-slate-800/60 divide-y divide-slate-700/40">
+                  <div className="px-4 py-3">
+                    <p className="text-[11px] text-slate-500 uppercase tracking-wide font-medium mb-1">Agent ID</p>
+                    <p className="text-sm text-slate-200 font-mono">{registerResult.agentId}</p>
+                  </div>
+                  {registerResult.txHash && (
+                    <div className="px-4 py-3">
+                      <p className="text-[11px] text-slate-500 uppercase tracking-wide font-medium mb-1">Transaction</p>
+                      <p className="text-xs text-slate-400 font-mono truncate">{registerResult.txHash}</p>
+                      {registerResult.txStatus && (
+                        <span className={`inline-block mt-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                          registerResult.txStatus === "confirmed"
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                            : registerResult.txStatus === "pending"
+                            ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                            : "bg-slate-700/40 border-slate-600/40 text-slate-400"
+                        }`}>
+                          {registerResult.txStatus}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {registerResult.txHash && (
+                    <a
+                      href={`https://sepolia.voyager.online/tx/${registerResult.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-blue-500/30 bg-blue-500/10 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
+                    >
+                      View on Voyager
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setRegisterResult(null)}
+                    className="flex-1 py-2 rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-300 hover:bg-slate-700 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
