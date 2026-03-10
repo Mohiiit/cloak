@@ -1481,6 +1481,12 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
     let txHash = "";
     let initialStatus: "pending_ward_sig" | "pending_guardian" = "pending_ward_sig";
 
+    // Check upfront if we actually have a local secondary key.
+    // On-chain is_2fa_enabled may be true, but if the user never stored
+    // the secondary key on this device, we can only sign with primary.
+    const secondaryPk = await getSecondaryPrivateKey();
+    const actuallyNeedsWard2fa = needs.wardHas2fa && !!secondaryPk;
+
     try {
       const [chainId, nonceResult, estimate] = await Promise.all([
         provider.getChainId(),
@@ -1505,14 +1511,13 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
       nonce = nonceResult.toString();
       resourceBoundsJson = serializeResourceBounds(resourceBounds);
 
-      if (!needs.wardHas2fa) {
-        // No 2FA — sign locally and skip to guardian approval
+      if (!actuallyNeedsWard2fa) {
+        // No 2FA or no local key — sign with primary and skip to guardian
         const sig = signHash(txHash, wallet.keys.starkPrivateKey);
         wardSigJson = JSON.stringify(sig);
         initialStatus = "pending_guardian";
       }
-      // If ward has 2FA, nonce/txHash/resourceBounds are populated
-      // but signing deferred to the ward approval modal
+      // If ward has 2FA AND local key exists, signing deferred to ward approval modal
     } catch (err: any) {
       console.warn("[WardContext] Failed to prepare local ward envelope:", err);
       // Fall back to pending_ward_sig — the approval modal will handle signing
@@ -1538,7 +1543,7 @@ export function WardProvider({ children }: { children: React.ReactNode }) {
           nonce,
           resourceBoundsJson,
           txHash,
-          needsWard2fa: needs.wardHas2fa,
+          needsWard2fa: actuallyNeedsWard2fa,
           needsGuardian: needs.needsGuardian,
           needsGuardian2fa: needs.guardianHas2fa,
         },
