@@ -29,7 +29,7 @@ export const Header = () => {
 
         {/* Balance pill + Connect */}
         <div className="flex items-center gap-3">
-          {isConnected && isInitialized && (
+          {isConnected && isInitialized && !pathname.startsWith("/marketplace") && (
             <Link
               href="/wallet"
               className="flex items-center gap-1.5 bg-slate-800 rounded-full px-3 py-1.5 text-sm border border-slate-700/50 hover:border-blue-500/50 transition-colors"
