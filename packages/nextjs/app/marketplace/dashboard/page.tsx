@@ -513,13 +513,31 @@ export default function MarketplaceDashboardPage() {
       if (newAgentEndpoints.length === 0) throw new Error("At least one endpoint is required.");
       if (!newAgentAmount.trim()) throw new Error("Pricing amount is required.");
 
+      const isHexAddress = (s: unknown): s is string =>
+        typeof s === "string" && /^0x[0-9a-fA-F]+$/.test(s);
+
       const verifyRes = await fetch("/api/v1/auth/verify", { headers: { "X-API-Key": key } });
       const verifyJson = await verifyRes.json().catch(() => ({}));
-      if (!verifyRes.ok || !verifyJson.wallet_address) {
-        throw new Error("Unable to resolve operator wallet from API key.");
+
+      // Prefer the wallet_address from the API key record; fall back to the
+      // currently connected Cloak wallet (stored in localStorage on connect).
+      let operatorWallet = "";
+      if (verifyRes.ok && isHexAddress(verifyJson.wallet_address)) {
+        operatorWallet = verifyJson.wallet_address;
+      } else {
+        const stored = typeof window !== "undefined"
+          ? localStorage.getItem("cloak_active_address")
+          : null;
+        if (isHexAddress(stored)) operatorWallet = stored;
       }
-      const operatorWallet = String(verifyJson.wallet_address);
-      const serviceWallet = newAgentServiceWallet.trim() || operatorWallet;
+
+      if (!operatorWallet) {
+        throw new Error("Unable to resolve operator wallet. Connect your Cloak wallet first.");
+      }
+
+      const serviceWallet = isHexAddress(newAgentServiceWallet.trim())
+        ? newAgentServiceWallet.trim()
+        : operatorWallet;
 
       const endpointProofs = newAgentEndpoints.map((endpoint, index) =>
         createEndpointOwnershipProof({
