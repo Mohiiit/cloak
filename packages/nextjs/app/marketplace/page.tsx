@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { type AgentType, type AgentProfileResponse } from "@cloak-wallet/sdk";
 import { getApiConfig } from "~~/lib/api-client";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
 type DiscoveredAgent = AgentProfileResponse & { discovery_score: number };
 
@@ -23,7 +23,7 @@ type AgentTypeOption = {
   label: string;
 };
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const AGENT_TYPE_VALUES = [
   "staking_steward",
@@ -62,7 +62,7 @@ const CAPABILITIES = [
 const AGENT_TYPES_CACHE_KEY = "cloak.marketplace.agent-types.v1";
 const AGENT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MarketplacePage() {
   const [agents, setAgents] = useState<DiscoveredAgent[]>([]);
@@ -106,7 +106,7 @@ export default function MarketplacePage() {
         }
       }
     } catch {
-      // Non-critical — filter just works without type options
+      // Non-critical
     }
   }, []);
 
@@ -164,97 +164,132 @@ export default function MarketplacePage() {
   useEffect(() => { void loadLeaderboard(); }, [loadLeaderboard]);
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="space-y-8">
 
-      {/* ── Header ── */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-100">Agent Marketplace</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Discover and hire verified AI agents for your Starknet operations.
-          </p>
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── Hero Section ── */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      <section className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-blue-500/10 via-slate-900 to-purple-500/10 p-6 md:p-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+              Agent Marketplace
+            </h1>
+            <p className="text-sm md:text-base text-slate-400 max-w-xl leading-relaxed">
+              Discover, evaluate, and hire verified AI agents for your Starknet operations.
+              Every agent is backed by on-chain delegation and real-time reputation scoring.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <Link
+              href="/marketplace/dashboard"
+              className="text-sm px-5 py-2.5 rounded-xl font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 transition-colors whitespace-nowrap"
+            >
+              Register your agent
+            </Link>
+            <button
+              type="button"
+              onClick={() => void loadAgents()}
+              className="text-sm px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/marketplace/dashboard"
-            className="text-sm px-4 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
-          >
-            Register your agent →
-          </Link>
-          <button
-            type="button"
-            onClick={() => void loadAgents()}
-            className="text-xs px-3 py-2 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
-          >
-            Refresh
-          </button>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-700/50">
+          <div>
+            <p className="text-2xl font-bold text-white tabular-nums">{agents.length}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Agents Listed</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-white tabular-nums">
+              {agents.filter(a => a.verified).length}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">Verified</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-white tabular-nums">{lbEntries.length}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Active on Leaderboard</p>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── Filters ── */}
-      <section className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-        <label className="flex flex-col gap-1 min-w-[140px]">
-          <span className="text-xs text-slate-400">Agent type</span>
-          <select
-            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200"
-            value={agentType}
-            onChange={e => setAgentType(e.target.value)}
-          >
-            <option value="">All types</option>
-            {agentTypeOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </label>
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── Filter Bar ── */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      <section className="flex flex-wrap items-center gap-3">
+        <select
+          className="bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500/50"
+          value={agentType}
+          onChange={e => setAgentType(e.target.value)}
+        >
+          <option value="">All types</option>
+          {agentTypeOptions.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
 
-        <label className="flex flex-col gap-1 min-w-[160px]">
-          <span className="text-xs text-slate-400">Capability</span>
-          <select
-            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200"
-            value={capability}
-            onChange={e => setCapability(e.target.value)}
-          >
-            {CAPABILITIES.map(opt => (
-              <option key={opt.value || "all"} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </label>
+        <select
+          className="bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500/50"
+          value={capability}
+          onChange={e => setCapability(e.target.value)}
+        >
+          {CAPABILITIES.map(opt => (
+            <option key={opt.value || "all"} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
 
-        <label className="flex items-center gap-2 pb-0.5 cursor-pointer">
+        <label className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 rounded-xl border border-slate-700 bg-slate-800/80 hover:border-slate-600 transition-colors">
           <input
             type="checkbox"
             checked={verifiedOnly}
             onChange={e => setVerifiedOnly(e.target.checked)}
-            className="h-4 w-4 rounded accent-blue-500"
+            className="h-3.5 w-3.5 rounded accent-blue-500"
           />
-          <span className="text-sm text-slate-300 select-none">Verified only</span>
+          <span className="text-sm text-slate-300">Verified only</span>
         </label>
+
+        {(agentType || capability || verifiedOnly) && (
+          <button
+            type="button"
+            onClick={() => { setAgentType(""); setCapability(""); setVerifiedOnly(false); }}
+            className="text-xs text-slate-500 hover:text-slate-300 transition-colors px-2 py-2"
+          >
+            Clear filters
+          </button>
+        )}
       </section>
 
-      {/* ── Load error ── */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── Error ── */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
           {error}
         </div>
       )}
 
-      {/* ── Agent grid ── */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── Agent Grid ── */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {isLoading && (
           <>
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 animate-pulse space-y-3">
+              <div key={i} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-5 animate-pulse space-y-4">
                 <div className="flex justify-between">
                   <div className="space-y-2">
-                    <div className="h-4 w-32 rounded bg-slate-700" />
-                    <div className="h-3 w-20 rounded bg-slate-800" />
+                    <div className="h-5 w-36 rounded-lg bg-slate-700/60" />
+                    <div className="h-3 w-24 rounded bg-slate-700/40" />
                   </div>
-                  <div className="h-6 w-10 rounded-full bg-slate-800" />
+                  <div className="h-7 w-12 rounded-full bg-slate-700/40" />
                 </div>
-                <div className="h-8 w-full rounded bg-slate-800" />
+                <div className="h-10 w-full rounded-lg bg-slate-700/30" />
                 <div className="flex gap-2">
-                  <div className="h-5 w-14 rounded-full bg-slate-800" />
-                  <div className="h-5 w-20 rounded-full bg-slate-800" />
+                  <div className="h-5 w-16 rounded-full bg-slate-700/30" />
+                  <div className="h-5 w-24 rounded-full bg-slate-700/30" />
                 </div>
               </div>
             ))}
@@ -262,17 +297,19 @@ export default function MarketplacePage() {
         )}
 
         {!isLoading && agents.length === 0 && !error && (
-          <div className="col-span-2 flex flex-col items-center py-16 text-center gap-3">
-            <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl">
-              🤖
+          <div className="col-span-full flex flex-col items-center py-20 text-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-3xl">
+              &#x1F916;
             </div>
-            <p className="text-slate-200 font-medium">No agents found</p>
-            <p className="text-sm text-slate-500">Try adjusting your filters, or be the first to register one</p>
+            <div>
+              <p className="text-slate-200 font-semibold text-lg">No agents found</p>
+              <p className="text-sm text-slate-500 mt-1">Try adjusting your filters, or be the first to register one.</p>
+            </div>
             <Link
               href="/marketplace/dashboard"
-              className="mt-1 text-sm px-4 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+              className="mt-2 text-sm px-5 py-2.5 rounded-xl font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 transition-colors"
             >
-              Register your agent →
+              Register your agent
             </Link>
           </div>
         )}
@@ -280,129 +317,150 @@ export default function MarketplacePage() {
         {agents.map(agent => (
           <article
             key={agent.agent_id}
-            className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 flex flex-col gap-3 hover:border-slate-600 transition-colors"
+            className="group rounded-xl border border-slate-700/50 bg-slate-800/30 p-5 flex flex-col gap-4 hover:border-blue-500/30 hover:bg-slate-800/50 transition-all duration-200"
           >
+            {/* Header row */}
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-base font-medium text-slate-100 truncate">{agent.name}</h2>
-                <p className="text-xs text-slate-500 mt-0.5">{agent.agent_type}</p>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-white truncate group-hover:text-blue-200 transition-colors">
+                  {agent.name}
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5 font-mono">{agent.agent_type}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {agent.verified && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
-                    verified
+                  <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-300">
+                    Verified
                   </span>
                 )}
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-400 tabular-nums">
+                <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 tabular-nums">
                   {agent.discovery_score}
                 </span>
               </div>
             </div>
 
+            {/* Description */}
             <p className="text-sm text-slate-400 line-clamp-2 leading-relaxed">{agent.description}</p>
 
+            {/* Capabilities */}
             <div className="flex flex-wrap gap-1.5">
               {agent.capabilities.map(cap => (
                 <span
                   key={`${agent.agent_id}-${cap}`}
-                  className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300"
+                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-700/50 border border-slate-600/50 text-slate-300"
                 >
                   {cap}
                 </span>
               ))}
             </div>
 
-            <div className="flex items-center justify-between mt-auto pt-1">
+            {/* Footer */}
+            <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-700/30">
               <span className="text-xs text-slate-500">
-                Trust: <span className="text-slate-300 font-medium">{agent.trust_score}</span>
+                Trust <span className="text-slate-300 font-semibold">{agent.trust_score}</span>
               </span>
               <Link
                 href={`/marketplace/${encodeURIComponent(agent.agent_id)}`}
-                className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 hover:border-blue-500/50 hover:text-blue-300 transition-colors"
+                className="text-xs font-medium px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-300 hover:bg-blue-500/20 hover:border-blue-500/40 transition-colors"
               >
-                View &amp; hire →
+                View &amp; hire
               </Link>
             </div>
           </article>
         ))}
       </section>
 
+      {/* ══════════════════════════════════════════════════════════════════════ */}
       {/* ── Leaderboard ── */}
-      <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-100">Leaderboard</h2>
-            <div className="flex gap-1.5">
-              {(["24h", "7d", "30d"] as const).map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setLbPeriod(p)}
-                  className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
-                    lbPeriod === p
-                      ? "border-blue-500 bg-blue-500/20 text-blue-200"
-                      : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-700/50">
+          <h2 className="text-base font-semibold text-white">Leaderboard</h2>
+          <div className="flex gap-1">
+            {(["24h", "7d", "30d"] as const).map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setLbPeriod(p)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  lbPeriod === p
+                    ? "bg-blue-500/20 text-blue-200 border border-blue-500/30"
+                    : "text-slate-400 hover:text-slate-200 border border-transparent"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
           </div>
+        </div>
 
+        <div className="px-5 py-4">
           {lbError && (
-            <p className="text-xs text-red-300">{lbError}</p>
+            <p className="text-xs text-red-300 mb-3">{lbError}</p>
           )}
 
           {lbLoading && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {[0, 1, 2].map(i => (
-                <div key={i} className="h-8 rounded bg-slate-800 animate-pulse" />
+                <div key={i} className="h-10 rounded-lg bg-slate-700/30 animate-pulse" />
               ))}
             </div>
           )}
 
           {!lbLoading && lbEntries.length === 0 && !lbError && (
-            <p className="text-xs text-slate-500 py-2">No leaderboard data for this period.</p>
+            <p className="text-sm text-slate-500 py-6 text-center">No leaderboard data for this period.</p>
           )}
 
           {!lbLoading && lbEntries.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className="overflow-x-auto -mx-5">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-slate-500 border-b border-slate-800">
-                    <th className="pb-2 pr-3 font-medium w-8">#</th>
-                    <th className="pb-2 pr-3 font-medium">Agent</th>
-                    <th className="pb-2 pr-3 font-medium text-right">Score</th>
-                    <th className="pb-2 pr-3 font-medium text-right">Runs</th>
-                    <th className="pb-2 pr-3 font-medium text-right">Success</th>
-                    <th className="pb-2 font-medium text-right">Trust</th>
+                  <tr className="text-left text-slate-500 border-b border-slate-700/50">
+                    <th className="pb-3 pl-5 pr-3 font-medium w-12">#</th>
+                    <th className="pb-3 pr-4 font-medium">Agent</th>
+                    <th className="pb-3 pr-4 font-medium text-right">Score</th>
+                    <th className="pb-3 pr-4 font-medium text-right">Runs</th>
+                    <th className="pb-3 pr-4 font-medium text-right">Success</th>
+                    <th className="pb-3 pr-5 font-medium text-right">Trust</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lbEntries.map((entry, idx) => (
-                    <tr key={entry.agent_id} className="border-b border-slate-800/50 hover:bg-slate-800/20">
-                      <td className="py-2 pr-3 text-slate-500 tabular-nums">{idx + 1}</td>
-                      <td className="py-2 pr-3">
+                    <tr
+                      key={entry.agent_id}
+                      className="border-b border-slate-700/30 last:border-b-0 hover:bg-slate-700/20 transition-colors"
+                    >
+                      <td className="py-3 pl-5 pr-3 text-slate-500 tabular-nums font-medium">{idx + 1}</td>
+                      <td className="py-3 pr-4">
                         <Link
                           href={`/marketplace/${encodeURIComponent(entry.agent_id)}`}
-                          className="text-blue-300 hover:underline"
+                          className="text-blue-300 hover:text-blue-200 hover:underline font-medium transition-colors"
                         >
                           {entry.agent_name || entry.agent_id}
                         </Link>
                       </td>
-                      <td className="py-2 pr-3 text-slate-200 font-mono text-right tabular-nums">{entry.work_score}</td>
-                      <td className="py-2 pr-3 text-slate-400 text-right tabular-nums">{entry.runs}</td>
-                      <td className="py-2 pr-3 text-slate-400 text-right tabular-nums">
-                        {(entry.success_rate * 100).toFixed(1)}%
+                      <td className="py-3 pr-4 text-white font-mono text-right tabular-nums font-medium">
+                        {entry.work_score}
                       </td>
-                      <td className="py-2 text-slate-400 text-right tabular-nums">{entry.trust_score}</td>
+                      <td className="py-3 pr-4 text-slate-400 text-right tabular-nums">{entry.runs}</td>
+                      <td className="py-3 pr-4 text-right tabular-nums">
+                        <span className={
+                          entry.success_rate >= 0.9 ? "text-emerald-400" :
+                          entry.success_rate >= 0.7 ? "text-amber-400" :
+                          "text-red-400"
+                        }>
+                          {(entry.success_rate * 100).toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="py-3 pr-5 text-slate-400 text-right tabular-nums">{entry.trust_score}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+        </div>
       </section>
-    </main>
+    </div>
   );
 }

@@ -1,96 +1,67 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { useConnect, useNetwork } from "@starknet-react/core";
-import { Address } from "@starknet-react/chains";
-import { AddressInfoDropdown } from "./AddressInfoDropdown";
-import { WrongNetworkDropdown } from "./WrongNetworkDropdown";
+import { useEffect, useState } from "react";
+import { useConnect } from "@starknet-react/core";
 import ConnectModal from "./ConnectModal";
-import { AddressQRCodeModal } from "./AddressQRCodeModal";
 import { useAutoConnect } from "~~/hooks/scaffold-stark";
-import { useTargetNetwork } from "~~/hooks/scaffold-stark/useTargetNetwork";
-import { useAccount } from "~~/hooks/useAccount";
-import { getBlockExplorerAddressLink } from "~~/utils/scaffold-stark";
+import { LAST_CONNECTED_TIME_LOCALSTORAGE_KEY } from "~~/utils/Constants";
+
+const CLOAK_ADDRESS_KEY = "cloak_active_address";
 
 export const CustomConnectButton = () => {
   useAutoConnect();
-  const { connector } = useConnect();
-  const { targetNetwork } = useTargetNetwork();
-  const { chain } = useNetwork();
-  const { account, status, address: accountAddress } = useAccount();
-  const [accountChainId, setAccountChainId] = useState<bigint>(0n);
+  const { connectors, connect } = useConnect();
+  const [cloakAddress, setCloakAddress] = useState<string | null>(null);
 
-  const blockExplorerAddressLink = useMemo(() => {
-    return accountAddress
-      ? getBlockExplorerAddressLink(targetNetwork, accountAddress)
-      : "";
-  }, [accountAddress, targetNetwork]);
-
+  // Auto-detect if already connected on mount
   useEffect(() => {
-    const getChainId = async () => {
-      try {
-        if (account?.channel?.getChainId) {
-          const chainId = await account.channel.getChainId();
-          setAccountChainId(BigInt(chainId));
-        } else if (chain?.id) {
-          setAccountChainId(BigInt(chain.id));
-        }
-      } catch (err) {
-        console.error("Failed to get chainId:", err);
-      }
-    };
-    getChainId();
-  }, [account, status, chain?.id]);
+    const provider = (window as any).starknet_cloak;
+    if (provider?.isConnected && provider.selectedAddress) {
+      handleConnected(provider.selectedAddress);
+    } else {
+      const stored = localStorage.getItem(CLOAK_ADDRESS_KEY);
+      if (stored) setCloakAddress(stored);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => {
-    const handleChainChange = (event: { chainId?: bigint }) => {
-      const { chainId } = event;
-      if (chainId && chainId !== accountChainId) {
-        setAccountChainId(chainId);
-      }
-    };
-    connector?.on("change", handleChainChange);
-    return () => {
-      connector?.off("change", handleChainChange);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connector]);
-
-  if (status === "disconnected" || status === "connecting") {
-    return <ConnectModal />;
+  function handleConnected(address: string) {
+    setCloakAddress(address);
+    localStorage.setItem(CLOAK_ADDRESS_KEY, address);
+    // Try syncing starknet-react in background (for wallet operations)
+    const cloakConnector = connectors.find((c) => c.id === "cloak");
+    if (cloakConnector) {
+      connect({ connector: cloakConnector });
+      localStorage.setItem("lastUsedConnector", JSON.stringify({ id: cloakConnector.id }));
+      localStorage.setItem(LAST_CONNECTED_TIME_LOCALSTORAGE_KEY, String(Date.now()));
+    }
   }
 
-  const isLoading =
-    status === "connected" &&
-    (!accountAddress || !chain?.name || accountChainId === 0n);
-
-  if (isLoading) {
-    return (
-      <button
-        type="button"
-        disabled
-        className="w-20 h-8 rounded-lg bg-slate-700 animate-pulse"
-      >
-        &nbsp;
-      </button>
-    );
+  function handleDisconnect() {
+    setCloakAddress(null);
+    localStorage.removeItem(CLOAK_ADDRESS_KEY);
+    const provider = (window as any).starknet_cloak;
+    if (provider) {
+      provider.isConnected = false;
+      provider.selectedAddress = "";
+    }
   }
 
-  if (accountChainId !== targetNetwork.id) {
-    return <WrongNetworkDropdown />;
+  if (!cloakAddress) {
+    return <ConnectModal onConnected={handleConnected} />;
   }
 
   return (
-    <>
-      {/* Minimal address chip only — no Balance, no chain name */}
-      <AddressInfoDropdown
-        address={accountAddress as Address}
-        displayName=""
-        blockExplorerAddressLink={blockExplorerAddressLink}
-      />
-      <AddressQRCodeModal
-        address={accountAddress as Address}
-        modalId="qrcode-modal"
-      />
-    </>
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-mono text-slate-300 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5">
+        {cloakAddress.slice(0, 6)}...{cloakAddress.slice(-4)}
+      </span>
+      <button
+        onClick={handleDisconnect}
+        className="text-xs text-slate-500 hover:text-red-400 transition-colors px-2 py-1.5"
+        title="Disconnect"
+      >
+        &#x2715;
+      </button>
+    </div>
   );
 };

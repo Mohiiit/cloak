@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Toaster } from "react-hot-toast";
 import { StarknetConfig, starkscan } from "@starknet-react/core";
 import { Header } from "~~/components/Header";
@@ -18,12 +19,15 @@ const ScaffoldStarkApp = ({ children }: { children: React.ReactNode }) => {
   useNativeCurrencyPrice();
   useWalletApiKey();
 
+  const pathname = usePathname();
+  const isWide = pathname.startsWith("/marketplace");
+
   return (
     <>
       <div className="flex relative flex-col min-h-screen bg-slate-900">
         <Header />
         <main className="relative flex flex-col flex-1 pb-20 md:pb-0">
-          <div className="max-w-lg mx-auto w-full px-4 py-4 flex-1">
+          <div className={`${isWide ? "max-w-5xl" : "max-w-lg"} mx-auto w-full px-4 py-4 flex-1`}>
             {children}
           </div>
         </main>

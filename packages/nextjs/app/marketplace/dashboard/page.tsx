@@ -602,7 +602,7 @@ export default function MarketplaceDashboardPage() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="space-y-6 py-4">
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-3">
@@ -1071,6 +1071,6 @@ export default function MarketplaceDashboardPage() {
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
