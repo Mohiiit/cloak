@@ -49,28 +49,32 @@ export async function requestWardApproval(
   params: ExtensionWardApprovalParams,
   options?: ExtensionWardApprovalOptions,
 ): Promise<WardApprovalResult> {
-  try {
-    const client = await getApiClient();
-    return await sdkRequestWardApproval(
-      client,
+  const client = await getApiClient();
+  const result = await sdkRequestWardApproval(
+    client,
+    params,
+    params.onStatusChange,
+    params.signal,
+    options,
+  );
+
+  // SDK catches 401 internally and returns { approved: false, error: "...Invalid API key..." }
+  // Detect this, reset the stale key, and retry once with a fresh client.
+  if (
+    !result.approved &&
+    result.error &&
+    (result.error.includes("Invalid API key") || result.error.includes("401"))
+  ) {
+    resetApiClient();
+    const freshClient = await getApiClient();
+    return sdkRequestWardApproval(
+      freshClient,
       params,
       params.onStatusChange,
       params.signal,
       options,
     );
-  } catch (e: any) {
-    // On 401, reset and retry once with a fresh API key
-    if (e?.statusCode === 401 || e?.message?.includes("Invalid API key")) {
-      resetApiClient();
-      const client = await getApiClient();
-      return sdkRequestWardApproval(
-        client,
-        params,
-        params.onStatusChange,
-        params.signal,
-        options,
-      );
-    }
-    throw e;
   }
+
+  return result;
 }

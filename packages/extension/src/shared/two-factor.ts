@@ -71,48 +71,43 @@ export interface TwoFAApprovalParams {
 export async function request2FAApproval(
   params: TwoFAApprovalParams,
 ): Promise<TwoFAApprovalResult> {
-  try {
-    const client = await getApiClient();
-    return await sdkRequest2FAApproval(
-      client,
-      {
-        walletAddress: params.walletAddress,
-        action: params.action,
-        token: params.token,
-        amount: params.amount,
-        recipient: params.recipient,
-        callsJson: params.callsJson,
-        sig1Json: params.sig1Json,
-        nonce: params.nonce,
-        resourceBoundsJson: params.resourceBoundsJson,
-        txHash: params.txHash,
-      },
+  const sdkParams = {
+    walletAddress: params.walletAddress,
+    action: params.action,
+    token: params.token,
+    amount: params.amount,
+    recipient: params.recipient,
+    callsJson: params.callsJson,
+    sig1Json: params.sig1Json,
+    nonce: params.nonce,
+    resourceBoundsJson: params.resourceBoundsJson,
+    txHash: params.txHash,
+  };
+
+  const client = await getApiClient();
+  const result = await sdkRequest2FAApproval(
+    client,
+    sdkParams,
+    params.onStatusChange,
+    params.signal,
+  );
+
+  // SDK catches 401 internally and returns { approved: false, error: "...Invalid API key..." }
+  // Detect this, reset the stale key, and retry once with a fresh client.
+  if (
+    !result.approved &&
+    result.error &&
+    (result.error.includes("Invalid API key") || result.error.includes("401"))
+  ) {
+    resetApiClient();
+    const freshClient = await getApiClient();
+    return sdkRequest2FAApproval(
+      freshClient,
+      sdkParams,
       params.onStatusChange,
       params.signal,
     );
-  } catch (e: any) {
-    // On 401, reset and retry once with a fresh API key
-    if (e?.statusCode === 401 || e?.message?.includes("Invalid API key")) {
-      resetApiClient();
-      const client = await getApiClient();
-      return sdkRequest2FAApproval(
-        client,
-        {
-          walletAddress: params.walletAddress,
-          action: params.action,
-          token: params.token,
-          amount: params.amount,
-          recipient: params.recipient,
-          callsJson: params.callsJson,
-          sig1Json: params.sig1Json,
-          nonce: params.nonce,
-          resourceBoundsJson: params.resourceBoundsJson,
-          txHash: params.txHash,
-        },
-        params.onStatusChange,
-        params.signal,
-      );
-    }
-    throw e;
   }
+
+  return result;
 }
