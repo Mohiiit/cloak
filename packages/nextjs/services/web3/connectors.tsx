@@ -40,7 +40,11 @@ function getConnectors() {
     }
   }
 
-  const connectors: InjectedConnector[] = [ready(), braavos()];
+  const connectors: InjectedConnector[] = [
+    new InjectedConnector({ options: { id: "cloak", name: "Cloak Wallet" } }),
+    ready(),
+    braavos(),
+  ];
   const isDevnet = targetNetworks.some(
     (network) => (network.network as string) === "devnet",
   );
