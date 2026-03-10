@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeAddress } from "@cloak-wallet/sdk";
 import { authenticate, AuthError } from "~~/app/api/v1/_lib/auth";
 import {
   badRequest,
@@ -160,7 +161,7 @@ export async function POST(req: NextRequest) {
     const data = validate(RegisterAgentSchema, body);
     const existing = await getAgentProfileRecord(data.agent_id);
 
-    if (auth.wallet_address.toLowerCase() !== data.operator_wallet.toLowerCase()) {
+    if (normalizeAddress(auth.wallet_address) !== normalizeAddress(data.operator_wallet)) {
       return forbidden("operator_wallet must match authenticated wallet");
     }
     if (!data.endpoint_proofs || data.endpoint_proofs.length === 0) {
