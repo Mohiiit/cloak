@@ -137,11 +137,55 @@ function ensureApiKey(
 
 let _client: CloakApiClient | null = null;
 
+/**
+ * Create a self-healing CloakApiClient proxy.
+ *
+ * The SDK's polling loops hold a single client reference for up to 10 minutes.
+ * If the API key is rotated during that window (e.g., by mobile re-registration),
+ * every poll silently fails with 401.
+ *
+ * This proxy intercepts all method calls: if the underlying call throws a 401
+ * CloakApiError, it resets the API key, obtains a fresh client, and retries once.
+ */
+function createSelfHealingClient(realClient: CloakApiClient): CloakApiClient {
+  return new Proxy(realClient, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") return value;
+
+      return async function (this: unknown, ...args: unknown[]) {
+        try {
+          return await (value as Function).apply(target, args);
+        } catch (err: any) {
+          // Detect 401 from CloakApiError (statusCode property)
+          if (err?.statusCode === 401 || err?.message?.includes("Invalid API key")) {
+            // Reset and get a fresh client
+            _client = null;
+            validatedApiKey = null;
+            validatedAtMs = 0;
+            const config = await getApiConfig();
+            const resolved = await ensureApiKey(config);
+            const freshClient = new CloakApiClient(resolved.url, resolved.key);
+            _client = createSelfHealingClient(freshClient);
+
+            // Update the proxy's target for future calls
+            // (Proxy target is immutable, but _client is updated for next getApiClient())
+
+            // Retry with fresh client
+            return await (freshClient as any)[prop](...args);
+          }
+          throw err;
+        }
+      };
+    },
+  });
+}
+
 export async function getApiClient(): Promise<CloakApiClient> {
   if (!_client || !validatedApiKey) {
     const config = await getApiConfig();
     const resolved = await ensureApiKey(config);
-    _client = new CloakApiClient(resolved.url, resolved.key);
+    _client = createSelfHealingClient(new CloakApiClient(resolved.url, resolved.key));
   }
   return _client;
 }
