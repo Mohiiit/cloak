@@ -156,10 +156,47 @@ export function invalidateApiKey(): void {
   validatedAtMs = 0;
 }
 
+/**
+ * Self-healing proxy: if any method call returns 401, automatically
+ * re-register for a fresh API key and retry the call once.
+ * This handles key rotation by other devices (e.g., extension re-registers
+ * and invalidates mobile's key mid-operation).
+ */
+function createSelfHealingClient(
+  realClient: CloakApiClient,
+  options?: ApiClientOptions,
+): CloakApiClient {
+  return new Proxy(realClient, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") return value;
+
+      return async function (this: unknown, ...args: unknown[]) {
+        try {
+          return await (value as Function).apply(target, args);
+        } catch (err: any) {
+          if (err?.statusCode === 401 || err?.message?.includes("Invalid API key")) {
+            // Force re-verification and get a fresh client
+            invalidateApiKey();
+            const config = await getApiConfig();
+            const resolved = await ensureApiKey(config, options);
+            const freshClient = new CloakApiClient(resolved.url, resolved.key);
+            return await (freshClient as any)[prop](...args);
+          }
+          throw err;
+        }
+      };
+    },
+  });
+}
+
 export async function getApiClient(
   options?: ApiClientOptions,
 ): Promise<CloakApiClient> {
   const config = await getApiConfig();
   const resolved = await ensureApiKey(config, options);
-  return new CloakApiClient(resolved.url, resolved.key);
+  return createSelfHealingClient(
+    new CloakApiClient(resolved.url, resolved.key),
+    options,
+  );
 }
